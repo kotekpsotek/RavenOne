@@ -1,0 +1,4 @@
+- Make it integrated with Ravenify.ai:
+    - Make here the interface for offering their solution - the solution webpage for community offered extensions
+    - Concept of shop - now is separate but then will be connected with Ravenify and owners can connect these together
+    - Here is developed concept where agents are grouping in mesches to cooperate for solution of task
