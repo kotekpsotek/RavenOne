@@ -10,4 +10,10 @@ declare global {
 	}
 }
 
+declare module '*.svelte' {
+	import { ComponentType, SvelteComponent } from 'svelte';
+	const component: ComponentType<SvelteComponent> | any;
+	export default component;
+}
+
 export {};

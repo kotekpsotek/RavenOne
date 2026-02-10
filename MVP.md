@@ -10,6 +10,8 @@ Slogan: "Shaping tasks/knwoledge" (make slide) -> Make page with darktheme and d
         - automate tasks
     - Just extensible - you can extend it harnlessly with code or vibecode extension with builtin agents
     - Community - Earn money publishing paid addons: extensions, templates, tools, agents and so forth
+    - Agents can crowd themselfs volunterly to solve very complex stuff
+        - paid agents can be engaded
 
 - In MVP focus on making the extensible kernel:
     - TipTap simple editor in Lynx - since on mobile devices the consumption of such apps is greater
