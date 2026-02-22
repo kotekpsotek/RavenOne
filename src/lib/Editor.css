@@ -1,0 +1,49 @@
+@reference "../app.css";
+
+.editor-container {
+    @apply flex-1 p-6 sm:p-10 bg-base-100 overflow-y-auto;
+    height: 100%;
+}
+
+.tiptap-editor {
+    @apply prose max-w-none transition-all duration-300 outline-none;
+}
+
+.tiptap {
+    @apply outline-none text-base-content;
+}
+
+/* Dark mode support */
+:global([data-theme="dark"]) .tiptap-editor,
+:global([data-theme="black"]) .tiptap-editor,
+:global(.dark) .tiptap-editor {
+    @apply prose-invert;
+}
+
+.tiptap-editor :global(.tiptap) {
+    @apply outline-none min-h-[40vh];
+}
+
+/* Specific TipTap Styles */
+.tiptap-editor :global(.tiptap p.is-editor-empty:first-child::before) {
+    @apply text-base-content/25 float-left h-0 pointer-events-none;
+    content: attr(data-placeholder);
+}
+
+/* Task List Styling */
+.tiptap-editor :global(.tiptap ul[data-type="taskList"]) {
+    @apply list-none p-0;
+}
+
+.tiptap-editor :global(.tiptap ul[data-type="taskList"] li) {
+    @apply flex items-start gap-4 my-2;
+}
+
+.tiptap-editor :global(.tiptap ul[data-type="taskList"] input[type="checkbox"]) {
+    @apply checkbox checkbox-primary checkbox-sm mt-1;
+}
+
+/* Focus highlighting */
+.tiptap-editor:global(.ProseMirror-focused) {
+    @apply ring-0 outline-none;
+}

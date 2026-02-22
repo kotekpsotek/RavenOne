@@ -1,6 +1,16 @@
-@import 'tailwindcss';
-@plugin '@tailwindcss/forms';
-@plugin '@tailwindcss/typography';
-@plugin 'daisyui' {
-	themes: darkone --dark, light;
+@import "tailwindcss";
+@plugin "@tailwindcss/forms";
+@plugin "@tailwindcss/typography";
+@plugin "daisyui" {
+	themes: light, black;
+}
+
+@layer base {
+	:root {
+		transition: background-color 0.3s ease, color 0.3s ease-in-out;
+	}
+	
+	*, *::before, *::after {
+		transition: border-color 0.3s ease, background-color 0.3s ease, fill 0.3s ease;
+	}
 }
