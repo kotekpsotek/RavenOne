@@ -198,6 +198,10 @@
             renamingId = null;
             deleteTarget = null;
         }
+        else if (e.ctrlKey && e.key === "r" && $selectedFile) {
+            e.preventDefault();
+            openRename($selectedFile);
+        }
     }
 
     function openRename(entry: File) {
@@ -284,6 +288,13 @@
         }
     }
 
+    function focusInput(node: HTMLInputElement) {
+        queueMicrotask(() => {
+            node.focus();
+            node.select();
+        });
+    }
+
     async function onEntryKeydown(e: KeyboardEvent, entry: File) {
         if (e.key === 'Enter' || e.key === ' ') {
             await goto("/");
@@ -315,6 +326,7 @@
                 <Icon icon={entry.icon ?? "material-symbols:description-outline-rounded"} class="text-base-content/60 text-xl"/>
                 {#if renamingId === entry.id}
                     <input
+                        use:focusInput
                         class="input input-sm text-sm w-full max-w-52 border-none outline-none bg-transparent"
                         bind:value={renameValue}
                         onclick={ev => ev.stopPropagation()}
