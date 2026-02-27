@@ -7,6 +7,7 @@
     import { selectedFile } from "./stores/files";
     import { selectedModel } from "./stores/selected";
     import { contextSpecification, saveContextSpecification } from "./stores/contextSpec";
+    import { alertState } from "./utils/alert";
 
     type PlayMode = "run-non-runned" | "run-all";
     type DropdownName = "model-settings" | "mcp-tools" | "play-settings" | "share";
@@ -363,11 +364,27 @@
     async function copyShareUrl() {
         const nextShareUrl = shareUrl;
         if (!nextShareUrl) {
+            alertState.set({
+                alert: {
+                    name: "Share link unavailable",
+                    description: "No share URL is available right now.",
+                    type: "warning"
+                },
+                timeoutMs: 2500
+            });
             return;
         }
 
         try {
             await navigator.clipboard.writeText(nextShareUrl);
+            alertState.set({
+                alert: {
+                    name: "Link copied",
+                    description: "Share URL copied to clipboard.",
+                    type: "success"
+                },
+                timeoutMs: 2200
+            });
         } catch {
             const textarea = document.createElement("textarea");
             textarea.value = nextShareUrl;
@@ -375,8 +392,19 @@
             textarea.style.opacity = "0";
             document.body.append(textarea);
             textarea.select();
-            document.execCommand("copy");
+            const copied = document.execCommand("copy");
             textarea.remove();
+
+            alertState.set({
+                alert: {
+                    name: copied ? "Link copied" : "Copy failed",
+                    description: copied
+                        ? "Share URL copied to clipboard."
+                        : "Could not copy the share URL.",
+                    type: copied ? "success" : "error"
+                },
+                timeoutMs: copied ? 2200 : 3500
+            });
         }
     }
 

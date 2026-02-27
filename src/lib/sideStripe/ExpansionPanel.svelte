@@ -13,6 +13,7 @@
     let renamingId = $state<string | null>(null);
     let renameValue = $state('');
     let deleteTarget = $state<File | null>(null);
+    let expandedEntries = $state<Record<string, boolean>>({});
     let contextMenuEntry = $derived(contextMenu ? findFileById($entriesList, contextMenu.entryId) : null);
 
     function onNewFile(targetId: string | null = null) {
@@ -288,6 +289,25 @@
         }
     }
 
+    function hasSubentries(entry: File) {
+        return (entry.subentries?.length ?? 0) > 0;
+    }
+
+    function isEntryExpanded(entry: File) {
+        if (!hasSubentries(entry)) {
+            return false;
+        }
+
+        return expandedEntries[entry.id] ?? true;
+    }
+
+    function toggleEntryExpanded(entryId: string) {
+        expandedEntries = {
+            ...expandedEntries,
+            [entryId]: !(expandedEntries[entryId] ?? true)
+        };
+    }
+
     function focusInput(node: HTMLInputElement) {
         queueMicrotask(() => {
             node.focus();
@@ -308,6 +328,8 @@
 
 {#snippet renderEntry(entry: File, depth = 0)}
     {@const isTarget = dropTargetId === entry.id}
+    {@const entryHasSubentries = hasSubentries(entry)}
+    {@const entryExpanded = isEntryExpanded(entry)}
     <div class="w-full {isTarget && dropPosition === 'before' ? 'border-t-2 border-primary' : ''} {isTarget && dropPosition === 'after' ? 'border-b-2 border-primary' : ''}">
         <div
             class="group/file flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-base-300 {isTarget && dropPosition === 'inside' ? 'bg-primary/20' : ''} {$selectedFile?.id === entry.id ? 'bg-base-300/70' : ''}"
@@ -323,6 +345,26 @@
             tabindex="0"
         >
             <div class="flex min-w-0 items-center gap-2" style={`padding-left: ${depth * 12}px`}>
+                {#if entryHasSubentries}
+                    <button
+                        class="btn btn-ghost btn-xs btn-square min-h-0 h-5 w-5"
+                        onclick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            toggleEntryExpanded(entry.id);
+                        }}
+                        aria-label={entryExpanded ? "Collapse subentries" : "Expand subentries"}
+                    >
+                        <Icon
+                            icon={entryExpanded
+                                ? "material-symbols:keyboard-arrow-down-rounded"
+                                : "material-symbols:keyboard-arrow-right"}
+                            class="text-base"
+                        />
+                    </button>
+                {:else}
+                    <span class="inline-block h-5 w-5" aria-hidden="true"></span>
+                {/if}
                 <Icon icon={entry.icon ?? "material-symbols:description-outline-rounded"} class="text-base-content/60 text-xl"/>
                 {#if renamingId === entry.id}
                     <input
@@ -384,7 +426,7 @@
             {/if}
         </div>
 
-        {#if entry.subentries?.length}
+        {#if entryHasSubentries && entryExpanded}
             <div class="ml-4 border-l border-base-300 pl-2 mt-0.5 space-y-0.5 min-h-[4px]">
                 {#each entry.subentries as sub (sub.id)}
                     {@render renderEntry(sub, depth + 1)}

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import favicon from '$lib/assets/favicon.svg';
     import SideStripe from '$lib/sideStripe/SideStripe.svelte';
+	import AlertToast from '$lib/AlertToast.svelte';
 	import '../app.css'; // Ensure tailwind is loaded
 
 	let { children } = $props();
@@ -11,6 +12,7 @@
 </svelte:head>
 
 <div class="flex h-screen w-screen overflow-hidden bg-base-100 text-base-content">
+	<AlertToast/>
 	<SideStripe/>
 	
 	<main class="flex-1 flex flex-col h-full min-w-0">
