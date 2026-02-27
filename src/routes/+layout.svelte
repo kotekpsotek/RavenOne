@@ -1,6 +1,6 @@
 <script lang="ts">
 	import favicon from '$lib/assets/favicon.svg';
-    import SideStripe from '$lib/SideStripe.svelte';
+    import SideStripe from '$lib/sideStripe/SideStripe.svelte';
 	import '../app.css'; // Ensure tailwind is loaded
 
 	let { children } = $props();

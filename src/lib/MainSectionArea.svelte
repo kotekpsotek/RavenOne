@@ -1,6 +1,7 @@
 <script lang=ts>
     import { EditorContent } from "svelte-tiptap";
     import { editor } from "./stores/editor";
+    import { selectedFile } from "./stores/files";
     import "./Editor.css";
     import { avaiableWorkspaces, isAddNewWorkspaceBtnDisabled, isWorkspaceInAddition, isWorkspaceSelectionOpen, selectedWorkspace } from "./stores/workspace";
     import { Workspace } from "@ravenlens/shared";

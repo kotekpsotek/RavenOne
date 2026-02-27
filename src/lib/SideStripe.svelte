@@ -282,8 +282,9 @@
             </div>
         </details>
     {:else}
+        {@const isSelected = $selectedFile?.id === entry.id}
         <button 
-            class="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-base-300 {isTarget && dropPosition === 'before' ? 'border-t-2 border-primary' : ''} {isTarget && dropPosition === 'after' ? 'border-b-2 border-primary' : ''} {$selectedFile?.name === entry.name ? 'bg-base-400' : ''}"
+            class="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-base-300 {isTarget && dropPosition === 'before' ? 'border-t-2 border-primary' : ''} {isTarget && dropPosition === 'after' ? 'border-b-2 border-primary' : ''} {isSelected ? 'bg-primary/15 text-primary font-medium' : 'text-base-content/80'}"
             draggable="true"
             ondragstart={(e) => handleDragStart(e, entry.id)}
             ondragover={(e) => handleDragOver(e, entry)}
@@ -292,8 +293,8 @@
             onclick={onEntryClick(entry)}
         >
             <div class="flex items-center gap-2">
-                <Icon icon="material-symbols:description-outline-rounded" class="text-base-content/60 text-xl"/>
-                <span class="text-sm truncate">{entry.name}</span>
+                <Icon icon="material-symbols:description-outline-rounded" class="text-xl {isSelected ? 'text-primary' : 'text-base-content/60'}"/>
+                <span class="text-sm truncate {isSelected ? 'text-primary' : 'text-base-content'}">{entry.name}</span>
             </div>
         </button>
     {/if}

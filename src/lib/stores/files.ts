@@ -7,18 +7,12 @@ export interface File {
     createdAt: Date;
     content: string;
     createdByAuthorId: string;
+    icon?: string;
+    walper?: string;
+    subentries?: File[];
 }
 
-export interface Folder {
-    type: "folder";
-    id: string;
-    name: string;
-    createdAt: Date;
-    subentries: (Folder | File)[]
-    createdByAuthorId: string;
-}
-
-export const entriesList = writable<(File | Folder)[]>([]);
+export const entriesList = writable<File[]>([]);
 
 export const selectedFile = writable<File | undefined>(undefined);
 
@@ -30,17 +24,17 @@ export const selectedFile = writable<File | undefined>(undefined);
  */
 export function moveEntry(sourceId: string, targetId: string | null, position: 'before' | 'after' | 'inside') {
     entriesList.update(entries => {
-        let draggedItem: File | Folder | null = null;
+        let draggedItem: File | null = null;
 
         // 1. Find and remove the entry (immutable)
-        function findAndRemove(items: (File | Folder)[]): (File | Folder)[] {
+        function findAndRemove(items: File[]): File[] {
             const index = items.findIndex(i => i.id === sourceId);
             if (index !== -1) {
                 draggedItem = items[index];
                 return items.filter((_, i) => i !== index);
             }
             return items.map(item => {
-                if ('subentries' in item) {
+                if (item.subentries?.length) {
                     return { ...item, subentries: findAndRemove(item.subentries) };
                 }
                 return item;
@@ -48,7 +42,7 @@ export function moveEntry(sourceId: string, targetId: string | null, position: '
         }
 
         // 2. Find target and insert (immutable)
-        function findAndInsert(items: (File | Folder)[], itemToInsert: File | Folder): (File | Folder)[] {
+        function findAndInsert(items: File[], itemToInsert: File): File[] {
             if (targetId === null) {
                 return [...items, itemToInsert];
             }
@@ -62,18 +56,16 @@ export function moveEntry(sourceId: string, targetId: string | null, position: '
                     newItems.splice(index + 1, 0, itemToInsert);
                 } else if (position === 'inside') {
                     const target = items[index];
-                    if ('subentries' in target) {
-                        newItems[index] = {
-                            ...target,
-                            subentries: [...target.subentries, itemToInsert]
-                        };
-                    }
+                    newItems[index] = {
+                        ...target,
+                        subentries: [...(target.subentries ?? []), itemToInsert]
+                    };
                 }
                 return newItems;
             }
 
             return items.map(item => {
-                if ('subentries' in item) {
+                if (item.subentries?.length) {
                     return { ...item, subentries: findAndInsert(item.subentries, itemToInsert) };
                 }
                 return item;

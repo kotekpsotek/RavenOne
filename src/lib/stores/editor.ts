@@ -3,6 +3,7 @@ import type { File } from "./files";
 import { writable } from "svelte/store";
 import { StarterKit } from "@tiptap/starter-kit"
 import { selectedFile } from "./files";
+import { isWorkspaceInAddition, isWorkspaceSelectionOpen } from "./workspace";
 
 export const editor = (() => {
     const { subscribe, set } = writable<Editor | undefined>(undefined);
@@ -13,6 +14,11 @@ export const editor = (() => {
         selectFile(file: File) {
             const content = file.content || "xe";
             
+            //
+            isWorkspaceSelectionOpen.set(false);
+            isWorkspaceInAddition.set(false);
+            
+            //
             if (!currentEditor) {
                 const editorStore = createEditor({
                     content,
