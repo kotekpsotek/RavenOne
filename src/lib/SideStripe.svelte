@@ -205,7 +205,11 @@
     }
 
     function onHelpMaterials() {
+        window.location.assign("/help-materials")
+    }
 
+    async function onUserProfile() {
+        await goto("/userprofile")
     }
 </script>
 
@@ -386,8 +390,14 @@
                 </div>
 
                 {#if $user}
-                    <div class="tooltip tooltip-right" data-tip="{$user.name} ({$user.email})">
-                        <button class="avatar placeholder group cursor-pointer transition-all hover:scale-105 active:scale-95">
+                    <div 
+                        class="tooltip tooltip-right"
+                        data-tip="{$user.name} ({$user.email})"
+                    >
+                        <button
+                            class="avatar placeholder group cursor-pointer transition-all hover:scale-105 active:scale-95"
+                            onclick={onUserProfile}
+                        >
                             <div class="w-10 rounded-xl bg-neutral text-neutral-content ring-primary/30 ring-offset-base-200 transition-all group-hover:ring group-hover:ring-offset-2">
                                 <img src="{$user.profileImgURL}" alt="{$user.name}" />
                             </div>
