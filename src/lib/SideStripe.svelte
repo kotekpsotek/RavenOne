@@ -9,6 +9,7 @@
     import { avaiableWorkspaces, isAddNewWorkspaceBtnDisabled, isWorkspaceSelectionOpen, selectedWorkspace } from "./stores/workspace";
     import { Workspace } from "@ravenlens/shared";
     import { State } from "@ravenlens/frontend";
+    import { goto } from "$app/navigation";
 
     let isExpanded = $state(false);
     let modalFolderTarget: Folder | null = $state(null);
@@ -199,8 +200,8 @@
     }
 
     //
-    function onOpenWorkspaceSettings() {
-
+    async function onOpenWorkspaceSettings() {
+        await goto("/workspace-settings");
     }
 
     function onHelpMaterials() {

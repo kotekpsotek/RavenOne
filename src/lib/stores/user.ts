@@ -1,4 +1,4 @@
-import { writable } from "svelte/store";
+import { get, writable } from "svelte/store";
 import type { Profile } from "@ravenlens/shared";
 
 export interface User {
@@ -26,20 +26,26 @@ export const userProfile = (() => {
             // TODO: Download real user profile from database
             // Simulate profile downloading and sets the profile
             return new Promise<Profile>(res => {
-                setTimeout(() => {
-                    const profile: Profile = {
-                        id: 'current-user',
-                        name: 'Vioz Isildur',
-                        email: 'admin@viozisildur.com',
-                        profileImgURL: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?q=80&w=1974&auto=format&fit=crop',
-                        mainAccountType: 'email',
-                        linkedAccounts: ['email'],
-                        createdAt: new Date()
-                    };
-
-                    all.set(profile);
-                    res(profile);
-                }, 7_500)
+                const actualProfileState = get(all);
+                
+                // Loads or returns actual profile state
+                if (!actualProfileState) {
+                    setTimeout(() => {
+                        const profile: Profile = {
+                            id: 'current-user',
+                            name: 'Vioz Isildur',
+                            email: 'admin@viozisildur.com',
+                            profileImgURL: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?q=80&w=1974&auto=format&fit=crop',
+                            mainAccountType: 'email',
+                            linkedAccounts: ['email'],
+                            createdAt: new Date()
+                        };
+    
+                        all.set(profile);
+                        res(profile);
+                    }, 1)
+                }
+                else return actualProfileState;
             });
         }
     }
