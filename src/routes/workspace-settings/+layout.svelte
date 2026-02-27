@@ -8,15 +8,23 @@
     import type { ComponentProps } from "svelte";
     import { alertState } from "$lib/utils/alert";
     import { defaultAvaiableOptions } from ".";
+    import { page } from "$app/stores";
+    import { goto } from "$app/navigation";
 
     export let data: LoadBackendWorkspace;
 
     const onSetAlertState: ComponentProps<UI.Workspace.Settings.WorkspaceSettingsScreen>["onSetAlertState"] = state => {
         $alertState = state;
     }
+
+    $: if ($page.url.pathname.endsWith("/workspace-settings")) {
+        goto("/workspace-settings/common")
+    }
 </script>
 
-<UI.Common.PageWrapper>
+<UI.Common.PageWrapper
+    additionalClass="p-10"
+>
     <ProfileLoader>
         {#snippet children(profile: Profile)}
             <UI.Workspace.Settings.WorkspaceSettingsScreen

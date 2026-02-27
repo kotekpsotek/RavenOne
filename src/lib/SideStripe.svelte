@@ -201,7 +201,7 @@
 
     //
     async function onOpenWorkspaceSettings() {
-        await goto("/workspace-settings");
+        window.location.assign("/workspace-settings/common");
     }
 
     function onHelpMaterials() {
