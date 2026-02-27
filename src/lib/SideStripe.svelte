@@ -4,33 +4,39 @@
     import { onMount } from 'svelte';
     import { entriesList, type File, type Folder, moveEntry, selectedFile } from "./stores/files";
     import { user } from "./stores/user";
+    import { UI } from "@ravenlens/frontend"
+    import { theme } from "./stores/theme";
+    import { avaiableWorkspaces, isAddNewWorkspaceBtnDisabled, isWorkspaceSelectionOpen, selectedWorkspace } from "./stores/workspace";
+    import { Workspace } from "@ravenlens/shared";
+    import { State } from "@ravenlens/frontend";
 
     let isExpanded = $state(false);
-    let theme = $state<'black' | 'light'>('black');
     let modalFolderTarget: Folder | null = $state(null);
 
     onMount(() => {
-        const storedTheme = localStorage.getItem('theme') as 'black' | 'light';
+        const storedTheme = localStorage.getItem('theme') as 'dark' | 'light';
         if (storedTheme) {
-            theme = storedTheme;
+            $theme = storedTheme;
         } else {
-            const hasBlackAttr = document.documentElement.getAttribute('data-theme') === 'black';
-            theme = hasBlackAttr ? 'black' : 'light';
+            const hasdarkAttr = document.documentElement.getAttribute('data-theme') === 'black';
+            $theme = hasdarkAttr ? 'dark' : 'light';
         }
         
         applyTheme();
     });
 
     function toggleTheme() {
-        theme = theme === 'black' ? 'light' : 'black';
+        $theme = $theme === 'dark' ? 'light' : 'dark';
         applyTheme();
     }
 
     function applyTheme() {
-        document.documentElement.setAttribute('data-theme', theme);
-        localStorage.setItem('theme', theme);
+        // Set the primary theme attribute used by DaisyUI
+        const daisyTheme = $theme === 'dark' ? 'black' : 'light';
+        document.documentElement.setAttribute('data-theme', daisyTheme);
+        localStorage.setItem('theme', $theme);
         
-        if (theme === 'black') {
+        if ($theme === 'dark') {
             document.documentElement.classList.add('dark');
         } else {
             document.documentElement.classList.remove('dark');
@@ -186,6 +192,20 @@
     function isFolder(entry: File | Folder): entry is Folder {
         return entry.type === "folder";
     }
+
+    //
+    function onToggleWorkspaceSelection() {
+        $isWorkspaceSelectionOpen = !$isWorkspaceSelectionOpen;
+    }
+
+    //
+    function onOpenWorkspaceSettings() {
+
+    }
+
+    function onHelpMaterials() {
+
+    }
 </script>
 
 <dialog id="add_modal" class="modal modal-bottom sm:modal-middle">
@@ -281,11 +301,18 @@
         <!-- Narrow Stripe (Activity Bar) -->
         <div class="flex w-14 flex-none flex-col items-center py-4 border-r border-base-300">
             <div class="mb-4 flex flex-col items-center gap-6">
-                <!-- Logo Branding -->
+                <!-- Workspace selection -->
                 <div class="tooltip tooltip-right" data-tip="RavenOne">
-                    <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 transition-all hover:scale-105 hover:bg-primary/20">
-                        <img src={favicon} alt="RavenOne Logo" class="h-6 w-6" />
-                    </div>
+                    <button 
+                        class="flex h-10 w-10 p-2 items-center justify-center rounded-xl bg-primary/10 transition-all hover:scale-105 hover:bg-primary/20"
+                        class:isSelected={$isWorkspaceSelectionOpen}
+                        onclick={onToggleWorkspaceSelection}
+                    >
+                        <UI.Workspace.WorkspaceProfile
+                            imageUrl={$selectedWorkspace?.imageUrl}
+                            workspaceName={$selectedWorkspace?.name ?? ""}
+                        />
+                    </button>
                 </div>
 
                 <!-- Quick Actions -->
@@ -313,13 +340,13 @@
             </div>
 
             <div class="mt-auto flex flex-col items-center gap-4">
-                <div class="tooltip tooltip-right" data-tip={theme === 'black' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}>
+                <div class="tooltip tooltip-right" data-tip={$theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}>
                     <button
                         onclick={toggleTheme}
                         class="btn btn-ghost btn-square btn-sm relative overflow-hidden rounded-lg text-base-content/70 hover:bg-base-300 hover:text-primary active:scale-95 transition-all"
                         aria-label="Toggle theme"
                     >
-                        {#if theme === 'black'}
+                        {#if $theme === 'dark'}
                             <div class="flex items-center justify-center animate-in zoom-in-50 duration-300">
                                 <Icon icon="material-symbols:wb-sunny-outline-rounded" class="text-xl"/>
                             </div>
@@ -329,6 +356,32 @@
                             </div>
                         {/if}
                     </button>
+                </div>
+
+                <div class="flex flex-col gap-2">
+                    <div class="tooltip tooltip-right" data-tip="Help Materials">
+                        <button
+                            class="btn btn-ghost btn-square btn-sm relative overflow-hidden rounded-lg text-base-content/70 hover:bg-base-300 hover:text-primary active:scale-95 transition-all"
+                            onclick={onHelpMaterials}
+                        >
+                            <Icon 
+                                icon="material-symbols:help-outline-rounded"
+                                class="text-xl"
+                            />
+                        </button>
+                    </div>
+
+                    <div class="tooltip tooltip-right" data-tip="Workspace Settings">
+                        <button 
+                            class="btn btn-ghost btn-square btn-sm relative overflow-hidden rounded-lg text-base-content/70 hover:bg-base-300 hover:text-primary active:scale-95 transition-all"
+                            onclick={onOpenWorkspaceSettings}
+                        >
+                            <Icon 
+                                icon="material-symbols:settings-outline-rounded"
+                                class="text-xl"
+                            />
+                        </button>
+                    </div>
                 </div>
 
                 {#if $user}
@@ -389,3 +442,11 @@
         {/if}
     </div>
 </aside>
+
+<style>
+    @reference "../app.css";
+
+    .isSelected {
+        @apply scale-115 bg-primary/40;
+    }
+</style>

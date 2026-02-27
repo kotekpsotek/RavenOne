@@ -1,12 +1,34 @@
 @import "tailwindcss";
+/* Tailwind v4 only emits utilities it finds in scanned sources.
+   This app consumes UI components from a sibling package (D:\Raven\shared\packages\frontend).
+   Since this file lives in src/, we need to go up three levels to reach /shared. */
+@source "../../../packages/frontend/src/**/*.svelte";
+@source "../../../packages/frontend/src/**/*.ts";
+@source "../../../packages/frontend/dist/**/*.svelte";
+@source "../../../packages/frontend/dist/**/*.js";
 @plugin "@tailwindcss/forms";
 @plugin "@tailwindcss/typography";
 @plugin "daisyui" {
-	themes: light, black;
+	themes: light --default, black --prefersdark;
+	--color-base-400: #0f0f0fff;
 }
+@plugin "daisyui/theme" {
+  name: "light";
+  default: true;
+  --color-primary: #2153EB;
+  --color-secondary: teal;
+}
+@variant theme-dark ([data-theme="black"] &);
 
 @layer base {
+	html, body {
+		background-color: var(--color-base-100);
+		color: var(--color-base-content);
+	}
+
 	:root {
+		background-color: var(--color-base-100);
+		color: var(--color-base-content);
 		transition: background-color 0.3s ease, color 0.3s ease-in-out;
 	}
 	
