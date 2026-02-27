@@ -7,6 +7,7 @@
     import { goto } from "$app/navigation";
     import ExpansionPanel from "./ExpansionPanel.svelte";
     import { isWorkspaceSelectionOpen, selectedWorkspace } from "$lib/stores/workspace";
+    import { isSearchModalOpen } from "$lib/stores/files";
 
     let isExpanded = $state(false);
     const PANEL_WIDTH_STORAGE_KEY = 'expansion-panel-width';
@@ -69,7 +70,7 @@
     }
 
     function onSearch() {
-        console.log('Open search palette');
+        $isSearchModalOpen = !$isSearchModalOpen;
     }
 
     function onToggleSidebar() {
@@ -173,7 +174,7 @@
                     <div class="tooltip tooltip-right" data-tip="Search (Ctrl+P)">
                         <button
                             onclick={onSearch}
-                            class="btn btn-ghost btn-square btn-sm rounded-lg text-base-content/70 hover:bg-base-300 hover:text-primary active:scale-95"
+                            class="btn btn-ghost btn-square btn-sm rounded-lg text-base-content/70 hover:bg-base-300 hover:text-primary active:scale-95 {$isSearchModalOpen ? 'bg-base-100 text-primary' : 'text-base-content/70'}"
                             aria-label="Search"
                         >
                             <Icon icon="material-symbols:search-rounded" class="text-xl"/>

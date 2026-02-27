@@ -1,35 +1,21 @@
-interface InputOutput {
-    input: boolean;
-    output: boolean;
-}
+import type { AI } from "@ravenlens/shared";
 
-type DNNProviders = "Google" | "Anthropic" | "OpenAI"
+export type DefaultModel = AI.RavenLensAvaiableAIModel;
 
-export interface DefaultModel {
-    name: string;
-    provider: DNNProviders;
-    isThinking?: boolean;
-    isVisionCapable?: {
-        image?: InputOutput;
-        video?: InputOutput;
-    };
-    isAudioCapable?: InputOutput;
-}
-
-export const avaiableModels: DefaultModel[] = [
+export const avaiableModels: AI.RavenLensAvaiableAIModel[] = [
     {
-        name: "gpt-5-mini",
+        model: "gpt-5-mini",
         provider: "OpenAI",
         isThinking: true
     },
     {
-        name: "gpt-5-nano",
+        model: "gpt-5-nano",
         provider: "OpenAI",
         isThinking: true
     },
 ];
 
-export function getProviderIconifyIcon(provider: DNNProviders) {
+export function getProviderIconifyIcon(provider: AI.ProviderID) {
     switch(provider) {
         case "Google":
             return "simple-icons:googlegemini";

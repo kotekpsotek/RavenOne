@@ -16,6 +16,8 @@ export const entriesList = writable<File[]>([]);
 
 export const selectedFile = writable<File | undefined>(undefined);
 
+export const isSearchModalOpen = writable(false);
+
 /**
  * Move an entry from one location to another.
  * @param sourceId The id of the entry to move.
