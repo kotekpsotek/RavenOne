@@ -8,7 +8,7 @@ import { StarterKit } from "@tiptap/starter-kit"
 import { selectedFile } from "./files";
 import { isWorkspaceInAddition, isWorkspaceSelectionOpen } from "./workspace";
 import { FileHeading } from "../editorComponents/components/Heading";
-import { SlashCommand } from "../editorComponents/components/SlashCommand.js";
+import { SlashCommand } from "../editorComponents/components/Suggestions.js";
 
 function normalizeContent(content?: string): string {
     if (!content || !content.trim()) {
