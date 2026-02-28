@@ -84,12 +84,40 @@
         }
     }
 
+    function hasNestedEntry(item: File, searchId: string): boolean {
+        if (!item.subentries?.length) {
+            return false;
+        }
+
+        for (const subentry of item.subentries) {
+            if (subentry.id === searchId || hasNestedEntry(subentry, searchId)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    function isInvalidDropTarget(sourceId: string | null, targetId: string): boolean {
+        if (!sourceId || sourceId === targetId) {
+            return true;
+        }
+
+        const sourceEntry = findFileById($entriesList, sourceId);
+        if (!sourceEntry) {
+            return true;
+        }
+
+        return hasNestedEntry(sourceEntry, targetId);
+    }
+
     function handleDragOver(e: DragEvent, entry: File) {
         e.preventDefault();
         e.stopPropagation();
         
-        if (draggedId === entry.id) {
+        if (isInvalidDropTarget(draggedId, entry.id)) {
             dropTargetId = null;
+            dropPosition = null;
             return;
         }
 
@@ -110,6 +138,13 @@
     function handleDrop(e: DragEvent, targetId: string | null) {
         e.preventDefault();
         e.stopPropagation();
+
+        if (targetId !== null && isInvalidDropTarget(draggedId, targetId)) {
+            draggedId = null;
+            dropTargetId = null;
+            dropPosition = null;
+            return;
+        }
         
         if (draggedId && (targetId !== null || dropPosition === 'inside')) {
             moveEntry(draggedId, targetId, dropPosition || 'inside');
@@ -308,13 +343,6 @@
         };
     }
 
-    function focusInput(node: HTMLInputElement) {
-        queueMicrotask(() => {
-            node.focus();
-            node.select();
-        });
-    }
-
     async function onEntryKeydown(e: KeyboardEvent, entry: File) {
         if (e.key === 'Enter' || e.key === ' ') {
             await goto("/");
@@ -368,7 +396,6 @@
                 <Icon icon={entry.icon ?? "material-symbols:description-outline-rounded"} class="text-base-content/60 text-xl"/>
                 {#if renamingId === entry.id}
                     <input
-                        use:focusInput
                         class="input input-sm text-sm w-full max-w-52 border-none outline-none bg-transparent"
                         bind:value={renameValue}
                         onclick={ev => ev.stopPropagation()}

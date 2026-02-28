@@ -8,6 +8,7 @@ export interface File {
     content: string;
     createdByAuthorId: string;
     icon?: string;
+    /** Walper is the cover url */
     walper?: string;
     subentries?: File[];
 }
@@ -18,6 +19,34 @@ export const selectedFile = writable<File | undefined>(undefined);
 
 export const isSearchModalOpen = writable(false);
 
+function updateEntryById(items: File[], fileId: string, patch: Partial<File>): File[] {
+    return items.map(item => {
+        if (item.id === fileId) {
+            return { ...item, ...patch };
+        }
+
+        if (item.subentries?.length) {
+            return {
+                ...item,
+                subentries: updateEntryById(item.subentries, fileId, patch)
+            };
+        }
+
+        return item;
+    });
+}
+
+export function patchFileById(fileId: string, patch: Partial<File>) {
+    entriesList.update(entries => updateEntryById(entries, fileId, patch));
+    selectedFile.update(file => {
+        if (!file || file.id !== fileId) {
+            return file;
+        }
+
+        return { ...file, ...patch };
+    });
+}
+
 /**
  * Move an entry from one location to another.
  * @param sourceId The id of the entry to move.
@@ -26,6 +55,48 @@ export const isSearchModalOpen = writable(false);
  */
 export function moveEntry(sourceId: string, targetId: string | null, position: 'before' | 'after' | 'inside') {
     entriesList.update(entries => {
+        if (sourceId === targetId) {
+            return entries;
+        }
+
+        function findById(items: File[], id: string): File | null {
+            for (const item of items) {
+                if (item.id === id) {
+                    return item;
+                }
+
+                if (item.subentries?.length) {
+                    const nested = findById(item.subentries, id);
+                    if (nested) {
+                        return nested;
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        function hasNestedEntry(item: File, searchId: string): boolean {
+            if (!item.subentries?.length) {
+                return false;
+            }
+
+            for (const subentry of item.subentries) {
+                if (subentry.id === searchId || hasNestedEntry(subentry, searchId)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        if (targetId !== null) {
+            const sourceEntry = findById(entries, sourceId);
+            if (sourceEntry && hasNestedEntry(sourceEntry, targetId)) {
+                return entries;
+            }
+        }
+
         let draggedItem: File | null = null;
 
         // 1. Find and remove the entry (immutable)

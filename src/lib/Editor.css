@@ -24,10 +24,49 @@
     @apply outline-none min-h-[40vh];
 }
 
+.document-title {
+    margin-bottom: 0px !important;
+}
+
+.tiptap p {
+    margin-top: 0px;
+    margin-bottom: 0px;
+}
+
+.tiptap p.is-editor-empty:first-of-type:before {
+  color: #b0b3bb;
+  content: attr(data-placeholder);
+  font-weight: 500;
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
 /* Specific TipTap Styles */
-.tiptap-editor :global(.tiptap p.is-editor-empty:first-child::before) {
+.tiptap-editor :global(.tiptap.is-editor-empty p.is-empty::before) {
     @apply text-base-content/25 float-left h-0 pointer-events-none;
-    content: attr(data-placeholder);
+    content: "Time for your curiosity...";
+}
+
+.slash-command-menu {
+    @apply z-[120] min-w-52 rounded-xl border border-base-300 bg-base-100 p-1 shadow-xl;
+}
+
+.slash-command-list {
+    @apply m-0 list-none p-0;
+}
+
+.slash-command-item {
+    @apply cursor-pointer rounded-lg px-3 py-2 text-sm text-base-content transition-colors;
+}
+
+.slash-command-item:hover,
+.slash-command-item.is-selected {
+    @apply bg-base-300/70;
+}
+
+.slash-command-empty {
+    @apply px-3 py-2 text-sm text-base-content/60;
 }
 
 /* Task List Styling */
