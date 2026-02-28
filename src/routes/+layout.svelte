@@ -2,6 +2,7 @@
 	import favicon from '$lib/assets/favicon.svg';
     import SideStripe from '$lib/sideStripe/SideStripe.svelte';
 	import AlertToast from '$lib/AlertToast.svelte';
+	import SearchModal from '$lib/modals/SearchModal.svelte';
 	import '../app.css'; // Ensure tailwind is loaded
 
 	let { children } = $props();
@@ -15,7 +16,8 @@
 	<AlertToast/>
 	<SideStripe/>
 	
-	<main class="flex-1 flex flex-col h-full min-w-0">
+	<main class="relative flex-1 flex flex-col h-full min-w-0">
+		<SearchModal/>
 		{@render children()}
 	</main>
 </div>
