@@ -8,6 +8,7 @@
     import { Workspace } from "@ravenlens/shared";
     import { UI } from "@ravenlens/frontend";
     import AddWorkspace from "./screens/AddWorkspace.svelte";
+    import NoSelectedFile from "./screens/NoSelectedFile.svelte";
 
     function onSelectWorkspace(workspace: Workspace.Workspace.WorkspaceUserEntryLoaded) {
         return (ev?: Event) => {
@@ -63,9 +64,13 @@
     />
 
     <!-- Editor -->
-    {#if $editor}
-        <div class="editor-container">
-            <EditorContent editor={$editor} class="tiptap-editor" />
-        </div>
+    {#if $selectedFile}
+        {#if $editor}
+            <div class="editor-container">
+                <EditorContent editor={$editor} class="tiptap-editor" />
+            </div>
+        {/if}
+    {:else}
+        <NoSelectedFile/>
     {/if}
 </div>
