@@ -8,6 +8,7 @@
     import ExpansionPanel from "./ExpansionPanel.svelte";
     import { isWorkspaceSelectionOpen, selectedWorkspace } from "$lib/stores/workspace";
     import { isSearchModalOpen } from "$lib/stores/files";
+    import { page } from "$app/stores";
 
     let isExpanded = $state(false);
     const PANEL_WIDTH_STORAGE_KEY = 'expansion-panel-width';
@@ -30,8 +31,13 @@
             const hasdarkAttr = document.documentElement.getAttribute('data-theme') === 'black';
             $theme = hasdarkAttr ? 'dark' : 'light';
         }
-        
-        applyTheme();
+
+        const expectedDaisyTheme = $theme === 'dark' ? 'black' : 'light';
+        const hasExpectedTheme = document.documentElement.getAttribute('data-theme') === expectedDaisyTheme;
+        const hasExpectedDarkClass = document.documentElement.classList.contains('dark') === ($theme === 'dark');
+        if (!hasExpectedTheme || !hasExpectedDarkClass) {
+            applyTheme();
+        }
 
         const storedPanelWidth = Number(localStorage.getItem(PANEL_WIDTH_STORAGE_KEY));
         if (Number.isFinite(storedPanelWidth) && storedPanelWidth > 0) {
@@ -172,9 +178,10 @@
                 <!-- Quick Actions -->
                 <div class="flex flex-col items-center gap-3">
                     <div class="tooltip tooltip-right" data-tip="Search (Ctrl+P)">
+                        <!-- disabled={!($page.url.pathname.endsWith("/") || $page.url.pathname.includes("file"))} -->
                         <button
                             onclick={onSearch}
-                            class="btn btn-ghost btn-square btn-sm rounded-lg text-base-content/70 hover:bg-base-300 hover:text-primary active:scale-95 {$isSearchModalOpen ? 'bg-base-100 text-primary' : 'text-base-content/70'}"
+                            class="btn btn-ghost btn-square btn-sm rounded-lg text-base-content/70 hover:bg-base-300 hover:text-primary active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed {$isSearchModalOpen ? 'bg-base-100 text-primary' : 'text-base-content/70'}"
                             aria-label="Search"
                         >
                             <Icon icon="material-symbols:search-rounded" class="text-xl"/>

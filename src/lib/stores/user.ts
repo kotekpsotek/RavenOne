@@ -45,7 +45,10 @@ export const userProfile = (() => {
                         res(profile);
                     }, 1)
                 }
-                else return actualProfileState;
+                else {
+                    res(actualProfileState);
+                    return
+                }
             });
         }
     }
