@@ -4,9 +4,11 @@
     import { v4 as uuidv4 } from 'uuid';
     import ListItemHoverActions from './AIListItemHoverActions.svelte';
     import { hoveredListItemId } from '../../stores/hoveredListItem';
+    import { getAIAnswers } from '../types/AIList';
 
     let { node, updateAttributes, extension }: NodeViewProps = $props();
     const itemId = `task-${uuidv4()}`;
+    const aiAnswers = $derived(getAIAnswers(node["attrs"]["aiAnswers"]));
 
     function handleChange(event: Event) {
         const target = event.target as HTMLInputElement;
@@ -33,6 +35,7 @@
     <ListItemHoverActions
         visible={$hoveredListItemId === itemId}
         {itemId}
+        {aiAnswers}
     />
     <label class="flex items-center mt-1 cursor-pointer">
         <input 

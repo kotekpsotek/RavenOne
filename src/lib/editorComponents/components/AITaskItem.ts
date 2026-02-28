@@ -1,12 +1,22 @@
 import TaskItem from '@tiptap/extension-task-item';
 import { SvelteNodeViewRenderer } from 'svelte-tiptap';
 import AITaskItemSvelte from '../ui/AITaskItem.svelte';
+import type { AIPoint } from '../types/AIList';
+import type { Attribute } from '@tiptap/core';
 
 export const AITaskItem = TaskItem.configure({
     nested: true,
 }).extend({
     name: 'taskItem',
 
+    addAttributes() {
+        return {
+            aiAnswers: {
+                default: "[]"
+            }
+        } as Record<keyof AIPoint, Attribute>;
+    },
+    
     addOptions() {
         const parentOptions = this.parent?.();
 

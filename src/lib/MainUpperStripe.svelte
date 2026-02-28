@@ -7,36 +7,11 @@
     import { selectedFile } from "./stores/files";
     import { selectedModel } from "./stores/selected";
     import { contextSpecification, saveContextSpecification } from "./stores/contextSpec";
+    import { mcpConfigurationStore, saveMcpConfiguration } from "./stores/mcpConfig";
     import { alertState } from "./utils/alert";
+    import type { ContextDeviceFile, ContextEditorFile, ContextNetworkURL, ContextSpecificationPayload, PlayMode } from "./editorComponents/types/AIList";
 
-    type PlayMode = "run-non-runned" | "run-all";
     type DropdownName = "model-settings" | "mcp-tools" | "play-settings" | "share";
-
-    type ContextDesktopFile = {
-        id: string;
-        name: string;
-        type: string;
-        size: number;
-        locationHint: string;
-        previewDataUrl?: string;
-    };
-
-    type ContextEditorFile = {
-        id: string;
-        name: string;
-    };
-
-    type ContextNetworkUrl = {
-        id: string;
-        url: string;
-        favicon: string;
-    };
-
-    type ContextSpecificationPayload = {
-        desktopFiles: ContextDesktopFile[];
-        editorFiles: ContextEditorFile[];
-        networkUrls: ContextNetworkUrl[];
-    };
 
     type McpServerConfig = {
         command: string;
@@ -69,7 +44,7 @@
         "run-all": "material-symbols:playlist-play-rounded"
     };
 
-    const availableTools = ["File system", "Web search", "Terminal"] as const;
+    const availableTools = ["Web search"] as const;
     const initialMcpConfigurationObject: McpConfiguration = {
         mcpServers: {
             github: {
@@ -100,15 +75,25 @@
     );
     let selectedTools = $state<string[]>(["File system"]);
     let useMcpServers = $state(true);
-    let selectedMcpServers = $state<string[]>(Object.keys(initialMcpConfigurationObject.mcpServers));
-    let mcpConfiguration = $state(initialMcpConfiguration);
-    let mcpConfigurationDraft = $state(initialMcpConfiguration);
+    let mcpConfiguration = $state($mcpConfigurationStore || initialMcpConfiguration);
+    let selectedMcpServers = $state<string[]>([]);
+    let mcpConfigurationDraft = $state(mcpConfiguration);
     let mcpConfigurationError = $state("");
+
+    $effect(() => {
+        try {
+            const parsed = JSON.parse(mcpConfiguration);
+            selectedMcpServers = Object.keys(parsed.mcpServers || {});
+        } catch {
+            selectedMcpServers = Object.keys(initialMcpConfigurationObject.mcpServers);
+        }
+    });
+
     let openDropdown = $state<DropdownName | undefined>(undefined);
 
-    let desktopContextFiles = $state<ContextDesktopFile[]>([]);
+    let desktopContextFiles = $state<ContextDeviceFile[]>([]);
     let editorContextFiles = $state<ContextEditorFile[]>([]);
-    let networkContextUrls = $state<ContextNetworkUrl[]>([]);
+    let networkContextUrls = $state<ContextNetworkURL[]>([]);
     let networkUrlDraft = $state("");
 
     let isContextModalOpen = $state(false);
@@ -215,7 +200,7 @@
                     size: file.size,
                     locationHint,
                     previewDataUrl: isImage ? await fileToDataUrl(file) : undefined
-                } satisfies ContextDesktopFile;
+                } satisfies ContextDeviceFile;
             })
         );
 
@@ -511,6 +496,7 @@
         }
 
         mcpConfiguration = validation.normalized;
+        saveMcpConfiguration(mcpConfiguration);
         selectedMcpServers = validation.servers;
         mcpConfigurationError = "";
         isMcpConfigModalOpen = false;

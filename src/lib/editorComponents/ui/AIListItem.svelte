@@ -4,8 +4,11 @@
     import { v4 as uuidv4 } from 'uuid';
     import ListItemHoverActions from './AIListItemHoverActions.svelte';
     import { hoveredListItemId, mouseOutTimeout } from '../../stores/hoveredListItem';
+    import { getAIAnswers } from '../types/AIList';
 
     let { node, updateAttributes, extension }: NodeViewProps = $props();
+    const aiAnswers = $derived(getAIAnswers(node["attrs"]["aiAnswers"]));
+    
     const itemId = `list-${uuidv4()}`;
 
     function handleMouseEnter() {
@@ -27,6 +30,7 @@
     <ListItemHoverActions 
         visible={$hoveredListItemId === itemId}
         {itemId}
+        {aiAnswers}
     />
     <NodeViewContent as="div" class="w-full" />
 </NodeViewWrapper>
