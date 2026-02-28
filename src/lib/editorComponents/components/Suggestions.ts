@@ -46,7 +46,7 @@ export const SlashCommand = Extension.create({
               wrapper = document.createElement("div");
               props.editor.view.dom.parentNode?.appendChild(wrapper);
 
-              setSuggestionState(props.items, props.editor, props.range);
+              setSuggestionState(props.items, props.editor, props.range, true);
               component = mount(Suggestions, { target: wrapper });
 
               popup.set(
@@ -63,7 +63,7 @@ export const SlashCommand = Extension.create({
             },
 
             onUpdate: (props: any) => {
-              setSuggestionState(props.items, props.editor, props.range);
+              setSuggestionState(props.items, props.editor, props.range, false);
 
               popup.update((activePopup) => {
                 if (!activePopup?.[0]) {

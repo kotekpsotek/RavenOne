@@ -24,6 +24,7 @@
     @apply outline-none min-h-[40vh];
 }
 
+<<<<<<< Updated upstream
 .document-title {
     margin-bottom: 0px !important;
 }
@@ -42,6 +43,14 @@
   pointer-events: none;
 }
 
+=======
+
+.tiptap * {
+    margin-top: 0px !important;
+    margin-bottom: 0px !important;
+}
+
+>>>>>>> Stashed changes
 /* Specific TipTap Styles */
 .tiptap-editor :global(.tiptap.is-editor-empty p.is-empty::before) {
     @apply text-base-content/25 float-left h-0 pointer-events-none;
@@ -80,6 +89,22 @@
 
 .tiptap-editor :global(.tiptap ul[data-type="taskList"] input[type="checkbox"]) {
     @apply checkbox checkbox-primary checkbox-sm mt-1;
+}
+
+.tiptap-editor :global(.tiptap ul ul) {
+    list-style-type: circle;
+}
+
+.tiptap-editor :global(.tiptap ul ul ul) {
+    list-style-type: square;
+}
+
+.tiptap-editor :global(.tiptap ol ol) {
+    list-style-type: lower-alpha;
+}
+
+.tiptap-editor :global(.tiptap ol ol ol) {
+    list-style-type: lower-roman;
 }
 
 /* Focus highlighting */

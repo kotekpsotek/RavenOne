@@ -36,10 +36,21 @@ function executeSelection(item: ElementInsertionItem) {
 export function setSuggestionState(
     items: ElementInsertionItem[],
     editor: Editor,
-    range: Range
+    range: Range,
+    resetActiveIndex = false
 ) {
     displayingItems.set(items);
-    activedIdx.set(0);
+
+    if (!items.length) {
+        activedIdx.set(0);
+    } else if (resetActiveIndex) {
+        activedIdx.set(0);
+    } else {
+        const currentIndex = get(activedIdx);
+        const nextIndex = Math.min(Math.max(currentIndex, 0), items.length - 1);
+        activedIdx.set(nextIndex);
+    }
+
     suggestionContext.set({ editor, range });
 }
 

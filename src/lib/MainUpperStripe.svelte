@@ -557,7 +557,7 @@
                         open={openDropdown === "model-settings"}
                         ontoggle={(event) => onDropdownToggle("model-settings", event)}
                     >
-                        <summary class="btn h-full btn-sm rounded-l-none bg-primary/95 text-white/70 border-primary px-1" aria-label="Model Settings" title="Model settings">
+                        <summary class="btn btn-sm h-full rounded-l-none bg-primary/95 text-white/70 border-primary px-1" aria-label="Model Settings" title="Model settings">
                             <Icon icon="material-symbols:settings-outline-rounded" class="w-3 h-3" />
                         </summary>
 

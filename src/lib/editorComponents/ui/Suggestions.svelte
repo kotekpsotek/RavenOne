@@ -1,7 +1,10 @@
 <!-- Should have: list of selectable items, each item selected closes the suggestions menu and pastes element there -->
 <script lang="ts">
+    import Icon from "@iconify/svelte";
     import type { ElementInsertionItem } from "./ElementsListForMenus.js";
     import { displayingItems, activedIdx, onItemSelected } from "./SuggestionsHandlers.js";
+
+    let menuRef: HTMLUListElement | undefined = $state();
 
     /** Makes comparision on names */
     function isItemSelected(item: ElementInsertionItem) {
@@ -14,17 +17,38 @@
 
         return actuallySelectedItem.name === item.name;
     }
+
+    $effect(() => {
+        $activedIdx;
+
+        if (menuRef) {
+            const activeElement = menuRef.querySelector("button.active") as HTMLElement | null;
+            if (activeElement) {
+                activeElement.scrollIntoView({
+                    block: "nearest",
+                    behavior: "auto"
+                });
+            }
+        }
+    });
 </script>
 
-<div class="flex flex-col gap-1 text-white shadow-md border border-black shadow-gray-500 bg-gray-50 rounded-lg p-2 font-semibold overflow-y-auto" style="min-width: 300px; max-height: 500px;">
+<ul
+    bind:this={menuRef}
+    class="menu w-[20rem] max-h-[18rem] flex-nowrap overflow-y-auto rounded-box border border-base-300 bg-base-100 p-2 text-base-content shadow-xl shadow-black/20"
+>
     {#each $displayingItems as item (item.name)}
-        <button class="flex gap-1 p-1 text-lg rounded-lg {isItemSelected(item) ? "bg-gray-300" : ""} hover:bg-gray-200 text-black flex items-center" onclick={onItemSelected(item)}>
-            {#if item.icon}
-                <span>{item.icon}</span>
-            {/if}
-            <p>
-                {item.name}
-            </p>
-        </button>
+        <li>
+            <button
+                type="button"
+                class:active={isItemSelected(item)}
+                class:bg-base-300={isItemSelected(item)}
+                class:font-semibold={isItemSelected(item)}
+                onclick={onItemSelected(item)}
+            >
+                <Icon icon={item.icon} width="18" height="18" class="text-base-content/70" />
+                <span>{item.name}</span>
+            </button>
+        </li>
     {/each}
-</div>
+</ul>

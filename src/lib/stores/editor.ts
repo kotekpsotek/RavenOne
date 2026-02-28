@@ -17,6 +17,16 @@ function normalizeContent(content?: string): string {
 
     return content;
 }
+import { AIBulletList } from "../editorComponents/components/AIBulletList.js";
+import { AIOrderedList } from "../editorComponents/components/AIOrderedList.js";
+import { AIListItem } from "../editorComponents/components/AIListItem.js";
+import { AITaskList } from "../editorComponents/components/AITaskList.js";
+import { AITaskItem } from "../editorComponents/components/AITaskItem.js";
+import { StandardBulletList } from "../editorComponents/components/StandardBulletList.js";
+import { StandardOrderedList } from "../editorComponents/components/StandardOrderedList.js";
+import { StandardListItem } from "../editorComponents/components/StandardListItem.js";
+import { StandardTaskList } from "../editorComponents/components/StandardTaskList.js";
+import { StandardTaskItem } from "../editorComponents/components/StandardTaskItem.js";
 
 export const editor = (() => {
     const { subscribe, set } = writable<SvelteEditor | undefined>(undefined);
@@ -44,7 +54,13 @@ export const editor = (() => {
                 const editorStore = createEditor({
                     content,
                     extensions: [
-                        StarterKit,
+                        StarterKit.configure({
+                            bulletList: false,
+                            orderedList: false,
+                            listItem: false,
+                            taskList: false,
+                            taskItem: false,
+                        }),
                         FileHeading,
                         HeadingStartDocument,
                         Placeholder.configure({
@@ -59,6 +75,18 @@ export const editor = (() => {
                             showOnlyCurrent: false,
                         }),
                         SlashCommand,
+                        // Custom AI elements
+                        AIBulletList,
+                        AIOrderedList,
+                        AIListItem,
+                        AITaskList,
+                        AITaskItem,
+                        // Standard non-AI elements
+                        StandardBulletList,
+                        StandardOrderedList,
+                        StandardListItem,
+                        StandardTaskList,
+                        StandardTaskItem
                     ],
                 });
                 
