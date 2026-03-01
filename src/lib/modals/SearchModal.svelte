@@ -3,6 +3,7 @@
     import Icon from "@iconify/svelte";
     import type { File } from "$lib/stores/files";
     import { selectedFile } from "$lib/stores/files";
+    import IconValue from "$lib/IconValue.svelte";
 
     const SEARCH_MODAL_MIN_MARGIN = 12;
     const SEARCH_MODAL_ROOT_ID = "editor-search-modal-root";
@@ -158,7 +159,15 @@
                     onSelectSearchEntry(entry);
                 }}
             >
-                <Icon icon={entry.icon ?? "material-symbols:description-outline-rounded"} class="text-lg text-base-content/70"/>
+                <span class="text-base-content/70">
+                    <IconValue
+                        iconValue={entry.icon}
+                        iconClass="text-lg"
+                        emojiClass="text-lg leading-none"
+                        imageClass="h-5 w-5"
+                        alt={entry.name}
+                    />
+                </span>
                 <span class="truncate text-sm" style={`padding-left: ${depth * 8}px`}>{entry.name}</span>
             </button>
 

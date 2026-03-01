@@ -1,6 +1,6 @@
 <script lang="ts">
     import Icon from '@iconify/svelte';
-    import type { AIPoint } from '../types/AIList';
+    import type { AIPoint } from '../../types/AIList';
 
     let { visible = false, itemId, aiAnswers }: { visible?: boolean, itemId: string, aiAnswers: AIPoint["aiAnswers"] | null } = $props();
 </script>

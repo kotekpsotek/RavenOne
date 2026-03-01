@@ -3,6 +3,9 @@
     import { UI } from "@ravenlens/frontend";
     import { entriesList, moveEntry, selectedFile, type File } from "$lib/stores/files";
     import Icon from "@iconify/svelte";
+    import IconSelectionModal from "$lib/modals/IconSelectionModal.svelte";
+    import WallpaperSelectionModal from "$lib/modals/WallpaperSelectionModal.svelte";
+    import IconValue from "$lib/IconValue.svelte";
 
     let { isExpanded = false }: { isExpanded?: boolean } = $props();
 
@@ -13,8 +16,19 @@
     let renamingId = $state<string | null>(null);
     let renameValue = $state('');
     let deleteTarget = $state<File | null>(null);
+    let iconPickerEntryId = $state<string | null>(null);
+    let iconPickerInitialValue = $state("");
+    let walperPickerEntryId = $state<string | null>(null);
+    let walperPickerInitialValue = $state("");
     let expandedEntries = $state<Record<string, boolean>>({});
     let contextMenuEntry = $derived(contextMenu ? findFileById($entriesList, contextMenu.entryId) : null);
+
+    function focusInputAttachment(node: HTMLInputElement) {
+        queueMicrotask(() => {
+            node.focus();
+            node.select();
+        });
+    }
 
     function onNewFile(targetId: string | null = null) {
         const name = getNextName($entriesList, 'Task');
@@ -198,6 +212,7 @@
             closeContextMenu();
             renamingId = null;
             deleteTarget = null;
+            closeIconPicker();
         }
         else if (e.ctrlKey && e.key === "r" && $selectedFile) {
             e.preventDefault();
@@ -230,32 +245,100 @@
         renameValue = '';
     }
 
-    function addIconToFile(entryId: string) {
-        const iconName = window.prompt('Enter icon name', 'material-symbols:description-outline-rounded');
-        if (!iconName) {
-            return;
-        }
-
-        entriesList.update((list) => updateFileById(list, entryId, (entry) => ({
-            ...entry,
-            icon: iconName
-        })));
-
+    function openIconPicker(entry: File) {
+        iconPickerEntryId = entry.id;
+        iconPickerInitialValue = entry.icon ?? "";
         closeContextMenu();
     }
 
-    function addWalperToFile(entryId: string) {
-        const walper = window.prompt('Enter walper value', 'default-walper');
-        if (!walper) {
+    function closeIconPicker() {
+        iconPickerEntryId = null;
+        iconPickerInitialValue = "";
+    }
+
+    function applyPickedIcon(iconValue: string) {
+        if (!iconPickerEntryId) {
             return;
         }
 
+        const entryId = iconPickerEntryId;
+
         entriesList.update((list) => updateFileById(list, entryId, (entry) => ({
             ...entry,
-            walper
+            icon: iconValue
         })));
 
+        closeIconPicker();
+    }
+
+    function removePickedIcon() {
+        if (!iconPickerEntryId) {
+            return;
+        }
+
+        const entryId = iconPickerEntryId;
+
+        entriesList.update((list) => updateFileById(list, entryId, (entry) => ({
+            ...entry,
+            icon: undefined
+        })));
+
+        closeIconPicker();
+    }
+
+    function openWalperPicker(entry: File) {
+        walperPickerEntryId = entry.id;
+        walperPickerInitialValue = entry.walper ?? "";
         closeContextMenu();
+    }
+
+    function closeWalperPicker() {
+        walperPickerEntryId = null;
+        walperPickerInitialValue = "";
+    }
+
+    function applyWalperToFile(walperValue: string) {
+        if (!walperPickerEntryId) {
+            return;
+        }
+
+        const entryId = walperPickerEntryId;
+
+        entriesList.update((list) => updateFileById(list, entryId, (entry) => ({
+            ...entry,
+            walper: walperValue
+        })));
+
+        if ($selectedFile?.id === entryId) {
+            $selectedFile = {
+                ...$selectedFile,
+                walper: walperValue
+            };
+        }
+
+        closeWalperPicker();
+    }
+
+    function removeWalperFromFile() {
+        if (!walperPickerEntryId) {
+            return;
+        }
+
+        const entryId = walperPickerEntryId;
+
+        entriesList.update((list) => updateFileById(list, entryId, (entry) => ({
+            ...entry,
+            walper: undefined
+        })));
+
+        if ($selectedFile?.id === entryId) {
+            $selectedFile = {
+                ...$selectedFile,
+                walper: undefined
+            };
+        }
+
+        closeWalperPicker();
     }
 
     function openDeleteModal(entry: File) {
@@ -308,13 +391,6 @@
         };
     }
 
-    function focusInput(node: HTMLInputElement) {
-        queueMicrotask(() => {
-            node.focus();
-            node.select();
-        });
-    }
-
     async function onEntryKeydown(e: KeyboardEvent, entry: File) {
         if (e.key === 'Enter' || e.key === ' ') {
             await goto("/");
@@ -365,10 +441,18 @@
                 {:else}
                     <span class="inline-block h-5 w-5" aria-hidden="true"></span>
                 {/if}
-                <Icon icon={entry.icon ?? "material-symbols:description-outline-rounded"} class="text-base-content/60 text-xl"/>
+                <div class="text-base-content/60">
+                    <IconValue
+                        iconValue={entry.icon}
+                        iconClass="text-xl"
+                        emojiClass="text-xl leading-none"
+                        imageClass="h-5 w-5"
+                        alt={entry.name}
+                    />
+                </div>
                 {#if renamingId === entry.id}
                     <input
-                        use:focusInput
+                        {@attach focusInputAttachment}
                         class="input input-sm text-sm w-full max-w-52 border-none outline-none bg-transparent"
                         bind:value={renameValue}
                         onclick={ev => ev.stopPropagation()}
@@ -444,13 +528,29 @@
         <ul class="menu dropdown-content z-[1] w-52 rounded-box border border-base-300 bg-base-100 p-2 shadow-xl">
             {#if contextMenuEntry}
                 <li><button onclick={() => openRename(contextMenuEntry)}>Change name</button></li>
-                <li><button onclick={() => addIconToFile(contextMenuEntry.id)}>Add icon</button></li>
-                <li><button onclick={() => addWalperToFile(contextMenuEntry.id)}>Add walper</button></li>
+                <li><button onclick={() => openIconPicker(contextMenuEntry)}>{contextMenuEntry.icon ? 'Change icon' : 'Add icon'}</button></li>
+                <li><button onclick={() => openWalperPicker(contextMenuEntry)}>{contextMenuEntry.walper ? 'Change walper' : 'Add walper'}</button></li>
                 <li><button class="text-error" onclick={() => openDeleteModal(contextMenuEntry)}>Delete</button></li>
             {/if}
         </ul>
     </div>
 {/if}
+
+<IconSelectionModal
+    open={iconPickerEntryId !== null}
+    currentValue={iconPickerInitialValue}
+    onClose={closeIconPicker}
+    onSelect={applyPickedIcon}
+    onRemove={removePickedIcon}
+/>
+
+<WallpaperSelectionModal
+    open={walperPickerEntryId !== null}
+    currentValue={walperPickerInitialValue}
+    onClose={closeWalperPicker}
+    onSelect={applyWalperToFile}
+    onRemove={removeWalperFromFile}
+/>
 
 {#if isExpanded}
     <div class="flex flex-1 flex-col overflow-hidden bg-base-100/50 p-4 animate-in slide-in-from-left duration-300">
