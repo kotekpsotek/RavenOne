@@ -10,7 +10,14 @@
     import { mcpConfigurationStore, saveMcpConfiguration } from "./stores/mcpConfig";
     import { alertState } from "./utils/alert";
     import type { ContextDeviceFile, ContextEditorFile, ContextNetworkURL, ContextSpecificationPayload, PlayMode } from "./editorComponents/types/AIList";
-    import { hasFileSomePlayableNode, play, type PlayConfig } from "./playMode";
+    import {
+        getPlayStateForFile,
+        hasFileSomePlayableNode,
+        play,
+        stopPlaying,
+        subscribeToFilePlayState,
+        type PlayConfig
+    } from "./playMode";
     import { editor } from "./stores/editor";
     import { isPlayingDocuments } from "./stores/playMode";
     import { get } from "svelte/store";
@@ -124,6 +131,47 @@
 
     $effect(() => {
         $selectedModel = currentModel;
+    });
+
+    $effect(() => {
+        const currentFile = $selectedFile;
+        if (!currentFile?.id) {
+            return;
+        }
+
+        let isDisposed = false;
+
+        const syncPlayState = (isPlaying: boolean) => {
+            if (isPlaying) {
+                isPlayingDocuments.setFileId(currentFile.id);
+                return;
+            }
+
+            isPlayingDocuments.unsetFileId(currentFile.id);
+        };
+
+        const unsubscribe = subscribeToFilePlayState(currentFile.id, (state) => {
+            if (isDisposed) {
+                return;
+            }
+
+            syncPlayState(state.isPlaying);
+        });
+
+        void getPlayStateForFile(currentFile.id)
+            .then((state) => {
+                if (isDisposed) {
+                    return;
+                }
+
+                syncPlayState(state.isPlaying);
+            })
+            .catch(() => {});
+
+        return () => {
+            isDisposed = true;
+            unsubscribe();
+        };
     });
 
     function onModelChange(ev: Event) {
@@ -545,33 +593,49 @@
             contextSpec: get(contextSpecification)
         };
 
-        // Setups playing mode for this document
-        const setupState = isPlayingDocuments.setFile(seletedFileLocal);
-        if (!setupState) {
+        try {
+            const nextPlayState = await play(config);
+            if (nextPlayState.isPlaying) {
+                isPlayingDocuments.setFileId(nextPlayState.fileId);
+                return;
+            }
+
+            isPlayingDocuments.unsetFileId(nextPlayState.fileId);
+        } catch {
             $alertState = {
                 alert: {
-                    type: "info",
-                    name: "Cannot play file",
-                    description: "Cannot play file since it's aready playing"
+                    type: "error",
+                    name: "Cannot start playing",
+                    description: "Backend rejected play action. Please try again."
                 },
                 timeoutMs: 6_500
-            }
-            return;
+            };
         }
-
-        // Plays
-        await play(config);
-
-        // Unsets playing mode for this document
-        isPlayingDocuments.unsetFile(seletedFileLocal);
     }
 
-    function onStopPlaying() {
+    async function onStopPlaying() {
         if (!$selectedFile) {
             return;
         }
-        
-        isPlayingDocuments.unsetFile($selectedFile);
+
+        try {
+            const nextPlayState = await stopPlaying($selectedFile.id);
+            if (nextPlayState.isPlaying) {
+                isPlayingDocuments.setFileId(nextPlayState.fileId);
+                return;
+            }
+
+            isPlayingDocuments.unsetFileId(nextPlayState.fileId);
+        } catch {
+            $alertState = {
+                alert: {
+                    type: "error",
+                    name: "Cannot stop playing",
+                    description: "Backend rejected stop action. Please try again."
+                },
+                timeoutMs: 6_500
+            };
+        }
     }
 </script>
 

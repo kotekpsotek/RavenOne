@@ -2,6 +2,13 @@ import type { AI } from "@ravenlens/shared";
 import type { ContextSpecificationPayload, PlayMode } from "./editorComponents/types/AIList";
 import type { File } from "./stores/files";
 import type { Editor as SvelteEditor } from "svelte-tiptap";
+import {
+    getFilePlayState,
+    startFilePlay,
+    stopFilePlay,
+    subscribeToFilePlayState as subscribeToFilePlayStateSocket
+} from "./socket/playSocketClient";
+import type { PlayFileState } from "./socket/playSocketProtocol";
 
 export interface PlayConfig {
     document: File;
@@ -47,6 +54,27 @@ export function hasFileSomePlayableNode(file: File, editor: SvelteEditor | undef
 }
 
 export async function play(config: PlayConfig) {
-    // TODO: This is simulation / send this to backend with socket.io connection
-    return new Promise(res => setTimeout(res, 5_000));
+    return startFilePlay({
+        fileId: config.document.id,
+        itemId: config.itemId,
+        simulationDurationMs: 5_000,
+        metadata: {
+            mode: config.mode,
+            model: config.model.model,
+            tools: config.tools,
+            mcpServers: config.mcpServers
+        }
+    });
+}
+
+export async function stopPlaying(fileId: string) {
+    return stopFilePlay(fileId);
+}
+
+export async function getPlayStateForFile(fileId: string) {
+    return getFilePlayState(fileId);
+}
+
+export function subscribeToFilePlayState(fileId: string, onStateChanged: (state: PlayFileState) => void) {
+    return subscribeToFilePlayStateSocket(fileId, onStateChanged);
 }

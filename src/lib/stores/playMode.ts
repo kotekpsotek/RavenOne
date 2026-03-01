@@ -2,7 +2,7 @@ import { get, writable } from "svelte/store";
 import type { File } from "./files";
 
 export const isPlayingDocuments = (() => {
-    const store = writable<File[]>([]);
+    const store = writable<string[]>([]);
 
     return {
         ...store,
@@ -12,20 +12,16 @@ export const isPlayingDocuments = (() => {
          * @returns {boolean} - returns the play state
          */
         setFile(file: File): boolean {
-            const storeState = get(store);
-            const isFilePlaying = storeState.some(storeFile => {
-                return storeFile.id === file.id;
-            })
+            return this.setFileId(file.id);
+        },
+        setFileId(fileId: string): boolean {
+            const state = get(store);
 
-            // Check: Is file playing
-            if (isFilePlaying) {
+            if (state.includes(fileId)) {
                 return false;
             }
 
-            // Add file to rest of files
-            store.update(files => [...files, file]);
-            
-            // Return state
+            store.update(ids => [...ids, fileId]);
             return true;
         },
         /**
@@ -33,15 +29,10 @@ export const isPlayingDocuments = (() => {
          * @param file - is the file supposed to be playing before this action call
          */
         unsetFile(file: File) {
-            store.update(state => {
-                return state.map(fileState => {
-                    if (fileState.id === file.id) {
-                        return;
-                    }
-
-                    return fileState;
-                }).filter(v => v !== undefined);
-            })
+            this.unsetFileId(file.id);
+        },
+        unsetFileId(fileId: string) {
+            store.update(state => state.filter(stateFileId => stateFileId !== fileId));
         },
         /**
          * Checks whether file is playing
@@ -49,7 +40,7 @@ export const isPlayingDocuments = (() => {
          */
         isFilePlaying(file: File) {
             const state = get(store);
-            return state.some(stateFile => stateFile.id === file.id);
+            return state.includes(file.id);
         }
     }
 })();
