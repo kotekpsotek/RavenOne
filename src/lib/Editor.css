@@ -57,6 +57,10 @@
     content: "Time for your curiosity...";
 }
 
+.non-margin-heading {
+    margin: 0px !important;
+}
+
 .slash-command-menu {
     @apply z-[120] min-w-52 rounded-xl border border-base-300 bg-base-100 p-1 shadow-xl;
 }

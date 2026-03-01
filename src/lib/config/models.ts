@@ -6,12 +6,20 @@ export const avaiableModels: AI.RavenLensAvaiableAIModel[] = [
     {
         model: "gpt-5-mini",
         provider: "OpenAI",
-        isThinking: true
+        isThinking: true,
+        image: {
+            input: true,
+            output: false
+        }
     },
     {
         model: "gpt-5-nano",
         provider: "OpenAI",
-        isThinking: true
+        isThinking: true,
+        image: {
+            input: true,
+            output: false
+        }
     },
 ];
 

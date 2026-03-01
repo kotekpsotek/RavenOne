@@ -64,6 +64,17 @@ export interface AIPoint {
     aiAnswers: AIAnswer[];
 }
 
+export function getPlayModeLabel(playMode: PlayMode) {
+    switch (playMode) {
+        case "run-non-runned":
+            return "Run non-runned";
+        case "run-all":
+            return "Run all";
+        default:
+            return playMode;
+    }
+}
+
 export function getAIAnswers(answers: string) {
     try {
         const answersLocal = JSON.parse(answers) as AIPoint["aiAnswers"];

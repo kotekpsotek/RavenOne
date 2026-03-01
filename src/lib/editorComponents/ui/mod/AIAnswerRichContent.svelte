@@ -19,14 +19,22 @@
         extensions: [StarterKit]
     });
 
+    let lastAppliedContent = "";
+
     $effect(() => {
         const editor = $answerEditor;
         if (!editor) {
             return;
         }
 
-        editor.setEditable(false, false);
-        editor.commands.setContent(normalizeContent(content), { emitUpdate: false });
+        const nextContent = normalizeContent(content);
+
+        if (lastAppliedContent === nextContent) {
+            return;
+        }
+
+        lastAppliedContent = nextContent;
+        editor.commands.setContent(nextContent, { emitUpdate: false });
     });
 
     onDestroy(() => {

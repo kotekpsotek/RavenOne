@@ -32,7 +32,7 @@
 </script>
 
 
-<div class="relative w-full">
+<div class="relative w-full h-full min-h-0 overflow-y-auto">
     <!-- TODO: Refresh when subscription changes -->
     {#if $isWorkspaceSelectionOpen}
         <!-- svelte-ignore a11y_click_events_have_key_events -->
