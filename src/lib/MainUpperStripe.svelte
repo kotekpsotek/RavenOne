@@ -4,10 +4,10 @@
     import { json } from "@codemirror/lang-json";
     import { UI } from "@ravenlens/frontend";
     import { avaiableModels, getProviderIconifyIcon } from "./config/models";
-    import { selectedFile } from "./stores/files";
-    import { selectedModel } from "./stores/selected";
+    import { availableTools, playMode, selectedFile, selectedTools } from "./stores/files";
+    import { selectedModel } from "./stores/files";
     import { contextSpecification } from "./stores/contextSpec";
-    import { mcpConfigurationStore, saveMcpConfiguration } from "./stores/mcpConfig";
+    import { mcpConfigurationStore, saveMcpConfiguration, selectedMcpServers, type McpConfiguration, type McpServerConfig, type McpValidationResult } from "./stores/mcpConfig";
     import { alertState } from "./utils/alert";
     import type { ContextDeviceFile, ContextEditorFile, ContextNetworkURL, ContextSpecificationPayload, PlayMode } from "./editorComponents/types/AIList";
     import { hasFileSomePlayableNode, play, type PlayConfig } from "./playMode";
@@ -16,27 +16,6 @@
     import { get } from "svelte/store";
 
     type DropdownName = "model-settings" | "mcp-tools" | "play-settings" | "share";
-
-    type McpServerConfig = {
-        command: string;
-        args: string[];
-        env?: Record<string, string>;
-    };
-
-    type McpConfiguration = {
-        mcpServers: Record<string, McpServerConfig>;
-    };
-
-    type McpValidationResult =
-        | {
-            valid: true;
-            normalized: string;
-            servers: string[];
-        }
-        | {
-            valid: false;
-            error: string;
-        };
 
     const playModes: { label: string; value: PlayMode }[] = [
         { label: "Run non-runned", value: "run-non-runned" },
@@ -48,50 +27,15 @@
         "run-all": "material-symbols:playlist-play-rounded"
     };
 
-    const availableTools = ["Web search"] as const;
-    const initialMcpConfigurationObject: McpConfiguration = {
-        mcpServers: {
-            github: {
-                command: "npx",
-                args: ["-y", "@modelcontextprotocol/server-github"]
-            },
-            filesystem: {
-                command: "npx",
-                args: ["-y", "@modelcontextprotocol/server-filesystem", "./"]
-            },
-            memory: {
-                command: "npx",
-                args: ["-y", "@modelcontextprotocol/server-memory"]
-            },
-            browser: {
-                command: "npx",
-                args: ["-y", "@modelcontextprotocol/server-browser"]
-            }
-        }
-    };
-    const initialMcpConfiguration = JSON.stringify(initialMcpConfigurationObject, null, 2);
     const initialModelKey = avaiableModels[0]?.model ?? "";
 
-    let playMode = $state<PlayMode>("run-non-runned");
     let selectedModelKey = $state(initialModelKey);
     let modelWeights = $state<Record<string, number>>(
         initialModelKey ? { [initialModelKey]: 1 } : {}
     );
-    let selectedTools = $state<string[]>(["File system"]);
     let useMcpServers = $state(true);
-    let mcpConfiguration = $state($mcpConfigurationStore || initialMcpConfiguration);
-    let selectedMcpServers = $state<string[]>([]);
-    let mcpConfigurationDraft = $state(mcpConfiguration);
+    let mcpConfigurationDraft = $state(get(mcpConfigurationStore));
     let mcpConfigurationError = $state("");
-
-    $effect(() => {
-        try {
-            const parsed = JSON.parse(mcpConfiguration);
-            selectedMcpServers = Object.keys(parsed.mcpServers || {});
-        } catch {
-            selectedMcpServers = Object.keys(initialMcpConfigurationObject.mcpServers);
-        }
-    });
 
     let openDropdown = $state<DropdownName | undefined>(undefined);
 
@@ -108,6 +52,9 @@
         avaiableModels.find((model) => model.model === key);
 
     const currentModel = $derived(getModelByKey(selectedModelKey));
+    $effect(() => {
+        selectedModel.set(currentModel);
+    })
 
     const getCurrentModelWeight = () => modelWeights[selectedModelKey] ?? 1;
 
@@ -480,7 +427,7 @@
     }
 
     function openMcpConfigurationEditor() {
-        mcpConfigurationDraft = mcpConfiguration;
+        mcpConfigurationDraft = $mcpConfigurationStore;
         mcpConfigurationError = "";
         isMcpConfigModalOpen = true;
         openDropdown = undefined;
@@ -498,9 +445,9 @@
             return;
         }
 
-        mcpConfiguration = validation.normalized;
-        saveMcpConfiguration(mcpConfiguration);
-        selectedMcpServers = validation.servers;
+        $mcpConfigurationStore = validation.normalized;
+        saveMcpConfiguration($mcpConfigurationStore);
+        $selectedMcpServers = validation.servers;
         mcpConfigurationError = "";
         isMcpConfigModalOpen = false;
     }
@@ -538,10 +485,10 @@
                 // Get the freshest content of file from editor
                 content: $editor?.getHTML() ?? seletedFileLocal.content ?? ""
             },
-            mode: playMode,
+            mode: $playMode,
             model: selectedModelLocal,
-            tools: selectedTools,
-            mcpServers: useMcpServers ? selectedMcpServers : [],
+            tools: $selectedTools,
+            mcpServers: useMcpServers ? $selectedMcpServers : [],
             contextSpec: get(contextSpecification)
         };
 
@@ -559,7 +506,7 @@
             return;
         }
 
-        // Plays
+        // Plays fill document since `itemId` isn't specified
         await play(config);
 
         // Unsets playing mode for this document
@@ -651,8 +598,8 @@
                                         <input
                                             type="checkbox"
                                             class="checkbox checkbox-primary checkbox-sm"
-                                            checked={selectedTools.includes(tool)}
-                                            onchange={() => (selectedTools = toggleValue(selectedTools, tool))}
+                                            checked={$selectedTools.includes(tool)}
+                                            onchange={() => ($selectedTools = toggleValue($selectedTools, tool))}
                                         />
                                         <span class="label-text">{tool}</span>
                                     </label>
@@ -668,7 +615,7 @@
                             </label>
                             <div class="rounded border border-base-300 bg-base-100 overflow-auto max-h-48">
                                 <CodeMirror
-                                    value={mcpConfiguration}
+                                    value={$mcpConfigurationStore}
                                     lang={json()}
                                     readonly={true}
                                     editable={false}
@@ -685,7 +632,7 @@
                             <div class="mt-2 flex items-center justify-between">
                                 <span class="text-xs opacity-70">
                                     {useMcpServers
-                                        ? `${selectedMcpServers.length} server(s) configured`
+                                        ? `${$selectedMcpServers.length} server(s) configured`
                                         : "MCP servers disabled for tasks"}
                                 </span>
                                 <button class="btn btn-xs btn-primary" onclick={openMcpConfigurationEditor}>Edit</button>
@@ -743,16 +690,16 @@
                                         <button
                                             type="button"
                                             class="btn btn-sm justify-start w-full"
-                                            class:btn-primary={playMode === mode.value}
-                                            class:btn-ghost={playMode !== mode.value}
+                                            class:btn-primary={$playMode === mode.value}
+                                            class:btn-ghost={$playMode !== mode.value}
                                             onclick={(event) => {
                                                 event.preventDefault();
                                                 event.stopPropagation();
-                                                playMode = mode.value;
+                                                $playMode = mode.value;
                                             }}
                                         >
                                             <Icon
-                                                icon={playMode === mode.value
+                                                icon={$playMode === mode.value
                                                     ? "material-symbols:check-box-rounded"
                                                     : "material-symbols:check-box-outline-blank-rounded"}
                                                 class="w-4 h-4"

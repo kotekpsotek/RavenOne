@@ -3,15 +3,16 @@
     import { tick, type ComponentEvents } from 'svelte';
     import { NodeViewWrapper, NodeViewContent } from 'svelte-tiptap';
     import type { NodeViewProps } from '@tiptap/core';
+    import { v4 as uuid } from 'uuid';
     import ListItemHoverActions from './mod/AIListItemHoverActions.svelte';
     import AIAnswersList from './mod/AIAnswersList.svelte';
     import { hoveredListItemId } from '../../stores/hoveredListItem';
     import { getAIAnswers } from '../types/AIList';
     import type { AIPoint } from '../types/AIList';
 
-    let { node, updateAttributes, extension }: NodeViewProps = $props();
+    let { node, updateAttributes, extension, editor }: NodeViewProps = $props();
     const aiAnswers = $derived(getAIAnswers(node["attrs"]["aiAnswers"]));
-    const itemId = $derived(node["attrs"]["id"] as string);
+    const itemId = $derived((node["attrs"]["id"] as string | undefined) ?? "");
 
     let contentHostElement = $state<HTMLDivElement | null>(null);
     let answersContainerElement = $state<HTMLDivElement | null>(null);
@@ -75,6 +76,31 @@
         ev.preventDefault();
     }
 
+    function isUniqueItemId(id: string) {
+        let occurrences = 0;
+
+        editor.state.doc.descendants((docNode) => {
+            const isTargetNodeType = docNode.type.name === 'listItem' || docNode.type.name === 'taskItem';
+            if (!isTargetNodeType) {
+                return true;
+            }
+
+            if ((docNode.attrs.id as string | undefined) === id) {
+                occurrences += 1;
+            }
+
+            return true;
+        });
+
+        return occurrences === 1;
+    }
+
+    function ensureUniqueItemId() {
+        if (!itemId || !isUniqueItemId(itemId)) {
+            updateAttributes({ id: `listItem-${uuid()}` });
+        }
+    }
+
     function resolveContentElement() {
         const queriedContentElement = contentHostElement?.querySelector('[data-node-view-content]') as HTMLElement | null;
         const fallbackContentElement = contentHostElement?.firstElementChild as HTMLElement | null;
@@ -115,6 +141,10 @@
             contentElement.appendChild(answersContainerElement);
         }
     }
+
+    $effect(() => {
+        ensureUniqueItemId();
+    });
 
     $effect(() => {
         void visibleAiAnswers;
