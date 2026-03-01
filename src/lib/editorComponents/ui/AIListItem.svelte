@@ -3,7 +3,6 @@
     import { tick } from 'svelte';
     import { NodeViewWrapper, NodeViewContent } from 'svelte-tiptap';
     import type { NodeViewProps } from '@tiptap/core';
-    import { v4 as uuidv4 } from 'uuid';
     import ListItemHoverActions from './mod/AIListItemHoverActions.svelte';
     import AIAnswersList from './mod/AIAnswersList.svelte';
     import { hoveredListItemId, mouseOutTimeout } from '../../stores/hoveredListItem';
@@ -12,6 +11,8 @@
 
     let { node, updateAttributes, extension }: NodeViewProps = $props();
     const aiAnswers = $derived(getAIAnswers(node["attrs"]["aiAnswers"]));
+    const itemId = $derived(node["attrs"]["id"] as string);
+
     const simulatedAiAnswers: AIPoint["aiAnswers"] = [
         {
             playMode: "run-all",
@@ -54,7 +55,6 @@
                 : null
     );
     
-    const itemId = `list-${uuidv4()}`;
     let contentHostElement = $state<HTMLDivElement | null>(null);
     let answersContainerElement = $state<HTMLDivElement | null>(null);
 

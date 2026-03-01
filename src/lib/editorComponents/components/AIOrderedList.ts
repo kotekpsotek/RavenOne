@@ -1,6 +1,9 @@
 import OrderedList from '@tiptap/extension-ordered-list';
 import { SvelteNodeViewRenderer } from 'svelte-tiptap';
 import AIOrderedListSvelte from '../ui/AIOrderedList.svelte';
+import type { AIList } from '../types/AIList';
+import type { Attribute } from '@tiptap/core';
+import { v4 as uuid } from 'uuid';
 
 export const AIOrderedList = OrderedList.extend({
     name: 'orderedList',
@@ -14,6 +17,17 @@ export const AIOrderedList = OrderedList.extend({
             keepAttributes: parentOptions?.keepAttributes ?? false,
             itemTypeName: 'listItem',
         };
+    },
+
+    addAttributes() {
+        return {
+            aiAnswers: {
+                default: "[]"
+            },
+            id: {
+                default: `listElement-${uuid()}`
+            }
+        } as Record<keyof AIList, Attribute>;
     },
 
     parseHTML() {
