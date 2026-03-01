@@ -3,6 +3,9 @@
     import type { NodeViewProps } from '@tiptap/core';
 
     let { node, updateAttributes, extension }: NodeViewProps = $props();
+    const listId = $derived(node["attrs"]["id"] as string);
+
+    $effect(() => console.log(listId))
 </script>
 
 <NodeViewWrapper as="div" class="custom-ordered-list-wrapper my-2">

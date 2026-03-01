@@ -3,6 +3,7 @@
     import type { NodeViewProps } from '@tiptap/core';
 
     let { node, updateAttributes, extension }: NodeViewProps = $props();
+    const listId = $derived(node["attrs"]["id"] as string);
 </script>
 
 <NodeViewWrapper as="div" class="custom-task-list-wrapper my-2">

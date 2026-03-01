@@ -7,10 +7,10 @@ export const mouseOutTimeout = (() => {
 
     return {
         ...all,
-        setTimeout() {
+        setTimeout(timeout: number = 300) {
             all.update(() => setTimeout(() => {
                 hoveredListItemId.set(null);
-            }, 400))
+            }, timeout))
         },
         clearTimeout() {
             all.update(timeout => {
@@ -21,6 +21,6 @@ export const mouseOutTimeout = (() => {
                 
                 return null;
             })
-        }
+        },
     }
 })();

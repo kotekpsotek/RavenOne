@@ -2,12 +2,11 @@
     import Icon from "@iconify/svelte";
     import CodeMirror from "svelte-codemirror-editor";
     import { json } from "@codemirror/lang-json";
-    import { UI } from "@ravenlens/frontend";
     import { avaiableModels, getProviderIconifyIcon } from "./config/models";
-    import { selectedFile } from "./stores/files";
-    import { selectedModel } from "./stores/selected";
+    import { availableTools, playMode, selectedFile, selectedTools } from "./stores/files";
+    import { selectedModel } from "./stores/files";
     import { contextSpecification } from "./stores/contextSpec";
-    import { mcpConfigurationStore, saveMcpConfiguration } from "./stores/mcpConfig";
+    import { mcpConfigurationStore, selectedMcpServers } from "./stores/mcpConfig";
     import { alertState } from "./utils/alert";
     import type { ContextDeviceFile, ContextEditorFile, ContextNetworkURL, ContextSpecificationPayload, PlayMode } from "./editorComponents/types/AIList";
     import {
@@ -21,100 +20,49 @@
     import { editor } from "./stores/editor";
     import { isPlayingDocuments } from "./stores/playMode";
     import { get } from "svelte/store";
+    import McpSelectionModal from "./modals/McpSelectionModal.svelte";
+    import { UI } from "@ravenlens/frontend";
+    import ContextSelectionModal from "./modals/ContextSelectionModal.svelte";
+    import PlayModeDropdownContent from "./components/PlayModeDropdownContent.svelte";
 
     type DropdownName = "model-settings" | "mcp-tools" | "play-settings" | "share";
 
-    type McpServerConfig = {
-        command: string;
-        args: string[];
-        env?: Record<string, string>;
-    };
-
-    type McpConfiguration = {
-        mcpServers: Record<string, McpServerConfig>;
-    };
-
-    type McpValidationResult =
-        | {
-            valid: true;
-            normalized: string;
-            servers: string[];
-        }
-        | {
-            valid: false;
-            error: string;
-        };
-
-    const playModes: { label: string; value: PlayMode }[] = [
-        { label: "Run non-runned", value: "run-non-runned" },
-        { label: "Run all", value: "run-all" }
-    ];
-
-    const playModeIcons: Record<PlayMode, string> = {
-        "run-non-runned": "material-symbols:play-arrow-outline-rounded",
-        "run-all": "material-symbols:playlist-play-rounded"
-    };
-
-    const availableTools = ["Web search"] as const;
-    const initialMcpConfigurationObject: McpConfiguration = {
-        mcpServers: {
-            github: {
-                command: "npx",
-                args: ["-y", "@modelcontextprotocol/server-github"]
-            },
-            filesystem: {
-                command: "npx",
-                args: ["-y", "@modelcontextprotocol/server-filesystem", "./"]
-            },
-            memory: {
-                command: "npx",
-                args: ["-y", "@modelcontextprotocol/server-memory"]
-            },
-            browser: {
-                command: "npx",
-                args: ["-y", "@modelcontextprotocol/server-browser"]
-            }
-        }
-    };
-    const initialMcpConfiguration = JSON.stringify(initialMcpConfigurationObject, null, 2);
     const initialModelKey = avaiableModels[0]?.model ?? "";
 
-    let playMode = $state<PlayMode>("run-non-runned");
     let selectedModelKey = $state(initialModelKey);
     let modelWeights = $state<Record<string, number>>(
         initialModelKey ? { [initialModelKey]: 1 } : {}
     );
-    let selectedTools = $state<string[]>(["File system"]);
     let useMcpServers = $state(true);
-    let mcpConfiguration = $state($mcpConfigurationStore || initialMcpConfiguration);
-    let selectedMcpServers = $state<string[]>([]);
-    let mcpConfigurationDraft = $state(mcpConfiguration);
+    let mcpConfigurationDraft = $state(get(mcpConfigurationStore));
     let mcpConfigurationError = $state("");
-
-    $effect(() => {
-        try {
-            const parsed = JSON.parse(mcpConfiguration);
-            selectedMcpServers = Object.keys(parsed.mcpServers || {});
-        } catch {
-            selectedMcpServers = Object.keys(initialMcpConfigurationObject.mcpServers);
-        }
-    });
 
     let openDropdown = $state<DropdownName | undefined>(undefined);
 
-    let desktopContextFiles = $state<ContextDeviceFile[]>([]);
-    let editorContextFiles = $state<ContextEditorFile[]>([]);
-    let networkContextUrls = $state<ContextNetworkURL[]>([]);
-    let networkUrlDraft = $state("");
-
     let isContextModalOpen = $state(false);
     let isMcpConfigModalOpen = $state(false);
+    let contextModalPayloadDraft = $state<ContextSpecificationPayload>({
+        desktopFiles: [],
+        editorFiles: [],
+        networkUrls: []
+    });
     const shareUrl = $derived(getShareUrl());
 
+    function cloneContextPayload(payload: ContextSpecificationPayload): ContextSpecificationPayload {
+        return {
+            desktopFiles: [...payload.desktopFiles],
+            editorFiles: [...payload.editorFiles],
+            networkUrls: [...payload.networkUrls]
+        };
+    }
+    
     const getModelByKey = (key: string) =>
         avaiableModels.find((model) => model.model === key);
 
     const currentModel = $derived(getModelByKey(selectedModelKey));
+    $effect(() => {
+        selectedModel.set(currentModel);
+    })
 
     const getCurrentModelWeight = () => modelWeights[selectedModelKey] ?? 1;
 
@@ -197,140 +145,6 @@
         };
     }
 
-    function parseContextSpecification(rawValue: string): ContextSpecificationPayload {
-        if (!rawValue) {
-            return {
-                desktopFiles: [],
-                editorFiles: [],
-                networkUrls: []
-            };
-        }
-
-        try {
-            const parsed = JSON.parse(rawValue) as Partial<ContextSpecificationPayload>;
-
-            return {
-                desktopFiles: Array.isArray(parsed.desktopFiles) ? parsed.desktopFiles : [],
-                editorFiles: Array.isArray(parsed.editorFiles) ? parsed.editorFiles : [],
-                networkUrls: Array.isArray(parsed.networkUrls) ? parsed.networkUrls : []
-            };
-        } catch {
-            return {
-                desktopFiles: [],
-                editorFiles: [],
-                networkUrls: []
-            };
-        }
-    }
-
-    async function fileToDataUrl(file: globalThis.File) {
-        return await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(String(reader.result ?? ""));
-            reader.onerror = () => reject(new Error("Failed to read file"));
-            reader.readAsDataURL(file);
-        });
-    }
-
-    async function onDesktopFilesChange(event: Event) {
-        const target = event.currentTarget as HTMLInputElement;
-        const fileList = Array.from(target.files ?? []);
-        if (!fileList.length) {
-            return;
-        }
-
-        const locationHint = target.value || "Desktop";
-
-        const filesToAdd = await Promise.all(
-            fileList.map(async (file) => {
-                const isImage = file.type.startsWith("image/");
-
-                return {
-                    id: `${file.name}-${file.lastModified}-${file.size}`,
-                    name: file.name,
-                    type: file.type || "application/octet-stream",
-                    size: file.size,
-                    locationHint,
-                    previewDataUrl: isImage ? await fileToDataUrl(file) : undefined
-                } satisfies ContextDeviceFile;
-            })
-        );
-
-        desktopContextFiles = [...desktopContextFiles, ...filesToAdd].filter(
-            (entry, index, list) => list.findIndex((check) => check.id === entry.id) === index
-        );
-
-        target.value = "";
-    }
-
-    function removeDesktopContextFile(id: string) {
-        desktopContextFiles = desktopContextFiles.filter((entry) => entry.id !== id);
-    }
-
-    function addSelectedEditorFile() {
-        if (!$selectedFile) {
-            return;
-        }
-
-        const nextFile: ContextEditorFile = {
-            id: $selectedFile.id,
-            name: $selectedFile.name
-        };
-
-        if (editorContextFiles.some((entry) => entry.id === nextFile.id)) {
-            return;
-        }
-
-        editorContextFiles = [...editorContextFiles, nextFile];
-    }
-
-    function removeEditorContextFile(id: string) {
-        editorContextFiles = editorContextFiles.filter((entry) => entry.id !== id);
-    }
-
-    function normalizeNetworkUrl(rawUrl: string) {
-        const maybeWithProtocol = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
-        const parsed = new URL(maybeWithProtocol);
-        return parsed.toString();
-    }
-
-    function getFaviconUrl(targetUrl: string) {
-        const host = new URL(targetUrl).hostname;
-        return `https://www.google.com/s2/favicons?domain=${host}&sz=64`;
-    }
-
-    function addNetworkUrl() {
-        const rawDraft = networkUrlDraft.trim();
-        if (!rawDraft) {
-            return;
-        }
-
-        try {
-            const normalizedUrl = normalizeNetworkUrl(rawDraft);
-
-            if (networkContextUrls.some((entry) => entry.url === normalizedUrl)) {
-                networkUrlDraft = "";
-                return;
-            }
-
-            networkContextUrls = [
-                ...networkContextUrls,
-                {
-                    id: `${normalizedUrl}-${Date.now()}`,
-                    url: normalizedUrl,
-                    favicon: getFaviconUrl(normalizedUrl)
-                }
-            ];
-            networkUrlDraft = "";
-        } catch {
-            console.warn("Invalid network url", rawDraft);
-        }
-    }
-
-    function removeNetworkUrl(id: string) {
-        networkContextUrls = networkContextUrls.filter((entry) => entry.id !== id);
-    }
-
     function onDropdownToggle(name: DropdownName, event: Event) {
         const target = event.currentTarget as HTMLDetailsElement;
 
@@ -362,23 +176,11 @@
     }
 
     function openContextModal() {
-        desktopContextFiles = $contextSpecification.desktopFiles;
-        editorContextFiles = $contextSpecification.editorFiles;
-        networkContextUrls = $contextSpecification.networkUrls;
+        contextModalPayloadDraft = cloneContextPayload($contextSpecification);
         isContextModalOpen = true;
     }
 
-    function closeContextModal() {
-        isContextModalOpen = false;
-    }
-
-    function onSaveContext() {
-        const payload: ContextSpecificationPayload = {
-            desktopFiles: desktopContextFiles,
-            editorFiles: editorContextFiles,
-            networkUrls: networkContextUrls
-        };
-
+    function onSaveGlobalContext(payload: ContextSpecificationPayload) {
         contextSpecification.set(payload);
         isContextModalOpen = false;
     }
@@ -479,78 +281,15 @@
         }
     }
 
-    function validateMcpConfiguration(rawConfiguration: string): McpValidationResult {
-        try {
-            const parsed = JSON.parse(rawConfiguration) as Partial<McpConfiguration>;
-
-            if (!parsed || typeof parsed !== "object") {
-                return { valid: false, error: "Configuration must be a JSON object." };
-            }
-
-            if (!parsed.mcpServers || typeof parsed.mcpServers !== "object") {
-                return { valid: false, error: 'Configuration must contain a "mcpServers" object.' };
-            }
-
-            const serverEntries = Object.entries(parsed.mcpServers);
-
-            for (const [serverName, serverConfig] of serverEntries) {
-                if (!serverConfig || typeof serverConfig !== "object") {
-                    return { valid: false, error: `Server "${serverName}" must be an object.` };
-                }
-
-                if (typeof (serverConfig as McpServerConfig).command !== "string" ||
-                    !(serverConfig as McpServerConfig).command.trim()) {
-                    return { valid: false, error: `Server "${serverName}" must include a non-empty "command" string.` };
-                }
-
-                const args = (serverConfig as McpServerConfig).args;
-                if (!Array.isArray(args) || args.some((arg) => typeof arg !== "string")) {
-                    return { valid: false, error: `Server "${serverName}" must include an "args" array of strings.` };
-                }
-
-                if ((serverConfig as McpServerConfig).env !== undefined) {
-                    const envValue = (serverConfig as McpServerConfig).env;
-                    const isRecord = !!envValue && typeof envValue === "object" && !Array.isArray(envValue);
-                    if (!isRecord || Object.values(envValue as Record<string, unknown>).some((value) => typeof value !== "string")) {
-                        return { valid: false, error: `Server "${serverName}" has invalid "env". It must be an object of string values.` };
-                    }
-                }
-            }
-
-            return {
-                valid: true,
-                normalized: JSON.stringify(parsed, null, 2),
-                servers: serverEntries.map(([serverName]) => serverName)
-            };
-        } catch {
-            return { valid: false, error: "Invalid JSON format. Please fix syntax errors before accepting." };
-        }
+    function onSelectPlayMode(mode: PlayMode) {
+        $playMode = mode;
     }
 
     function openMcpConfigurationEditor() {
-        mcpConfigurationDraft = mcpConfiguration;
+        mcpConfigurationDraft = $mcpConfigurationStore;
         mcpConfigurationError = "";
         isMcpConfigModalOpen = true;
         openDropdown = undefined;
-    }
-
-    function closeMcpConfigurationEditor() {
-        isMcpConfigModalOpen = false;
-        mcpConfigurationError = "";
-    }
-
-    function acceptMcpConfiguration() {
-        const validation = validateMcpConfiguration(mcpConfigurationDraft);
-        if (!validation.valid) {
-            mcpConfigurationError = validation.error;
-            return;
-        }
-
-        mcpConfiguration = validation.normalized;
-        saveMcpConfiguration(mcpConfiguration);
-        selectedMcpServers = validation.servers;
-        mcpConfigurationError = "";
-        isMcpConfigModalOpen = false;
     }
 
     async function onPlay() {
@@ -586,10 +325,10 @@
                 // Get the freshest content of file from editor
                 content: $editor?.getHTML() ?? seletedFileLocal.content ?? ""
             },
-            mode: playMode,
+            mode: $playMode,
             model: selectedModelLocal,
-            tools: selectedTools,
-            mcpServers: useMcpServers ? selectedMcpServers : [],
+            tools: $selectedTools,
+            mcpServers: useMcpServers ? $selectedMcpServers : [],
             contextSpec: get(contextSpecification)
         };
 
@@ -609,40 +348,29 @@
                     description: "Backend rejected play action. Please try again."
                 },
                 timeoutMs: 6_500
-            };
-        }
-    }
-
-    async function onStopPlaying() {
-        if (!$selectedFile) {
+            }
             return;
         }
 
-        try {
-            const nextPlayState = await stopPlaying($selectedFile.id);
-            if (nextPlayState.isPlaying) {
-                isPlayingDocuments.setFileId(nextPlayState.fileId);
-                return;
-            }
+        // Plays fill document since `itemId` isn't specified
+        await play(config);
 
-            isPlayingDocuments.unsetFileId(nextPlayState.fileId);
-        } catch {
-            $alertState = {
-                alert: {
-                    type: "error",
-                    name: "Cannot stop playing",
-                    description: "Backend rejected stop action. Please try again."
-                },
-                timeoutMs: 6_500
-            };
+        // Unsets playing mode for this document
+        isPlayingDocuments.unsetFile(seletedFileLocal);
+    }
+
+    function onStopPlaying() {
+        if (!$selectedFile) {
+            return;
         }
+        
+        isPlayingDocuments.unsetFile($selectedFile);
     }
 </script>
 
 <svelte:window onclick={onWindowClick} />
 
 {#if $selectedFile}
-
     <section
         id="upperstripe"
         class="border-b border-base-300 bg-base-100 flex items-center justify-between px-4 py-2 transition-colors"
@@ -715,8 +443,8 @@
                                         <input
                                             type="checkbox"
                                             class="checkbox checkbox-primary checkbox-sm"
-                                            checked={selectedTools.includes(tool)}
-                                            onchange={() => (selectedTools = toggleValue(selectedTools, tool))}
+                                            checked={$selectedTools.includes(tool)}
+                                            onchange={() => ($selectedTools = toggleValue($selectedTools, tool))}
                                         />
                                         <span class="label-text">{tool}</span>
                                     </label>
@@ -732,7 +460,7 @@
                             </label>
                             <div class="rounded border border-base-300 bg-base-100 overflow-auto max-h-48">
                                 <CodeMirror
-                                    value={mcpConfiguration}
+                                    value={$mcpConfigurationStore}
                                     lang={json()}
                                     readonly={true}
                                     editable={false}
@@ -749,7 +477,7 @@
                             <div class="mt-2 flex items-center justify-between">
                                 <span class="text-xs opacity-70">
                                     {useMcpServers
-                                        ? `${selectedMcpServers.length} server(s) configured`
+                                        ? `${$selectedMcpServers.length} server(s) configured`
                                         : "MCP servers disabled for tasks"}
                                 </span>
                                 <button class="btn btn-xs btn-primary" onclick={openMcpConfigurationEditor}>Edit</button>
@@ -801,30 +529,11 @@
                                     <Icon icon="material-symbols:settings-outline-rounded" class="w-3 h-3" />
                                 </summary>
 
-                                <div class="dropdown-content p-3 shadow bg-base-200 rounded-box z-[20] w-64 space-y-2">
-                                    <p class="text-xs uppercase tracking-wide opacity-70">Mode</p>
-                                    {#each playModes as mode (mode.value)}
-                                        <button
-                                            type="button"
-                                            class="btn btn-sm justify-start w-full"
-                                            class:btn-primary={playMode === mode.value}
-                                            class:btn-ghost={playMode !== mode.value}
-                                            onclick={(event) => {
-                                                event.preventDefault();
-                                                event.stopPropagation();
-                                                playMode = mode.value;
-                                            }}
-                                        >
-                                            <Icon
-                                                icon={playMode === mode.value
-                                                    ? "material-symbols:check-box-rounded"
-                                                    : "material-symbols:check-box-outline-blank-rounded"}
-                                                class="w-4 h-4"
-                                            />
-                                            <Icon icon={playModeIcons[mode.value]} class="w-4 h-4" />
-                                            <span>{mode.label}</span>
-                                        </button>
-                                    {/each}
+                                <div class="dropdown-content z-[20]">
+                                    <PlayModeDropdownContent
+                                        selectedPlayMode={$playMode}
+                                        onSelect={onSelectPlayMode}
+                                    />
                                 </div>
                             </details>
                         {/if}
@@ -920,185 +629,16 @@
     </section>
 
     {#if isContextModalOpen}
-        <!-- svelte-ignore a11y_click_events_have_key_events -->
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div class="fixed inset-0 z-[60] bg-black/40" onclick={closeContextModal}>
-            <!-- svelte-ignore a11y_click_events_have_key_events -->
-            <!-- svelte-ignore a11y_no_static_element_interactions -->
-            <div class="flex min-h-full items-center justify-center p-4" onclick={(event) => event.stopPropagation()}>
-                <UI.Modals.ModalWrapper
-                    name="Context specification"
-                    open={isContextModalOpen}
-                    closeOnBackdrop={true}
-                    size="md"
-                    on:close={closeContextModal}
-                >
-                    <UI.Modals.ModalWrapperHeading headingName="Context specification" on:close={closeContextModal} />
-
-                    <div class="pt-2 space-y-3">
-                        <div class="space-y-2">
-                            <div class="flex items-center justify-between">
-                                <p class="text-xs uppercase tracking-wide opacity-70">Desktop files</p>
-                                <label class="btn btn-xs btn-ghost" title="Add files from desktop">
-                                    <Icon icon="material-symbols:upload-file-outline-rounded" class="w-4 h-4" />
-                                    <span>Add files</span>
-                                    <input
-                                        type="file"
-                                        multiple
-                                        class="hidden"
-                                        onchange={onDesktopFilesChange}
-                                    />
-                                </label>
-                            </div>
-
-                            <div class="space-y-1 max-h-28 overflow-auto">
-                                {#if desktopContextFiles.length === 0}
-                                    <p class="text-xs opacity-60">No desktop files selected.</p>
-                                {/if}
-
-                                {#each desktopContextFiles as file (file.id)}
-                                    <div class="flex items-center justify-between rounded border border-base-300 px-2 py-1" title={file.locationHint}>
-                                        <div class="flex items-center gap-2 min-w-0">
-                                            {#if file.previewDataUrl}
-                                                <img src={file.previewDataUrl} alt={file.name} class="w-8 h-8 rounded object-cover" />
-                                            {:else}
-                                                <Icon icon="material-symbols:description-outline-rounded" class="w-5 h-5 opacity-70" />
-                                            {/if}
-                                            <span class="text-xs truncate">{file.name}</span>
-                                        </div>
-                                        <button class="btn btn-ghost btn-xs" title="Remove file" onclick={() => removeDesktopContextFile(file.id)}>
-                                            <Icon icon="material-symbols:close-rounded" class="w-4 h-4" />
-                                        </button>
-                                    </div>
-                                {/each}
-                            </div>
-                        </div>
-
-                        <div class="space-y-2">
-                            <div class="flex items-center justify-between">
-                                <p class="text-xs uppercase tracking-wide opacity-70">Editor files</p>
-                                <button
-                                    class="btn btn-xs btn-ghost"
-                                    onclick={addSelectedEditorFile}
-                                    disabled={!$selectedFile}
-                                    title="Add currently selected editor file"
-                                >
-                                    <Icon icon="material-symbols:add-rounded" class="w-4 h-4" />
-                                    <span>Add selected</span>
-                                </button>
-                            </div>
-
-                            <div class="space-y-1 max-h-24 overflow-auto">
-                                {#if editorContextFiles.length === 0}
-                                    <p class="text-xs opacity-60">No editor files selected.</p>
-                                {/if}
-
-                                {#each editorContextFiles as file (file.id)}
-                                    <div class="flex items-center justify-between rounded border border-base-300 px-2 py-1">
-                                        <div class="flex items-center gap-2 min-w-0">
-                                            <Icon icon="material-symbols:article-outline-rounded" class="w-5 h-5 opacity-70" />
-                                            <span class="text-xs truncate">{file.name}</span>
-                                        </div>
-
-                                        <button class="btn btn-ghost btn-xs" title="Remove editor file" onclick={() => removeEditorContextFile(file.id)}>
-                                            <Icon icon="material-symbols:close-rounded" class="w-4 h-4" />
-                                        </button>
-                                    </div>
-                                {/each}
-                            </div>
-                        </div>
-
-                        <div class="space-y-2">
-                            <p class="text-xs uppercase tracking-wide opacity-70">Network URLs</p>
-
-                            <div class="join w-full">
-                                <input
-                                    class="input input-sm input-bordered join-item w-full"
-                                    placeholder="https://youtube.com/..."
-                                    bind:value={networkUrlDraft}
-                                />
-                                <button class="btn btn-sm join-item" onclick={addNetworkUrl} title="Add URL">
-                                    <Icon icon="material-symbols:add-link-rounded" class="w-4 h-4" />
-                                </button>
-                            </div>
-
-                            <div class="space-y-1 max-h-24 overflow-auto">
-                                {#if networkContextUrls.length === 0}
-                                    <p class="text-xs opacity-60">No URLs added.</p>
-                                {/if}
-
-                                {#each networkContextUrls as entry (entry.id)}
-                                    <div class="flex items-center justify-between rounded border border-base-300 px-2 py-1">
-                                        <div class="flex items-center gap-2 min-w-0">
-                                            <img src={entry.favicon} alt="website favicon" class="w-4 h-4" />
-                                            <span class="text-xs truncate">{entry.url}</span>
-                                        </div>
-
-                                        <button class="btn btn-ghost btn-xs" title="Remove URL" onclick={() => removeNetworkUrl(entry.id)}>
-                                            <Icon icon="material-symbols:close-rounded" class="w-4 h-4" />
-                                        </button>
-                                    </div>
-                                {/each}
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="mt-4 flex justify-end gap-2">
-                        <button class="btn btn-ghost" onclick={closeContextModal}>Cancel</button>
-                        <button class="btn btn-primary" onclick={onSaveContext}>Save context</button>
-                    </div>
-                </UI.Modals.ModalWrapper>
-            </div>
-        </div>
+        <ContextSelectionModal
+            bind:open={isContextModalOpen}
+            contextPayload={contextModalPayloadDraft}
+            onSave={onSaveGlobalContext}
+        />
     {/if}
-
-    {#if isMcpConfigModalOpen}
-        <!-- svelte-ignore a11y_click_events_have_key_events -->
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div class="fixed inset-0 z-[60] bg-black/40" onclick={closeMcpConfigurationEditor}>
-            <!-- svelte-ignore a11y_click_events_have_key_events -->
-            <!-- svelte-ignore a11y_no_static_element_interactions -->
-            <div class="flex min-h-full items-center justify-center p-4" onclick={(event) => event.stopPropagation()}>
-                <UI.Modals.ModalWrapper
-                    name="MCP configuration"
-                    open={isMcpConfigModalOpen}
-                    closeOnBackdrop={true}
-                    size="lg"
-                    on:close={closeMcpConfigurationEditor}
-                >
-                    <UI.Modals.ModalWrapperHeading
-                        headingName="MCP servers configuration"
-                        on:close={closeMcpConfigurationEditor}
-                    />
-
-                    <div class="pt-2 space-y-2">
-                        {#if mcpConfigurationError}
-                            <p class="text-sm text-error font-medium">{mcpConfigurationError}</p>
-                        {/if}
-
-                        <div class="rounded border border-base-300 bg-base-100 overflow-auto max-h-[60vh]">
-                            <CodeMirror
-                                bind:value={mcpConfigurationDraft}
-                                lang={json()}
-                                lineNumbers={true}
-                                lineWrapping={false}
-                                styles={{
-                                    "&": {
-                                        minWidth: "48rem",
-                                        height: "50vh"
-                                    }
-                                }}
-                            />
-                        </div>
-                    </div>
-
-                    <div class="mt-4 flex justify-end gap-2">
-                        <button class="btn btn-ghost" onclick={closeMcpConfigurationEditor}>Cancel</button>
-                        <button class="btn btn-primary" onclick={acceptMcpConfiguration}>Accept</button>
-                    </div>
-                </UI.Modals.ModalWrapper>
-            </div>
-        </div>
-    {/if}
-{/if}
     
+    <McpSelectionModal
+        bind:open={isMcpConfigModalOpen}
+        bind:mcpConfigurationDraft
+        bind:mcpConfigurationError
+    />
+{/if}

@@ -44,3 +44,31 @@ export const isPlayingDocuments = (() => {
         }
     }
 })();
+
+/**
+ * Contains list with playing items and its childs
+ * E.g: Playing list items and its belonging nested childrens
+*/
+export const isPlayingItems = (() => {
+    const itemsIdsStore = writable<string[]>([]);
+
+    return {
+        ...itemsIdsStore,
+        setUpItemPlaying(itemId: string) {
+            const state = get(itemsIdsStore);
+            if (state.includes(itemId)) {
+                return false;
+            }
+
+            itemsIdsStore.update(ids => [...ids, itemId]);
+            return true;
+        },
+        unsetItemPlaying(itemId: string) {
+            itemsIdsStore.update(state => state.filter(stateItemId => stateItemId !== itemId));
+        },
+        isItemPlaying(itemId: string) {
+            const state = get(itemsIdsStore);
+            return state.includes(itemId);
+        }
+    }
+})();

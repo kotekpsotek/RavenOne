@@ -12,6 +12,9 @@ export const AIListItem = ListItem.extend({
         return {
             aiAnswers: {
                 default: "[]"
+            },
+            id: {
+                default: null
             }
         } as Record<keyof AIPoint, Attribute>;
     },

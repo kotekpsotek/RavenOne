@@ -3,18 +3,20 @@
     import { tick, type ComponentEvents } from 'svelte';
     import { NodeViewWrapper, NodeViewContent } from 'svelte-tiptap';
     import type { NodeViewProps } from '@tiptap/core';
-    import { v4 as uuidv4 } from 'uuid';
+    import { v4 as uuid } from 'uuid';
     import ListItemHoverActions from './mod/AIListItemHoverActions.svelte';
     import AIAnswersList from './mod/AIAnswersList.svelte';
-    import { hoveredListItemId } from '../../stores/hoveredListItem';
+    import { hoveredListItemId, mouseOutTimeout } from '../../stores/hoveredListItem';
     import { getAIAnswers } from '../types/AIList';
     import type { AIPoint } from '../types/AIList';
 
-    let { node, updateAttributes, extension }: NodeViewProps = $props();
-    const itemId = `task-${uuidv4()}`;
+    let { node, updateAttributes, editor, deleteNode }: NodeViewProps = $props();
+    const aiAnswers = $derived(getAIAnswers(node["attrs"]["aiAnswers"]));
+    const itemId = $derived((node["attrs"]["id"] as string | undefined) ?? "");
+
     let contentHostElement = $state<HTMLDivElement | null>(null);
     let answersContainerElement = $state<HTMLDivElement | null>(null);
-    const aiAnswers = $derived(getAIAnswers(node["attrs"]["aiAnswers"]));
+    
     const simulatedAiAnswers: AIPoint["aiAnswers"] = [
         {
             playMode: "run-all",
@@ -62,16 +64,84 @@
         updateAttributes({ checked: target.checked });
     }
 
-    function handleMouseEnter() {
+    function isRelatedToOwnAnswersArea(event: MouseEvent) {
+        if (!itemId) {
+            return false;
+        }
+
+        const relatedElement = event.relatedTarget;
+        if (!(relatedElement instanceof Element)) {
+            return false;
+        }
+
+        const answersRoot = relatedElement.closest('[data-ai-answers-root="true"]');
+        return answersRoot?.getAttribute('data-list-item-id') === itemId;
+    }
+
+    function isPointerWithinOwnAnswersArea(event: MouseEvent) {
+        if (!itemId) {
+            return false;
+        }
+
+        const pointedElement = document.elementFromPoint(event.clientX, event.clientY);
+        if (!(pointedElement instanceof Element)) {
+            return false;
+        }
+
+        const answersRoot = pointedElement.closest('[data-ai-answers-root="true"]');
+        return answersRoot?.getAttribute('data-list-item-id') === itemId;
+    }
+
+    function handleMouseEnter(event: MouseEvent) {
+        if (isRelatedToOwnAnswersArea(event) || isPointerWithinOwnAnswersArea(event)) {
+            return;
+        }
+
+        mouseOutTimeout.clearTimeout();
         hoveredListItemId.set(itemId);
     }
 
-    function handleMouseLeave() {
-        hoveredListItemId.update((current) => (current === itemId ? null : current));
+    function handleMouseLeave(event: MouseEvent) {
+        if (isRelatedToOwnAnswersArea(event) || isPointerWithinOwnAnswersArea(event)) {
+            return;
+        }
+
+        mouseOutTimeout.setTimeout();
     }
 
     function handleCheckBoxClick(ev: Event) {
         ev.preventDefault();
+    }
+
+    function onDeletePoint() {
+        mouseOutTimeout.clearTimeout();
+        hoveredListItemId.set(null);
+        deleteNode();
+    }
+
+    function isUniqueItemId(id: string) {
+        let occurrences = 0;
+
+        editor.state.doc.descendants((docNode) => {
+            const isTargetNodeType = docNode.type.name === 'listItem' || docNode.type.name === 'taskItem';
+            if (!isTargetNodeType) {
+                return true;
+            }
+
+            if ((docNode.attrs.id as string | undefined) === id) {
+                occurrences += 1;
+            }
+
+            return true;
+        });
+
+        return occurrences === 1;
+    }
+
+    function ensureUniqueItemId() {
+        if (!itemId || !isUniqueItemId(itemId)) {
+            updateAttributes({ id: `listItem-${uuid()}` });
+        }
     }
 
     function resolveContentElement() {
@@ -114,6 +184,10 @@
             contentElement.appendChild(answersContainerElement);
         }
     }
+
+    $effect(() => {
+        ensureUniqueItemId();
+    });
 
     $effect(() => {
         void visibleAiAnswers;
@@ -161,6 +235,7 @@
         visible={$hoveredListItemId === itemId}
         {itemId}
         aiAnswers={visibleAiAnswers}
+        onDeletePoint={onDeletePoint}
     />
     <label class="flex items-center mt-1 cursor-pointer">
         <input 
@@ -179,7 +254,7 @@
 
         {#if visibleAiAnswers !== null && visibleAiAnswers.length > 0}
             <div class="mt-2" contenteditable="false" bind:this={answersContainerElement}>
-                <AIAnswersList aiAnswers={visibleAiAnswers} />
+                <AIAnswersList aiAnswers={visibleAiAnswers} {itemId} />
             </div>
         {/if}
     </div>

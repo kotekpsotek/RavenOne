@@ -14,17 +14,16 @@
 }
 
 /* Dark mode support */
-:global([data-theme="dark"]) .tiptap-editor,
-:global([data-theme="black"]) .tiptap-editor,
-:global(.dark) .tiptap-editor {
+[data-theme="dark"] .tiptap-editor,
+[data-theme="black"] .tiptap-editor,
+.dark .tiptap-editor {
     @apply prose-invert;
 }
 
-.tiptap-editor :global(.tiptap) {
+.tiptap-editor .tiptap {
     @apply outline-none min-h-[40vh];
 }
 
-<<<<<<< Updated upstream
 .document-title {
     margin-bottom: 0px !important;
 }
@@ -43,16 +42,12 @@
   pointer-events: none;
 }
 
-=======
-
 .tiptap * {
     margin-top: 0px !important;
     margin-bottom: 0px !important;
 }
-
->>>>>>> Stashed changes
 /* Specific TipTap Styles */
-.tiptap-editor :global(.tiptap.is-editor-empty p.is-empty::before) {
+.tiptap-editor .tiptap.is-editor-empty p.is-empty::before {
     @apply text-base-content/25 float-left h-0 pointer-events-none;
     content: "Time for your curiosity...";
 }
@@ -91,35 +86,102 @@
 }
 
 /* Task List Styling */
-.tiptap-editor :global(.tiptap ul[data-type="taskList"]) {
+.tiptap-editor .tiptap ul[data-type="taskList"] {
     @apply list-none p-0;
 }
 
-.tiptap-editor :global(.tiptap ul[data-type="taskList"] li) {
+.tiptap-editor .tiptap ol[data-type="aiTaskList"] {
+    list-style: none !important;
+    padding-left: 0 !important;
+    margin-left: 0 !important;
+}
+
+.tiptap-editor .tiptap ul[data-type="taskList"] li {
     @apply flex items-start gap-4 my-2;
 }
 
-.tiptap-editor :global(.tiptap ul[data-type="taskList"] input[type="checkbox"]) {
+.tiptap-editor .tiptap li[data-type="taskItem"] {
+    list-style: none !important;
+    display: flex !important;
+    align-items: flex-start !important;
+    gap: 0.5rem !important;
+}
+
+.tiptap-editor .tiptap li[data-type="standardTaskItem"],
+.tiptap-editor .tiptap .custom-standard-task-item {
+    list-style: none !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 0.5rem !important;
+}
+
+.tiptap-editor .tiptap li[data-type="taskItem"] > div,
+.tiptap-editor .tiptap li[data-type="standardTaskItem"] > div {
+    flex: 1 1 0% !important;
+    min-width: 0 !important;
+}
+
+.tiptap-editor .tiptap li[data-type="standardTaskItem"] > div > p,
+.tiptap-editor .tiptap li[data-type="standardTaskItem"] > div > p:first-child {
+    margin: 0 !important;
+    min-height: 1.5rem;
+}
+
+.tiptap-editor .tiptap li[data-type="taskItem"]::marker,
+.tiptap-editor .tiptap li[data-type="standardTaskItem"]::marker,
+.tiptap-editor .tiptap ul[data-type="taskList"] > li::marker,
+.tiptap-editor .tiptap ul[data-type="standardTaskList"] > li::marker,
+.tiptap-editor .tiptap ol[data-type="aiTaskList"] > li::marker {
+    content: '' !important;
+    font-size: 0 !important;
+}
+
+.tiptap-editor .tiptap ul[data-type="taskList"] input[type="checkbox"] {
     @apply checkbox checkbox-primary checkbox-sm mt-1;
 }
 
-.tiptap-editor :global(.tiptap ul ul) {
+.tiptap-editor .tiptap ul[data-type="standardTaskList"] {
+    @apply list-none p-0;
+}
+
+.tiptap-editor .tiptap ul[data-type="standardTaskList"] li {
+    list-style: none !important;
+}
+
+.tiptap-editor .tiptap .custom-standard-task-item > div > [data-node-view-content] > p {
+    margin: 0 !important;
+}
+
+.tiptap-editor .tiptap ul[data-type="standardTaskList"] > li::marker,
+.tiptap-editor .tiptap li[data-type="standardTaskItem"]::marker {
+    content: '';
+    font-size: 0;
+}
+
+.tiptap-editor .tiptap .custom-task-list-wrapper ul,
+.tiptap-editor .tiptap .custom-task-item {
+    list-style: none !important;
+    padding-left: 0 !important;
+    margin-left: 0 !important;
+}
+
+.tiptap-editor .tiptap ul ul:not([data-type="taskList"]):not([data-type="standardTaskList"]) {
     list-style-type: circle;
 }
 
-.tiptap-editor :global(.tiptap ul ul ul) {
+.tiptap-editor .tiptap ul ul ul:not([data-type="taskList"]):not([data-type="standardTaskList"]) {
     list-style-type: square;
 }
 
-.tiptap-editor :global(.tiptap ol ol) {
+.tiptap-editor .tiptap ol ol {
     list-style-type: lower-alpha;
 }
 
-.tiptap-editor :global(.tiptap ol ol ol) {
+.tiptap-editor .tiptap ol ol ol {
     list-style-type: lower-roman;
 }
 
 /* Focus highlighting */
-.tiptap-editor:global(.ProseMirror-focused) {
+.tiptap-editor .ProseMirror-focused {
     @apply ring-0 outline-none;
 }

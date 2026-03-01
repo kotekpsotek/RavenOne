@@ -62,6 +62,13 @@ interface AIAnswer {
 export interface AIPoint {
     /** Is the list of answers from the oldest to the newest */
     aiAnswers: AIAnswer[];
+    /** Is the unique id for each point */
+    id: string;
+}
+
+export interface AIList {
+    /** It's the unique id assigned to each list */
+    id: string;
 }
 
 export function getPlayModeLabel(playMode: PlayMode) {

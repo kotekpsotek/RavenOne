@@ -1,3 +1,5 @@
+import type { PlayMode } from "$lib/editorComponents/types/AIList";
+import type { AI } from "@ravenlens/shared";
 import { writable } from "svelte/store";
 
 export interface File {
@@ -13,9 +15,20 @@ export interface File {
     subentries?: File[];
 }
 
+// Entries
 export const entriesList = writable<File[]>([]);
 
+// File
 export const selectedFile = writable<File | undefined>(undefined);
+
+export type BrowserToolsUnion = "Web search";
+export const availableTools = ["Web search"] as BrowserToolsUnion[];
+
+// File config
+export const selectedModel = writable<AI.RavenLensAvaiableAIModel | undefined>(undefined);
+export const playMode = writable<PlayMode>("run-non-runned");
+export const selectedTools = writable<string[]>([]);
+
 
 export const isSearchModalOpen = writable(false);
 

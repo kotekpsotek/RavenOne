@@ -13,6 +13,9 @@ export const AITaskItem = TaskItem.configure({
         return {
             aiAnswers: {
                 default: "[]"
+            },
+            id: {
+                default: null
             }
         } as Record<keyof AIPoint, Attribute>;
     },
