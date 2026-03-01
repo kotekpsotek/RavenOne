@@ -57,6 +57,7 @@ export async function play(config: PlayConfig) {
     return startFilePlay({
         fileId: config.document.id,
         itemId: config.itemId,
+        content: config.document.content,
         simulationDurationMs: 5_000,
         metadata: {
             mode: config.mode,
@@ -67,8 +68,8 @@ export async function play(config: PlayConfig) {
     });
 }
 
-export async function stopPlaying(fileId: string) {
-    return stopFilePlay(fileId);
+export async function stopPlaying(payload: { fileId: string; itemId?: string }) {
+    return stopFilePlay(payload);
 }
 
 export async function getPlayStateForFile(fileId: string) {

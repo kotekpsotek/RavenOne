@@ -2,13 +2,14 @@
     import { browser } from '$app/environment';
     import Icon from '@iconify/svelte';
     import type { AIPoint, ContextSpecificationPayload, PlayMode } from '../../types/AIList';
-    import { play } from '$lib/playMode';
+    import { play, stopPlaying } from '$lib/playMode';
     import { playMode, selectedFile, selectedTools } from '$lib/stores/files';
     import { selectedModel } from '$lib/stores/files';
     import type { AI } from '@ravenlens/shared';
     import { selectedMcpServers } from '$lib/stores/mcpConfig';
     import { contextSpecification } from '$lib/stores/contextSpec';
     import { isPlayingItems } from '$lib/stores/playMode';
+    import { editor } from '$lib/stores/editor';
     import ContextSelectionModal from '$lib/modals/ContextSelectionModal.svelte';
     import PlayModeDropdownContent from '$lib/components/PlayModeDropdownContent.svelte';
 
@@ -176,8 +177,6 @@
     }
 
     /** Play Mode */
-    // TODO: Handle the Play according to selected playmode where it's one of type for `PlayMode`
-    // TODO: Add backend socket.io server handling for onPlay
     async function onPlay(event: MouseEvent) {
         event.preventDefault();
         event.stopPropagation();
@@ -199,6 +198,19 @@
             return;
         }
 
+        if (isPlayingItems.isItemPlaying(itemId)) {
+            try {
+                await stopPlaying({
+                    fileId: $selectedFile.id,
+                    itemId
+                });
+            } finally {
+                isPlayingItems.unsetItemPlaying(itemId);
+            }
+
+            return;
+        }
+
         const hasSetState = isPlayingItems.setUpItemPlaying(itemId);
         if (!hasSetState) {
             return;
@@ -207,7 +219,10 @@
         // Plays for specific item since `itemId` property is specified
         try {
             await play({
-                document: $selectedFile,
+                document: {
+                    ...$selectedFile,
+                    content: $editor?.getHTML() ?? $selectedFile.content ?? ''
+                },
                 itemId,
                 mode: selectedItemPlayMode,
                 model: selectedItemModel,
@@ -215,16 +230,28 @@
                 mcpServers: selectedItemMcpServers,
                 contextSpec: getEffectivePointContextPayload()
             });
-        } finally {
+        } catch {
             isPlayingItems.unsetItemPlaying(itemId);
         }
     }
 
-    function onStop(event: MouseEvent) {
+    async function onStop(event: MouseEvent) {
         event.preventDefault();
         event.stopPropagation();
 
-        isPlayingItems.unsetItemPlaying(itemId);
+        if (!$selectedFile) {
+            isPlayingItems.unsetItemPlaying(itemId);
+            return;
+        }
+
+        try {
+            await stopPlaying({
+                fileId: $selectedFile.id,
+                itemId
+            });
+        } finally {
+            isPlayingItems.unsetItemPlaying(itemId);
+        }
     }
 </script>
 

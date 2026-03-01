@@ -58,8 +58,7 @@ export async function startFilePlay(payload: PlayStartRequestPayload) {
     return emitWithAck<PlayFileState>(PLAY_SOCKET_EVENTS.start, payload);
 }
 
-export async function stopFilePlay(fileId: string) {
-    const payload: PlayStopRequestPayload = { fileId };
+export async function stopFilePlay(payload: PlayStopRequestPayload) {
     return emitWithAck<PlayFileState>(PLAY_SOCKET_EVENTS.stop, payload);
 }
 

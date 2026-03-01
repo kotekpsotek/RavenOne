@@ -12,6 +12,9 @@ export const PLAY_SOCKET_EVENTS = {
 export interface PlayFileState {
     fileId: string;
     isPlaying: boolean;
+    itemId?: string;
+    content?: string;
+    metadata?: Record<string, unknown>;
     updatedAt: number;
     updatedBy: string;
 }
@@ -23,10 +26,12 @@ export interface PlayStateRequestPayload {
 export interface PlayStartRequestPayload {
     fileId: string;
     itemId?: string;
+    content?: string;
     simulationDurationMs?: number;
     metadata?: Record<string, unknown>;
 }
 
 export interface PlayStopRequestPayload {
     fileId: string;
+    itemId?: string;
 }

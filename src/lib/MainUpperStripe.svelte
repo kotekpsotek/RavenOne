@@ -359,9 +359,15 @@
         isPlayingDocuments.unsetFile(seletedFileLocal);
     }
 
-    function onStopPlaying() {
+    async function onStopPlaying() {
         if (!$selectedFile) {
             return;
+        }
+
+        try {
+            await stopPlaying({ fileId: $selectedFile.id });
+        } catch {
+            // noop
         }
         
         isPlayingDocuments.unsetFile($selectedFile);
