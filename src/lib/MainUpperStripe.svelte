@@ -16,18 +16,9 @@
     import McpSelectionModal from "./modals/McpSelectionModal.svelte";
     import { UI } from "@ravenlens/frontend";
     import ContextSelectionModal from "./modals/ContextSelectionModal.svelte";
+    import PlayModeDropdownContent from "./components/PlayModeDropdownContent.svelte";
 
     type DropdownName = "model-settings" | "mcp-tools" | "play-settings" | "share";
-
-    const playModes: { label: string; value: PlayMode }[] = [
-        { label: "Run non-runned", value: "run-non-runned" },
-        { label: "Run all", value: "run-all" }
-    ];
-
-    const playModeIcons: Record<PlayMode, string> = {
-        "run-non-runned": "material-symbols:play-arrow-outline-rounded",
-        "run-all": "material-symbols:playlist-play-rounded"
-    };
 
     const initialModelKey = avaiableModels[0]?.model ?? "";
 
@@ -240,6 +231,10 @@
         if (openDropdown === "share") {
             openDropdown = undefined;
         }
+    }
+
+    function onSelectPlayMode(mode: PlayMode) {
+        $playMode = mode;
     }
 
     function openMcpConfigurationEditor() {
@@ -480,30 +475,11 @@
                                     <Icon icon="material-symbols:settings-outline-rounded" class="w-3 h-3" />
                                 </summary>
 
-                                <div class="dropdown-content p-3 shadow bg-base-200 rounded-box z-[20] w-64 space-y-2">
-                                    <p class="text-xs uppercase tracking-wide opacity-70">Mode</p>
-                                    {#each playModes as mode (mode.value)}
-                                        <button
-                                            type="button"
-                                            class="btn btn-sm justify-start w-full"
-                                            class:btn-primary={$playMode === mode.value}
-                                            class:btn-ghost={$playMode !== mode.value}
-                                            onclick={(event) => {
-                                                event.preventDefault();
-                                                event.stopPropagation();
-                                                $playMode = mode.value;
-                                            }}
-                                        >
-                                            <Icon
-                                                icon={$playMode === mode.value
-                                                    ? "material-symbols:check-box-rounded"
-                                                    : "material-symbols:check-box-outline-blank-rounded"}
-                                                class="w-4 h-4"
-                                            />
-                                            <Icon icon={playModeIcons[mode.value]} class="w-4 h-4" />
-                                            <span>{mode.label}</span>
-                                        </button>
-                                    {/each}
+                                <div class="dropdown-content z-[20]">
+                                    <PlayModeDropdownContent
+                                        selectedPlayMode={$playMode}
+                                        onSelect={onSelectPlayMode}
+                                    />
                                 </div>
                             </details>
                         {/if}

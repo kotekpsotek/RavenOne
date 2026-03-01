@@ -10,17 +10,32 @@
     import { contextSpecification } from '$lib/stores/contextSpec';
     import { isPlayingItems } from '$lib/stores/playMode';
     import ContextSelectionModal from '$lib/modals/ContextSelectionModal.svelte';
+    import PlayModeDropdownContent from '$lib/components/PlayModeDropdownContent.svelte';
 
-    let { visible = false, itemId, aiAnswers }: { visible?: boolean, itemId: string, aiAnswers: AIPoint["aiAnswers"] | null } = $props();
+    let {
+        visible = false,
+        itemId,
+        aiAnswers,
+        onDeletePoint
+    }: {
+        visible?: boolean,
+        itemId: string,
+        aiAnswers: AIPoint["aiAnswers"] | null,
+        onDeletePoint?: () => void
+    } = $props();
 
     const POINT_CONTEXT_STORAGE_KEY_PREFIX = 'ravenone:point-context:';
 
     // Setup Local Item state
     const selectedItemModel = $state<AI.RavenLensAvaiableAIModel | undefined>($selectedModel);
-    const selectedItemPlayMode = $state<PlayMode>($playMode);
+    let selectedItemPlayMode = $state<PlayMode>($playMode);
     const availableItemTools = $state($selectedTools);
     const selectedItemMcpServers = $state($selectedMcpServers);
     let isPointContextModalOpen = $state(false);
+    let isPointPlayModeModalOpen = $state(false);
+    let pointPlayModeDropdownPosition = $state<{ x: number; y: number } | null>(null);
+    let isPointActionsMenuOpen = $state(false);
+    let pointActionsDropdownPosition = $state<{ x: number; y: number } | null>(null);
     let pointContextSpecDraft = $state<ContextSpecificationPayload>({
         desktopFiles: [],
         editorFiles: [],
@@ -94,6 +109,72 @@
         isPointContextModalOpen = false;
     }
 
+    function onOpenPointPlayModeModal(event: MouseEvent) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        closePointActionsDropdown();
+        pointPlayModeDropdownPosition = {
+            x: event.clientX,
+            y: event.clientY
+        };
+        isPointPlayModeModalOpen = true;
+    }
+
+    function onSavePointPlayMode(mode: PlayMode) {
+        selectedItemPlayMode = mode;
+        isPointPlayModeModalOpen = false;
+        pointPlayModeDropdownPosition = null;
+    }
+
+    function closePointPlayModeDropdown() {
+        isPointPlayModeModalOpen = false;
+        pointPlayModeDropdownPosition = null;
+    }
+
+    function onOpenPointActionsMenu(event: MouseEvent) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        closePointPlayModeDropdown();
+        pointActionsDropdownPosition = {
+            x: event.clientX,
+            y: event.clientY
+        };
+        isPointActionsMenuOpen = true;
+    }
+
+    function closePointActionsDropdown() {
+        isPointActionsMenuOpen = false;
+        pointActionsDropdownPosition = null;
+    }
+
+    function onDeletePointClick(event: MouseEvent) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        closePointActionsDropdown();
+        if (browser) {
+            localStorage.removeItem(getPointContextStorageKey(itemId));
+        }
+
+        onDeletePoint?.();
+    }
+
+    function onWindowClick(event: MouseEvent) {
+        if (!isPointPlayModeModalOpen && !isPointActionsMenuOpen) {
+            return;
+        }
+
+        const target = event.target as HTMLElement | null;
+        if (target?.closest('.point-play-settings-dropdown') || target?.closest('.point-actions-dropdown')) {
+            return;
+        }
+
+        closePointPlayModeDropdown();
+        closePointActionsDropdown();
+    }
+
     /** Play Mode */
     // TODO: Handle the Play according to selected playmode where it's one of type for `PlayMode`
     // TODO: Add backend socket.io server handling for onPlay
@@ -147,6 +228,8 @@
     }
 </script>
 
+<svelte:window onclick={onWindowClick} />
+
 <div
     class="list-item-hover-actions absolute left-[-3rem] top-[-2rem] z-[70] flex items-center gap-1 rounded-md border border-base-300 bg-base-100 px-1 py-0.5 shadow-md transition-opacity duration-150 {visible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}"
     contenteditable="false"
@@ -165,9 +248,10 @@
         {:else}
             <button 
                 type="button"
-                class="btn btn-ghost btn-xs min-h-0 h-6 w-6 p-0 text-base-content/70 hover:text-base-content"
+                class="play-point btn btn-ghost btn-xs min-h-0 h-6 w-6 p-0 text-base-content/70 hover:text-base-content"
                 aria-label="Run action"
                 onclick={onPlay}
+                oncontextmenu={onOpenPointPlayModeModal}
             >
                 <Icon icon="mdi:play" width="14" height="14" />
             </button>
@@ -185,7 +269,7 @@
     </button> -->
     
     <!-- TODO: Display the options e.g: remove the point with answers -->
-    <button type="button" class="btn btn-ghost btn-xs min-h-0 h-6 w-6 p-0 text-base-content/70 hover:text-base-content" aria-label="Menu action">
+    <button type="button" class="btn btn-ghost btn-xs min-h-0 h-6 w-6 p-0 text-base-content/70 hover:text-base-content" aria-label="Menu action" onclick={onOpenPointActionsMenu}>
         <Icon icon="mdi:menu" width="14" height="14" />
     </button>
 </div>
@@ -197,4 +281,67 @@
         onSave={onSavePointContext}
         infoMessage="You can specify the independent context only for this point"
     />
+{/if}
+
+{#if isPointPlayModeModalOpen}
+    {#if pointPlayModeDropdownPosition}
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div
+            class="point-play-settings-dropdown dropdown dropdown-open fixed z-[80]"
+            style={`left: ${pointPlayModeDropdownPosition.x}px; top: ${pointPlayModeDropdownPosition.y}px;`}
+            contenteditable="false"
+            onclick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+            }}
+            onmousedown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+            }}
+            oncontextmenu={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+            }}
+        >
+            <div class="dropdown-content z-[80]">
+                <PlayModeDropdownContent
+                    selectedPlayMode={selectedItemPlayMode}
+                    onSelect={onSavePointPlayMode}
+                />
+            </div>
+        </div>
+    {/if}
+{/if}
+
+{#if isPointActionsMenuOpen}
+    {#if pointActionsDropdownPosition}
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div
+            class="point-actions-dropdown dropdown dropdown-open fixed z-[80]"
+            style={`left: ${pointActionsDropdownPosition.x}px; top: ${pointActionsDropdownPosition.y}px;`}
+            contenteditable="false"
+            onclick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+            }}
+            oncontextmenu={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+            }}
+        >
+            <div class="dropdown-content z-[80] min-w-40 rounded-box border border-base-300 bg-base-100 p-1 shadow-md">
+                <button
+                    type="button"
+                    class="delete-btn btn btn-ghost w-full btn-sm justify-start gap-2"
+                    aria-label="Delete point"
+                    onclick={onDeletePointClick}
+                >
+                    <Icon icon="mdi:trash-can-outline" width="16" height="16" />
+                    <span>Clear Content</span>
+                </button>
+            </div>
+        </div>
+    {/if}
 {/if}

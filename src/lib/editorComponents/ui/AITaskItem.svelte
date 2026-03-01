@@ -6,11 +6,11 @@
     import { v4 as uuid } from 'uuid';
     import ListItemHoverActions from './mod/AIListItemHoverActions.svelte';
     import AIAnswersList from './mod/AIAnswersList.svelte';
-    import { hoveredListItemId } from '../../stores/hoveredListItem';
+    import { hoveredListItemId, mouseOutTimeout } from '../../stores/hoveredListItem';
     import { getAIAnswers } from '../types/AIList';
     import type { AIPoint } from '../types/AIList';
 
-    let { node, updateAttributes, extension, editor }: NodeViewProps = $props();
+    let { node, updateAttributes, editor, deleteNode }: NodeViewProps = $props();
     const aiAnswers = $derived(getAIAnswers(node["attrs"]["aiAnswers"]));
     const itemId = $derived((node["attrs"]["id"] as string | undefined) ?? "");
 
@@ -65,15 +65,22 @@
     }
 
     function handleMouseEnter() {
+        mouseOutTimeout.clearTimeout();
         hoveredListItemId.set(itemId);
     }
 
     function handleMouseLeave() {
-        hoveredListItemId.update((current) => (current === itemId ? null : current));
+        mouseOutTimeout.setTimeout();
     }
 
     function handleCheckBoxClick(ev: Event) {
         ev.preventDefault();
+    }
+
+    function onDeletePoint() {
+        mouseOutTimeout.clearTimeout();
+        hoveredListItemId.set(null);
+        deleteNode();
     }
 
     function isUniqueItemId(id: string) {
@@ -192,6 +199,7 @@
         visible={$hoveredListItemId === itemId}
         {itemId}
         aiAnswers={visibleAiAnswers}
+        onDeletePoint={onDeletePoint}
     />
     <label class="flex items-center mt-1 cursor-pointer">
         <input 

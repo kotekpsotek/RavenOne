@@ -10,7 +10,7 @@
     import { getAIAnswers } from '../types/AIList';
     import type { AIPoint } from '../types/AIList';
 
-    let { node, updateAttributes, extension, editor }: NodeViewProps = $props();
+    let { node, updateAttributes, editor, deleteNode }: NodeViewProps = $props();
     const aiAnswers = $derived(getAIAnswers(node["attrs"]["aiAnswers"]));
     const itemId = $derived((node["attrs"]["id"] as string | undefined) ?? "");
 
@@ -66,6 +66,12 @@
 
     function handleMouseLeave() {
         mouseOutTimeout.setTimeout();
+    }
+
+    function onDeletePoint() {
+        mouseOutTimeout.clearTimeout();
+        hoveredListItemId.set(null);
+        deleteNode();
     }
 
     function isUniqueItemId(id: string) {
@@ -182,6 +188,7 @@
         visible={$hoveredListItemId === itemId}
         {itemId}
         aiAnswers={visibleAiAnswers}
+        onDeletePoint={onDeletePoint}
     />
 
     <div bind:this={contentHostElement}>
