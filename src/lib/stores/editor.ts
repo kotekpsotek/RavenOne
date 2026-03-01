@@ -58,8 +58,6 @@ export const editor = (() => {
                             bulletList: false,
                             orderedList: false,
                             listItem: false,
-                            // taskList: false,
-                            taskItem: false,
                         }),
                         FileHeading,
                         HeadingStartDocument,

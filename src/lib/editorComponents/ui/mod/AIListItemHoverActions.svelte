@@ -1,6 +1,7 @@
 <script lang="ts">
+    import { browser } from '$app/environment';
     import Icon from '@iconify/svelte';
-    import type { AIPoint, PlayMode } from '../../types/AIList';
+    import type { AIPoint, ContextSpecificationPayload, PlayMode } from '../../types/AIList';
     import { play } from '$lib/playMode';
     import { playMode, selectedFile, selectedTools } from '$lib/stores/files';
     import { selectedModel } from '$lib/stores/files';
@@ -8,15 +9,90 @@
     import { selectedMcpServers } from '$lib/stores/mcpConfig';
     import { contextSpecification } from '$lib/stores/contextSpec';
     import { isPlayingItems } from '$lib/stores/playMode';
+    import ContextSelectionModal from '$lib/modals/ContextSelectionModal.svelte';
 
     let { visible = false, itemId, aiAnswers }: { visible?: boolean, itemId: string, aiAnswers: AIPoint["aiAnswers"] | null } = $props();
+
+    const POINT_CONTEXT_STORAGE_KEY_PREFIX = 'ravenone:point-context:';
 
     // Setup Local Item state
     const selectedItemModel = $state<AI.RavenLensAvaiableAIModel | undefined>($selectedModel);
     const selectedItemPlayMode = $state<PlayMode>($playMode);
     const availableItemTools = $state($selectedTools);
     const selectedItemMcpServers = $state($selectedMcpServers);
-    const contextItemSpec = $state($contextSpecification);
+    let isPointContextModalOpen = $state(false);
+    let pointContextSpecDraft = $state<ContextSpecificationPayload>({
+        desktopFiles: [],
+        editorFiles: [],
+        networkUrls: []
+    });
+
+    function getPointContextStorageKey(currentItemId: string) {
+        return `${POINT_CONTEXT_STORAGE_KEY_PREFIX}${currentItemId}`;
+    }
+
+    function cloneContextPayload(payload: ContextSpecificationPayload): ContextSpecificationPayload {
+        return {
+            desktopFiles: [...payload.desktopFiles],
+            editorFiles: [...payload.editorFiles],
+            networkUrls: [...payload.networkUrls]
+        };
+    }
+
+    function isContextSpecificationPayload(value: unknown): value is ContextSpecificationPayload {
+        return Boolean(
+            value &&
+            typeof value === 'object' &&
+            Array.isArray((value as ContextSpecificationPayload).desktopFiles) &&
+            Array.isArray((value as ContextSpecificationPayload).editorFiles) &&
+            Array.isArray((value as ContextSpecificationPayload).networkUrls)
+        );
+    }
+
+    function readPointContextPayload(currentItemId: string): ContextSpecificationPayload | null {
+        if (!browser) {
+            return null;
+        }
+
+        const rawPayload = localStorage.getItem(getPointContextStorageKey(currentItemId));
+        if (!rawPayload) {
+            return null;
+        }
+
+        try {
+            const parsedPayload = JSON.parse(rawPayload) as unknown;
+
+            if (isContextSpecificationPayload(parsedPayload)) {
+                return cloneContextPayload(parsedPayload);
+            }
+        } catch (error) {
+            console.error(error);
+        }
+
+        return null;
+    }
+
+    function getEffectivePointContextPayload() {
+        return readPointContextPayload(itemId) ?? cloneContextPayload($contextSpecification);
+    }
+
+    function onOpenPointContextModal(event: MouseEvent) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        pointContextSpecDraft = getEffectivePointContextPayload();
+        isPointContextModalOpen = true;
+    }
+
+    function onSavePointContext(payload: ContextSpecificationPayload) {
+        pointContextSpecDraft = cloneContextPayload(payload);
+
+        if (browser) {
+            localStorage.setItem(getPointContextStorageKey(itemId), JSON.stringify(pointContextSpecDraft));
+        }
+
+        isPointContextModalOpen = false;
+    }
 
     /** Play Mode */
     // TODO: Handle the Play according to selected playmode where it's one of type for `PlayMode`
@@ -56,7 +132,7 @@
                 model: selectedItemModel,
                 tools: availableItemTools,
                 mcpServers: selectedItemMcpServers,
-                contextSpec: contextItemSpec
+                contextSpec: getEffectivePointContextPayload()
             });
         } finally {
             isPlayingItems.unsetItemPlaying(itemId);
@@ -99,7 +175,7 @@
     {/key}
 
     <!-- Context addition to the specific element -->
-    <button type="button" class="btn btn-ghost btn-xs min-h-0 h-6 w-6 p-0 text-base-content/70 hover:text-base-content" aria-label="Comment action">
+    <button type="button" class="btn btn-ghost btn-xs min-h-0 h-6 w-6 p-0 text-base-content/70 hover:text-base-content" aria-label="Comment action" onclick={onOpenPointContextModal}>
         <Icon icon="mdi:message-text-outline" width="14" height="14" />
     </button>
     
@@ -113,3 +189,12 @@
         <Icon icon="mdi:menu" width="14" height="14" />
     </button>
 </div>
+
+{#if isPointContextModalOpen}
+    <ContextSelectionModal
+        bind:open={isPointContextModalOpen}
+        contextPayload={pointContextSpecDraft}
+        onSave={onSavePointContext}
+        infoMessage="You can specify the independent context only for this point"
+    />
+{/if}

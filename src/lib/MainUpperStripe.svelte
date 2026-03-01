@@ -2,18 +2,20 @@
     import Icon from "@iconify/svelte";
     import CodeMirror from "svelte-codemirror-editor";
     import { json } from "@codemirror/lang-json";
-    import { UI } from "@ravenlens/frontend";
     import { avaiableModels, getProviderIconifyIcon } from "./config/models";
     import { availableTools, playMode, selectedFile, selectedTools } from "./stores/files";
     import { selectedModel } from "./stores/files";
     import { contextSpecification } from "./stores/contextSpec";
-    import { mcpConfigurationStore, saveMcpConfiguration, selectedMcpServers, type McpConfiguration, type McpServerConfig, type McpValidationResult } from "./stores/mcpConfig";
+    import { mcpConfigurationStore, selectedMcpServers } from "./stores/mcpConfig";
     import { alertState } from "./utils/alert";
-    import type { ContextDeviceFile, ContextEditorFile, ContextNetworkURL, ContextSpecificationPayload, PlayMode } from "./editorComponents/types/AIList";
+    import type { ContextSpecificationPayload, PlayMode } from "./editorComponents/types/AIList";
     import { hasFileSomePlayableNode, play, type PlayConfig } from "./playMode";
     import { editor } from "./stores/editor";
     import { isPlayingDocuments } from "./stores/playMode";
     import { get } from "svelte/store";
+    import McpSelectionModal from "./modals/McpSelectionModal.svelte";
+    import { UI } from "@ravenlens/frontend";
+    import ContextSelectionModal from "./modals/ContextSelectionModal.svelte";
 
     type DropdownName = "model-settings" | "mcp-tools" | "play-settings" | "share";
 
@@ -39,15 +41,23 @@
 
     let openDropdown = $state<DropdownName | undefined>(undefined);
 
-    let desktopContextFiles = $state<ContextDeviceFile[]>([]);
-    let editorContextFiles = $state<ContextEditorFile[]>([]);
-    let networkContextUrls = $state<ContextNetworkURL[]>([]);
-    let networkUrlDraft = $state("");
-
     let isContextModalOpen = $state(false);
     let isMcpConfigModalOpen = $state(false);
+    let contextModalPayloadDraft = $state<ContextSpecificationPayload>({
+        desktopFiles: [],
+        editorFiles: [],
+        networkUrls: []
+    });
     const shareUrl = $derived(getShareUrl());
 
+    function cloneContextPayload(payload: ContextSpecificationPayload): ContextSpecificationPayload {
+        return {
+            desktopFiles: [...payload.desktopFiles],
+            editorFiles: [...payload.editorFiles],
+            networkUrls: [...payload.networkUrls]
+        };
+    }
+    
     const getModelByKey = (key: string) =>
         avaiableModels.find((model) => model.model === key);
 
@@ -96,140 +106,6 @@
         };
     }
 
-    function parseContextSpecification(rawValue: string): ContextSpecificationPayload {
-        if (!rawValue) {
-            return {
-                desktopFiles: [],
-                editorFiles: [],
-                networkUrls: []
-            };
-        }
-
-        try {
-            const parsed = JSON.parse(rawValue) as Partial<ContextSpecificationPayload>;
-
-            return {
-                desktopFiles: Array.isArray(parsed.desktopFiles) ? parsed.desktopFiles : [],
-                editorFiles: Array.isArray(parsed.editorFiles) ? parsed.editorFiles : [],
-                networkUrls: Array.isArray(parsed.networkUrls) ? parsed.networkUrls : []
-            };
-        } catch {
-            return {
-                desktopFiles: [],
-                editorFiles: [],
-                networkUrls: []
-            };
-        }
-    }
-
-    async function fileToDataUrl(file: globalThis.File) {
-        return await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(String(reader.result ?? ""));
-            reader.onerror = () => reject(new Error("Failed to read file"));
-            reader.readAsDataURL(file);
-        });
-    }
-
-    async function onDesktopFilesChange(event: Event) {
-        const target = event.currentTarget as HTMLInputElement;
-        const fileList = Array.from(target.files ?? []);
-        if (!fileList.length) {
-            return;
-        }
-
-        const locationHint = target.value || "Desktop";
-
-        const filesToAdd = await Promise.all(
-            fileList.map(async (file) => {
-                const isImage = file.type.startsWith("image/");
-
-                return {
-                    id: `${file.name}-${file.lastModified}-${file.size}`,
-                    name: file.name,
-                    type: file.type || "application/octet-stream",
-                    size: file.size,
-                    locationHint,
-                    previewDataUrl: isImage ? await fileToDataUrl(file) : undefined
-                } satisfies ContextDeviceFile;
-            })
-        );
-
-        desktopContextFiles = [...desktopContextFiles, ...filesToAdd].filter(
-            (entry, index, list) => list.findIndex((check) => check.id === entry.id) === index
-        );
-
-        target.value = "";
-    }
-
-    function removeDesktopContextFile(id: string) {
-        desktopContextFiles = desktopContextFiles.filter((entry) => entry.id !== id);
-    }
-
-    function addSelectedEditorFile() {
-        if (!$selectedFile) {
-            return;
-        }
-
-        const nextFile: ContextEditorFile = {
-            id: $selectedFile.id,
-            name: $selectedFile.name
-        };
-
-        if (editorContextFiles.some((entry) => entry.id === nextFile.id)) {
-            return;
-        }
-
-        editorContextFiles = [...editorContextFiles, nextFile];
-    }
-
-    function removeEditorContextFile(id: string) {
-        editorContextFiles = editorContextFiles.filter((entry) => entry.id !== id);
-    }
-
-    function normalizeNetworkUrl(rawUrl: string) {
-        const maybeWithProtocol = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
-        const parsed = new URL(maybeWithProtocol);
-        return parsed.toString();
-    }
-
-    function getFaviconUrl(targetUrl: string) {
-        const host = new URL(targetUrl).hostname;
-        return `https://www.google.com/s2/favicons?domain=${host}&sz=64`;
-    }
-
-    function addNetworkUrl() {
-        const rawDraft = networkUrlDraft.trim();
-        if (!rawDraft) {
-            return;
-        }
-
-        try {
-            const normalizedUrl = normalizeNetworkUrl(rawDraft);
-
-            if (networkContextUrls.some((entry) => entry.url === normalizedUrl)) {
-                networkUrlDraft = "";
-                return;
-            }
-
-            networkContextUrls = [
-                ...networkContextUrls,
-                {
-                    id: `${normalizedUrl}-${Date.now()}`,
-                    url: normalizedUrl,
-                    favicon: getFaviconUrl(normalizedUrl)
-                }
-            ];
-            networkUrlDraft = "";
-        } catch {
-            console.warn("Invalid network url", rawDraft);
-        }
-    }
-
-    function removeNetworkUrl(id: string) {
-        networkContextUrls = networkContextUrls.filter((entry) => entry.id !== id);
-    }
-
     function onDropdownToggle(name: DropdownName, event: Event) {
         const target = event.currentTarget as HTMLDetailsElement;
 
@@ -261,23 +137,11 @@
     }
 
     function openContextModal() {
-        desktopContextFiles = $contextSpecification.desktopFiles;
-        editorContextFiles = $contextSpecification.editorFiles;
-        networkContextUrls = $contextSpecification.networkUrls;
+        contextModalPayloadDraft = cloneContextPayload($contextSpecification);
         isContextModalOpen = true;
     }
 
-    function closeContextModal() {
-        isContextModalOpen = false;
-    }
-
-    function onSaveContext() {
-        const payload: ContextSpecificationPayload = {
-            desktopFiles: desktopContextFiles,
-            editorFiles: editorContextFiles,
-            networkUrls: networkContextUrls
-        };
-
+    function onSaveGlobalContext(payload: ContextSpecificationPayload) {
         contextSpecification.set(payload);
         isContextModalOpen = false;
     }
@@ -378,78 +242,11 @@
         }
     }
 
-    function validateMcpConfiguration(rawConfiguration: string): McpValidationResult {
-        try {
-            const parsed = JSON.parse(rawConfiguration) as Partial<McpConfiguration>;
-
-            if (!parsed || typeof parsed !== "object") {
-                return { valid: false, error: "Configuration must be a JSON object." };
-            }
-
-            if (!parsed.mcpServers || typeof parsed.mcpServers !== "object") {
-                return { valid: false, error: 'Configuration must contain a "mcpServers" object.' };
-            }
-
-            const serverEntries = Object.entries(parsed.mcpServers);
-
-            for (const [serverName, serverConfig] of serverEntries) {
-                if (!serverConfig || typeof serverConfig !== "object") {
-                    return { valid: false, error: `Server "${serverName}" must be an object.` };
-                }
-
-                if (typeof (serverConfig as McpServerConfig).command !== "string" ||
-                    !(serverConfig as McpServerConfig).command.trim()) {
-                    return { valid: false, error: `Server "${serverName}" must include a non-empty "command" string.` };
-                }
-
-                const args = (serverConfig as McpServerConfig).args;
-                if (!Array.isArray(args) || args.some((arg) => typeof arg !== "string")) {
-                    return { valid: false, error: `Server "${serverName}" must include an "args" array of strings.` };
-                }
-
-                if ((serverConfig as McpServerConfig).env !== undefined) {
-                    const envValue = (serverConfig as McpServerConfig).env;
-                    const isRecord = !!envValue && typeof envValue === "object" && !Array.isArray(envValue);
-                    if (!isRecord || Object.values(envValue as Record<string, unknown>).some((value) => typeof value !== "string")) {
-                        return { valid: false, error: `Server "${serverName}" has invalid "env". It must be an object of string values.` };
-                    }
-                }
-            }
-
-            return {
-                valid: true,
-                normalized: JSON.stringify(parsed, null, 2),
-                servers: serverEntries.map(([serverName]) => serverName)
-            };
-        } catch {
-            return { valid: false, error: "Invalid JSON format. Please fix syntax errors before accepting." };
-        }
-    }
-
     function openMcpConfigurationEditor() {
         mcpConfigurationDraft = $mcpConfigurationStore;
         mcpConfigurationError = "";
         isMcpConfigModalOpen = true;
         openDropdown = undefined;
-    }
-
-    function closeMcpConfigurationEditor() {
-        isMcpConfigModalOpen = false;
-        mcpConfigurationError = "";
-    }
-
-    function acceptMcpConfiguration() {
-        const validation = validateMcpConfiguration(mcpConfigurationDraft);
-        if (!validation.valid) {
-            mcpConfigurationError = validation.error;
-            return;
-        }
-
-        $mcpConfigurationStore = validation.normalized;
-        saveMcpConfiguration($mcpConfigurationStore);
-        $selectedMcpServers = validation.servers;
-        mcpConfigurationError = "";
-        isMcpConfigModalOpen = false;
     }
 
     async function onPlay() {
@@ -525,7 +322,6 @@
 <svelte:window onclick={onWindowClick} />
 
 {#if $selectedFile}
-
     <section
         id="upperstripe"
         class="border-b border-base-300 bg-base-100 flex items-center justify-between px-4 py-2 transition-colors"
@@ -803,185 +599,16 @@
     </section>
 
     {#if isContextModalOpen}
-        <!-- svelte-ignore a11y_click_events_have_key_events -->
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div class="fixed inset-0 z-[60] bg-black/40" onclick={closeContextModal}>
-            <!-- svelte-ignore a11y_click_events_have_key_events -->
-            <!-- svelte-ignore a11y_no_static_element_interactions -->
-            <div class="flex min-h-full items-center justify-center p-4" onclick={(event) => event.stopPropagation()}>
-                <UI.Modals.ModalWrapper
-                    name="Context specification"
-                    open={isContextModalOpen}
-                    closeOnBackdrop={true}
-                    size="md"
-                    on:close={closeContextModal}
-                >
-                    <UI.Modals.ModalWrapperHeading headingName="Context specification" on:close={closeContextModal} />
-
-                    <div class="pt-2 space-y-3">
-                        <div class="space-y-2">
-                            <div class="flex items-center justify-between">
-                                <p class="text-xs uppercase tracking-wide opacity-70">Desktop files</p>
-                                <label class="btn btn-xs btn-ghost" title="Add files from desktop">
-                                    <Icon icon="material-symbols:upload-file-outline-rounded" class="w-4 h-4" />
-                                    <span>Add files</span>
-                                    <input
-                                        type="file"
-                                        multiple
-                                        class="hidden"
-                                        onchange={onDesktopFilesChange}
-                                    />
-                                </label>
-                            </div>
-
-                            <div class="space-y-1 max-h-28 overflow-auto">
-                                {#if desktopContextFiles.length === 0}
-                                    <p class="text-xs opacity-60">No desktop files selected.</p>
-                                {/if}
-
-                                {#each desktopContextFiles as file (file.id)}
-                                    <div class="flex items-center justify-between rounded border border-base-300 px-2 py-1" title={file.locationHint}>
-                                        <div class="flex items-center gap-2 min-w-0">
-                                            {#if file.previewDataUrl}
-                                                <img src={file.previewDataUrl} alt={file.name} class="w-8 h-8 rounded object-cover" />
-                                            {:else}
-                                                <Icon icon="material-symbols:description-outline-rounded" class="w-5 h-5 opacity-70" />
-                                            {/if}
-                                            <span class="text-xs truncate">{file.name}</span>
-                                        </div>
-                                        <button class="btn btn-ghost btn-xs" title="Remove file" onclick={() => removeDesktopContextFile(file.id)}>
-                                            <Icon icon="material-symbols:close-rounded" class="w-4 h-4" />
-                                        </button>
-                                    </div>
-                                {/each}
-                            </div>
-                        </div>
-
-                        <div class="space-y-2">
-                            <div class="flex items-center justify-between">
-                                <p class="text-xs uppercase tracking-wide opacity-70">Editor files</p>
-                                <button
-                                    class="btn btn-xs btn-ghost"
-                                    onclick={addSelectedEditorFile}
-                                    disabled={!$selectedFile}
-                                    title="Add currently selected editor file"
-                                >
-                                    <Icon icon="material-symbols:add-rounded" class="w-4 h-4" />
-                                    <span>Add selected</span>
-                                </button>
-                            </div>
-
-                            <div class="space-y-1 max-h-24 overflow-auto">
-                                {#if editorContextFiles.length === 0}
-                                    <p class="text-xs opacity-60">No editor files selected.</p>
-                                {/if}
-
-                                {#each editorContextFiles as file (file.id)}
-                                    <div class="flex items-center justify-between rounded border border-base-300 px-2 py-1">
-                                        <div class="flex items-center gap-2 min-w-0">
-                                            <Icon icon="material-symbols:article-outline-rounded" class="w-5 h-5 opacity-70" />
-                                            <span class="text-xs truncate">{file.name}</span>
-                                        </div>
-
-                                        <button class="btn btn-ghost btn-xs" title="Remove editor file" onclick={() => removeEditorContextFile(file.id)}>
-                                            <Icon icon="material-symbols:close-rounded" class="w-4 h-4" />
-                                        </button>
-                                    </div>
-                                {/each}
-                            </div>
-                        </div>
-
-                        <div class="space-y-2">
-                            <p class="text-xs uppercase tracking-wide opacity-70">Network URLs</p>
-
-                            <div class="join w-full">
-                                <input
-                                    class="input input-sm input-bordered join-item w-full"
-                                    placeholder="https://youtube.com/..."
-                                    bind:value={networkUrlDraft}
-                                />
-                                <button class="btn btn-sm join-item" onclick={addNetworkUrl} title="Add URL">
-                                    <Icon icon="material-symbols:add-link-rounded" class="w-4 h-4" />
-                                </button>
-                            </div>
-
-                            <div class="space-y-1 max-h-24 overflow-auto">
-                                {#if networkContextUrls.length === 0}
-                                    <p class="text-xs opacity-60">No URLs added.</p>
-                                {/if}
-
-                                {#each networkContextUrls as entry (entry.id)}
-                                    <div class="flex items-center justify-between rounded border border-base-300 px-2 py-1">
-                                        <div class="flex items-center gap-2 min-w-0">
-                                            <img src={entry.favicon} alt="website favicon" class="w-4 h-4" />
-                                            <span class="text-xs truncate">{entry.url}</span>
-                                        </div>
-
-                                        <button class="btn btn-ghost btn-xs" title="Remove URL" onclick={() => removeNetworkUrl(entry.id)}>
-                                            <Icon icon="material-symbols:close-rounded" class="w-4 h-4" />
-                                        </button>
-                                    </div>
-                                {/each}
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="mt-4 flex justify-end gap-2">
-                        <button class="btn btn-ghost" onclick={closeContextModal}>Cancel</button>
-                        <button class="btn btn-primary" onclick={onSaveContext}>Save context</button>
-                    </div>
-                </UI.Modals.ModalWrapper>
-            </div>
-        </div>
+        <ContextSelectionModal
+            bind:open={isContextModalOpen}
+            contextPayload={contextModalPayloadDraft}
+            onSave={onSaveGlobalContext}
+        />
     {/if}
-
-    {#if isMcpConfigModalOpen}
-        <!-- svelte-ignore a11y_click_events_have_key_events -->
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div class="fixed inset-0 z-[60] bg-black/40" onclick={closeMcpConfigurationEditor}>
-            <!-- svelte-ignore a11y_click_events_have_key_events -->
-            <!-- svelte-ignore a11y_no_static_element_interactions -->
-            <div class="flex min-h-full items-center justify-center p-4" onclick={(event) => event.stopPropagation()}>
-                <UI.Modals.ModalWrapper
-                    name="MCP configuration"
-                    open={isMcpConfigModalOpen}
-                    closeOnBackdrop={true}
-                    size="lg"
-                    on:close={closeMcpConfigurationEditor}
-                >
-                    <UI.Modals.ModalWrapperHeading
-                        headingName="MCP servers configuration"
-                        on:close={closeMcpConfigurationEditor}
-                    />
-
-                    <div class="pt-2 space-y-2">
-                        {#if mcpConfigurationError}
-                            <p class="text-sm text-error font-medium">{mcpConfigurationError}</p>
-                        {/if}
-
-                        <div class="rounded border border-base-300 bg-base-100 overflow-auto max-h-[60vh]">
-                            <CodeMirror
-                                bind:value={mcpConfigurationDraft}
-                                lang={json()}
-                                lineNumbers={true}
-                                lineWrapping={false}
-                                styles={{
-                                    "&": {
-                                        minWidth: "48rem",
-                                        height: "50vh"
-                                    }
-                                }}
-                            />
-                        </div>
-                    </div>
-
-                    <div class="mt-4 flex justify-end gap-2">
-                        <button class="btn btn-ghost" onclick={closeMcpConfigurationEditor}>Cancel</button>
-                        <button class="btn btn-primary" onclick={acceptMcpConfiguration}>Accept</button>
-                    </div>
-                </UI.Modals.ModalWrapper>
-            </div>
-        </div>
-    {/if}
-{/if}
     
+    <McpSelectionModal
+        bind:open={isMcpConfigModalOpen}
+        bind:mcpConfigurationDraft
+        bind:mcpConfigurationError
+    />
+{/if}
