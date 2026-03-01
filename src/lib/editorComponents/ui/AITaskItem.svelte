@@ -64,12 +64,48 @@
         updateAttributes({ checked: target.checked });
     }
 
-    function handleMouseEnter() {
+    function isRelatedToOwnAnswersArea(event: MouseEvent) {
+        if (!itemId) {
+            return false;
+        }
+
+        const relatedElement = event.relatedTarget;
+        if (!(relatedElement instanceof Element)) {
+            return false;
+        }
+
+        const answersRoot = relatedElement.closest('[data-ai-answers-root="true"]');
+        return answersRoot?.getAttribute('data-list-item-id') === itemId;
+    }
+
+    function isPointerWithinOwnAnswersArea(event: MouseEvent) {
+        if (!itemId) {
+            return false;
+        }
+
+        const pointedElement = document.elementFromPoint(event.clientX, event.clientY);
+        if (!(pointedElement instanceof Element)) {
+            return false;
+        }
+
+        const answersRoot = pointedElement.closest('[data-ai-answers-root="true"]');
+        return answersRoot?.getAttribute('data-list-item-id') === itemId;
+    }
+
+    function handleMouseEnter(event: MouseEvent) {
+        if (isRelatedToOwnAnswersArea(event) || isPointerWithinOwnAnswersArea(event)) {
+            return;
+        }
+
         mouseOutTimeout.clearTimeout();
         hoveredListItemId.set(itemId);
     }
 
-    function handleMouseLeave() {
+    function handleMouseLeave(event: MouseEvent) {
+        if (isRelatedToOwnAnswersArea(event) || isPointerWithinOwnAnswersArea(event)) {
+            return;
+        }
+
         mouseOutTimeout.setTimeout();
     }
 
@@ -218,7 +254,7 @@
 
         {#if visibleAiAnswers !== null && visibleAiAnswers.length > 0}
             <div class="mt-2" contenteditable="false" bind:this={answersContainerElement}>
-                <AIAnswersList aiAnswers={visibleAiAnswers} />
+                <AIAnswersList aiAnswers={visibleAiAnswers} {itemId} />
             </div>
         {/if}
     </div>

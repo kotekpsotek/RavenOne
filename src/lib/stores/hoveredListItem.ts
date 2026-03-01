@@ -21,6 +21,6 @@ export const mouseOutTimeout = (() => {
                 
                 return null;
             })
-        }
+        },
     }
 })();

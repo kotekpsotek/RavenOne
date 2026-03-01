@@ -3,8 +3,9 @@
     import { UI } from "@ravenlens/frontend";
     import AIAnswerRichContent from "./AIAnswerRichContent.svelte";
     import { getPlayModeLabel, type AIPoint } from "$lib/editorComponents/types/AIList";
+    import { hoveredListItemId } from "$lib/stores/hoveredListItem";
 
-    let { aiAnswers }: { aiAnswers: AIPoint["aiAnswers"] } = $props();
+    let { aiAnswers, itemId = "" }: { aiAnswers: AIPoint["aiAnswers"]; itemId?: string } = $props();
 
     let openAnswerIndices = $state<number[]>([]);
     let zoomedIndex = $state<number | null>(null);
@@ -102,9 +103,28 @@
 
     const zoomedAnswer = $derived(zoomedIndex === null ? null : aiAnswers[zoomedIndex] ?? null);
     const infoAnswer = $derived(infoIndex === null ? null : aiAnswers[infoIndex] ?? null);
+
+    function onMouseEnter(ev: Event) {
+        ev.stopPropagation();
+        ev.preventDefault();
+        
+        hoveredListItemId.set(null);
+    }
+
+    function onMouseLeave() {
+        hoveredListItemId.set(null);
+    }
 </script>
 
-<section class="space-y-2" contenteditable="false">
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<section 
+    class="space-y-2 pt-5"
+    data-ai-answers-root="true"
+    data-list-item-id={itemId}
+    contenteditable="false"
+    onmouseenter={onMouseEnter}
+    onmouseleave={onMouseLeave}
+>
     <p class="text-sm font-semibold opacity-90">AI Answers</p>
 
     <div class="rounded-2xl border border-base-300 bg-base-100 overflow-hidden">
