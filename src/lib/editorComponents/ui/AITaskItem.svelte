@@ -1,6 +1,6 @@
 <script lang="ts">
     import { dev } from '$app/environment';
-    import { tick } from 'svelte';
+    import { tick, type ComponentEvents } from 'svelte';
     import { NodeViewWrapper, NodeViewContent } from 'svelte-tiptap';
     import type { NodeViewProps } from '@tiptap/core';
     import { v4 as uuidv4 } from 'uuid';
@@ -68,6 +68,10 @@
 
     function handleMouseLeave() {
         hoveredListItemId.update((current) => (current === itemId ? null : current));
+    }
+
+    function handleCheckBoxClick(ev: Event) {
+        ev.preventDefault();
     }
 
     function resolveContentElement() {
@@ -162,8 +166,10 @@
         <input 
             type="checkbox" 
             class="checkbox checkbox-sm checkbox-primary" 
-            checked={node.attrs.checked} 
+            checked={node.attrs.checked}
+            title="Checkbox will be checked-out once ai has resolved"
             onchange={handleChange} 
+            onclick={handleCheckBoxClick}
         />
     </label>
     <div class="flex-1">
