@@ -14,6 +14,18 @@ export const AITaskList = TaskList.extend({
         };
     },
 
+    parseHTML() {
+        return [
+            {
+                tag: 'ol[data-type="aiTaskList"]',
+            },
+        ];
+    },
+
+    renderHTML({ HTMLAttributes }) {
+        return ['ol', { ...HTMLAttributes, 'data-type': 'aiTaskList' }, 0];
+    },
+
     addNodeView() {
         return SvelteNodeViewRenderer(AITaskListSvelte);
     },

@@ -16,6 +16,18 @@ export const AIBulletList = BulletList.extend({
         };
     },
 
+    parseHTML() {
+        return [
+            {
+                tag: 'ul[data-type="aiBulletList"]',
+            },
+        ];
+    },
+
+    renderHTML({ HTMLAttributes }) {
+        return ['ul', { ...HTMLAttributes, 'data-type': 'aiBulletList' }, 0];
+    },
+
     addNodeView() {
         return SvelteNodeViewRenderer(AIBulletListSvelte);
     },

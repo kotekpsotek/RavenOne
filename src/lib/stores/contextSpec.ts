@@ -1,24 +1,48 @@
 import { browser } from "$app/environment";
-import { writable } from "svelte/store";
+import type { ContextSpecificationPayload } from "$lib/editorComponents/types/AIList";
+import { get, writable } from "svelte/store";
 
 const CONTEXT_SPEC_STORAGE_KEY = "ravenone:context-spec";
 
-function getInitialContextSpec() {
-    if (!browser) {
-        return "";
+function getInitialContextSpec(): ContextSpecificationPayload {
+    const defaultReturnValue = {
+        desktopFiles: [],
+        editorFiles: [],
+        networkUrls: []
     }
 
-    return localStorage.getItem(CONTEXT_SPEC_STORAGE_KEY) ?? "";
+    if (!browser) {
+        return defaultReturnValue;
+    }
+
+    const item = localStorage.getItem(CONTEXT_SPEC_STORAGE_KEY) ?? "";
+
+    try {
+        return JSON.parse(item) as ContextSpecificationPayload;
+    }
+    catch(err) {
+        console.error(err);
+        return defaultReturnValue;
+    }
 }
 
-export const contextSpecification = writable<string>(getInitialContextSpec());
+export const contextSpecification = (() => {
+    const { ...all } = writable<ContextSpecificationPayload>(getInitialContextSpec());
 
-if (browser) {
-    contextSpecification.subscribe((value) => {
-        localStorage.setItem(CONTEXT_SPEC_STORAGE_KEY, value);
-    });
-}
+    const toJSONString = (value?: ContextSpecificationPayload) => {
+        const state = value ?? get(all);
+        return JSON.stringify(state);
+    }
 
-export function saveContextSpecification(value: string) {
-    contextSpecification.set(value);
-}
+    if (browser) {
+        all.subscribe((value) => {
+            localStorage.setItem(CONTEXT_SPEC_STORAGE_KEY, toJSONString(value));
+        });
+    };
+
+    return {
+        ...all,
+        toJSONString
+    }
+})();
+

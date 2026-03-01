@@ -16,6 +16,18 @@ export const AIOrderedList = OrderedList.extend({
         };
     },
 
+    parseHTML() {
+        return [
+            {
+                tag: 'ol[data-type="aiOrderedList"]',
+            },
+        ];
+    },
+
+    renderHTML({ HTMLAttributes }) {
+        return ['ol', { ...HTMLAttributes, 'data-type': 'aiOrderedList' }, 0];
+    },
+
     addNodeView() {
         return SvelteNodeViewRenderer(AIOrderedListSvelte);
     },

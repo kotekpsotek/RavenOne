@@ -6,5 +6,5 @@
 </script>
 
 <NodeViewWrapper as="div" class="custom-task-list-wrapper my-2">
-    <NodeViewContent as="ul" class="list-none pl-0" data-type="taskList" />
+    <NodeViewContent as="ul" class="list-none pl-0" />
 </NodeViewWrapper>

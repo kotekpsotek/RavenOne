@@ -6,10 +6,14 @@
     import { avaiableModels, getProviderIconifyIcon } from "./config/models";
     import { selectedFile } from "./stores/files";
     import { selectedModel } from "./stores/selected";
-    import { contextSpecification, saveContextSpecification } from "./stores/contextSpec";
+    import { contextSpecification } from "./stores/contextSpec";
     import { mcpConfigurationStore, saveMcpConfiguration } from "./stores/mcpConfig";
     import { alertState } from "./utils/alert";
     import type { ContextDeviceFile, ContextEditorFile, ContextNetworkURL, ContextSpecificationPayload, PlayMode } from "./editorComponents/types/AIList";
+    import { hasFileSomePlayableNode, play, type PlayConfig } from "./playMode";
+    import { editor } from "./stores/editor";
+    import { isPlayingDocuments } from "./stores/playMode";
+    import { get } from "svelte/store";
 
     type DropdownName = "model-settings" | "mcp-tools" | "play-settings" | "share";
 
@@ -310,10 +314,9 @@
     }
 
     function openContextModal() {
-        const parsed = parseContextSpecification($contextSpecification);
-        desktopContextFiles = parsed.desktopFiles;
-        editorContextFiles = parsed.editorFiles;
-        networkContextUrls = parsed.networkUrls;
+        desktopContextFiles = $contextSpecification.desktopFiles;
+        editorContextFiles = $contextSpecification.editorFiles;
+        networkContextUrls = $contextSpecification.networkUrls;
         isContextModalOpen = true;
     }
 
@@ -328,7 +331,7 @@
             networkUrls: networkContextUrls
         };
 
-        saveContextSpecification(JSON.stringify(payload));
+        contextSpecification.set(payload);
         isContextModalOpen = false;
     }
 
@@ -502,14 +505,73 @@
         isMcpConfigModalOpen = false;
     }
 
-    function onPlay() {
-        console.log("Running play mode", {
+    async function onPlay() {
+        const selectedModelLocal = get(selectedModel);
+        if (!selectedModelLocal) {
+            $alertState = {
+                alert: {
+                    type: "error",
+                    name: "AI Model has to be selected",
+                    description: "AI Model has to be selected to play document content"
+                },
+                timeoutMs: 6_500
+            }
+            return;
+        }
+    
+        const seletedFileLocal = get(selectedFile);
+        if (!seletedFileLocal) {
+            $alertState = {
+                alert: {
+                    type: "error",
+                    name: "File has to be selected",
+                    description: "To play the document the document has to be selected"
+                },
+                timeoutMs: 6_500
+            }
+            return;
+        }
+        
+        const config: PlayConfig = {
+            document: {
+                ...seletedFileLocal,
+                // Get the freshest content of file from editor
+                content: $editor?.getHTML() ?? seletedFileLocal.content ?? ""
+            },
             mode: playMode,
-            model: $selectedModel,
+            model: selectedModelLocal,
             tools: selectedTools,
             mcpServers: useMcpServers ? selectedMcpServers : [],
-            contextSpec: $contextSpecification
-        });
+            contextSpec: get(contextSpecification)
+        };
+
+        // Setups playing mode for this document
+        const setupState = isPlayingDocuments.setFile(seletedFileLocal);
+        if (!setupState) {
+            $alertState = {
+                alert: {
+                    type: "info",
+                    name: "Cannot play file",
+                    description: "Cannot play file since it's aready playing"
+                },
+                timeoutMs: 6_500
+            }
+            return;
+        }
+
+        // Plays
+        await play(config);
+
+        // Unsets playing mode for this document
+        isPlayingDocuments.unsetFile(seletedFileLocal);
+    }
+
+    function onStopPlaying() {
+        if (!$selectedFile) {
+            return;
+        }
+        
+        isPlayingDocuments.unsetFile($selectedFile);
     }
 </script>
 
@@ -637,46 +699,72 @@
                 </button>
 
                 <div class="join">
-                    <button class="btn btn-sm jolgin-item btn-primary" onclick={onPlay}>
-                        <Icon icon="material-symbols:play-circle-outline-rounded" class="w-5 h-5" />
-                        <span>Play</span>
-                    </button>
+                    {#key $isPlayingDocuments}
+                        {#if isPlayingDocuments.isFilePlaying($selectedFile)}
+                            <button 
+                                class="btn btn-sm join-item btn-neutral" 
+                                onclick={onStopPlaying}
+                                title="Stop Playing"
+                            >
+                                <span class="loading loading-spinner loading-xs"></span>
+                                <span>Stop Playing</span>
+                            </button>
+                        {:else}
+                            {@const isPlayingDisabled = !hasFileSomePlayableNode($selectedFile, $editor)}
 
-                    <details
-                        class="dropdown dropdown-end join-item"
-                        open={openDropdown === "play-settings"}
-                        ontoggle={(event) => onDropdownToggle("play-settings", event)}
-                    >
-                        <summary class="btn btn-sm rounded-l-none bg-primary/95 text-white/70 shadow-xl border-primary px-1" aria-label="Play settings" title="Play settings">
-                            <Icon icon="material-symbols:settings-outline-rounded" class="w-3 h-3" />
-                        </summary>
-
-                        <div class="dropdown-content p-3 shadow bg-base-200 rounded-box z-[20] w-64 space-y-2">
-                            <p class="text-xs uppercase tracking-wide opacity-70">Mode</p>
-                            {#each playModes as mode (mode.value)}
+                            <div
+                                class="inline-block"
+                                title={isPlayingDisabled
+                                    ? "Playing is disabled since document has no playable node/element; Add some playable AI Node/Element first to make file playable"
+                                    : undefined}
+                            >
                                 <button
-                                    type="button"
-                                    class="btn btn-sm justify-start w-full"
-                                    class:btn-primary={playMode === mode.value}
-                                    class:btn-ghost={playMode !== mode.value}
-                                    onclick={(event) => {
-                                        event.preventDefault();
-                                        event.stopPropagation();
-                                        playMode = mode.value;
-                                    }}
+                                    class="btn btn-sm join-item btn-primary disabled:cursor-not-allowed"
+                                    onclick={onPlay}
+                                    disabled={isPlayingDisabled}
                                 >
-                                    <Icon
-                                        icon={playMode === mode.value
-                                            ? "material-symbols:check-box-rounded"
-                                            : "material-symbols:check-box-outline-blank-rounded"}
-                                        class="w-4 h-4"
-                                    />
-                                    <Icon icon={playModeIcons[mode.value]} class="w-4 h-4" />
-                                    <span>{mode.label}</span>
+                                    <Icon icon="material-symbols:play-circle-outline-rounded" class="w-5 h-5" />
+                                    <span>Play</span>
                                 </button>
-                            {/each}
-                        </div>
-                    </details>
+                            </div>
+
+                            <details
+                                class="dropdown dropdown-end join-item"
+                                open={openDropdown === "play-settings"}
+                                ontoggle={(event) => onDropdownToggle("play-settings", event)}
+                            >
+                                <summary class="btn btn-sm rounded-l-none bg-primary/95 text-white/70 shadow-xl border-primary px-1" aria-label="Play settings" title="Play settings">
+                                    <Icon icon="material-symbols:settings-outline-rounded" class="w-3 h-3" />
+                                </summary>
+
+                                <div class="dropdown-content p-3 shadow bg-base-200 rounded-box z-[20] w-64 space-y-2">
+                                    <p class="text-xs uppercase tracking-wide opacity-70">Mode</p>
+                                    {#each playModes as mode (mode.value)}
+                                        <button
+                                            type="button"
+                                            class="btn btn-sm justify-start w-full"
+                                            class:btn-primary={playMode === mode.value}
+                                            class:btn-ghost={playMode !== mode.value}
+                                            onclick={(event) => {
+                                                event.preventDefault();
+                                                event.stopPropagation();
+                                                playMode = mode.value;
+                                            }}
+                                        >
+                                            <Icon
+                                                icon={playMode === mode.value
+                                                    ? "material-symbols:check-box-rounded"
+                                                    : "material-symbols:check-box-outline-blank-rounded"}
+                                                class="w-4 h-4"
+                                            />
+                                            <Icon icon={playModeIcons[mode.value]} class="w-4 h-4" />
+                                            <span>{mode.label}</span>
+                                        </button>
+                                    {/each}
+                                </div>
+                            </details>
+                        {/if}
+                    {/key}
                 </div>
             </div>
         

@@ -29,7 +29,7 @@ import { StandardTaskList } from "../editorComponents/components/StandardTaskLis
 import { StandardTaskItem } from "../editorComponents/components/StandardTaskItem.js";
 
 export const editor = (() => {
-    const { subscribe, set } = writable<SvelteEditor | undefined>(undefined);
+    const { subscribe, set, update } = writable<SvelteEditor | undefined>(undefined);
     let currentEditor: SvelteEditor | undefined;
     let activeFileId: string | undefined;
 
@@ -58,7 +58,7 @@ export const editor = (() => {
                             bulletList: false,
                             orderedList: false,
                             listItem: false,
-                            taskList: false,
+                            // taskList: false,
                             taskItem: false,
                         }),
                         FileHeading,
@@ -100,6 +100,9 @@ export const editor = (() => {
             } else {
                 currentEditor.commands.setContent(content);
             }
+        },
+        setEditionState(toState: boolean) {
+            update(editorState => editorState?.setEditable(toState)!);
         }
     };
 
