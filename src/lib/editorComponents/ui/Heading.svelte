@@ -36,6 +36,26 @@
 		);
 	}
 
+	function updateEntryNameById(entries: any[], fileId: string, nextHeading: string): any[] {
+		return entries.map(entry => {
+			if (entry.id === fileId) {
+				return {
+					...entry,
+					name: nextHeading
+				};
+			}
+
+			if (entry.subentries?.length) {
+				return {
+					...entry,
+					subentries: updateEntryNameById(entry.subentries, fileId, nextHeading)
+				};
+			}
+
+			return entry;
+		});
+	}
+
 	function getCurrentHeadingText() {
 		const position = getPos();
 
@@ -66,16 +86,12 @@
 
 			// Update the file on entires list
 			entriesList.update(entries => {
-				return entries.map(entry => {
-					if (entry.id === $selectedFile?.id) {
-						return {
-							...entry,
-							name: nextHeading
-						}
-					}
-					else return entry;
-				});
-			})
+				if (!$selectedFile?.id) {
+					return entries;
+				}
+
+				return updateEntryNameById(entries, $selectedFile.id, nextHeading);
+			});
 		}, 300);
 	}
 
@@ -111,7 +127,6 @@
 
 		const onEditorUpdate = () => {
 			const nextHeading = getCurrentHeadingText();
-			console.log(nextHeading)
 
 			if (nextHeading === lastObservedHeading) {
 				return;

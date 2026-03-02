@@ -143,8 +143,13 @@
     }
     
     function onKeyDownWindow(ev: KeyboardEvent) {
-        if (ev.ctrlKey && ev.key === 'b') {
+        if (ev.ctrlKey && ev.key === '.') {
             isExpanded = !isExpanded;
+        }
+
+        if (ev.ctrlKey && ev.key === 'p') {
+            ev.preventDefault();
+            onSearch();
         }
     }
 </script>
@@ -188,7 +193,7 @@
                         </button>
                     </div>
                     
-                    <div class="tooltip tooltip-right" data-tip={isExpanded ? `Collapse Sidebar (CTRL + B)` : 'Expand Tasks Explorer (CTRL + B)'}>
+                    <div class="tooltip tooltip-right" data-tip={isExpanded ? `Collapse Sidebar (Ctrl + .)` : 'Expand Tasks Explorer (Ctrl + .)'}>
                         <button
                             onclick={onToggleSidebar}
                             class="btn btn-ghost btn-square btn-sm rounded-lg {isExpanded ? 'bg-base-100 text-primary' : 'text-base-content/70'} hover:bg-base-300 hover:text-primary active:scale-95 transition-colors"

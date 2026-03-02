@@ -167,7 +167,7 @@
                                 class="text-right"
                                 onclick={() => toggleAnswer(index)}
                             >
-                                <p class="text-sm font-semibold opacity-80">{formatDate(answer.dateTimestamp)}</p>
+                                <p class="text-sm font-semibold opacity-80">{formatDate(answer.endDateTimestamp)}</p>
                                 <!-- svelte-ignore a11y_no_static_element_interactions -->
                                 <div class="flex items-center justify-end gap-2 mt-1">
                                     <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -247,7 +247,7 @@
                 <div class="space-y-2">
                     <div class="flex items-center justify-between text-xs opacity-80">
                         <span>{zoomedAnswer.model.name}</span>
-                        <span>{formatDate(zoomedAnswer.dateTimestamp)}</span>
+                        <span>{formatDate(zoomedAnswer.endDateTimestamp)}</span>
                     </div>
 
                     <div class="max-h-[60vh] overflow-auto rounded border border-base-300 bg-base-100 px-4 py-3 text-sm leading-6 whitespace-pre-wrap break-words">
