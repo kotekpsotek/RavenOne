@@ -246,7 +246,7 @@
             <input 
                 type="checkbox" 
                 class="checkbox checkbox-sm checkbox-primary" 
-                checked={node.attrs.checked}
+                checked={(aiAnswers?.length ?? 0) > 0} // Checked when answers list isn't empty
                 title="Checkbox will be checked-out once ai has resolved"
                 onchange={handleChange} 
                 onclick={handleCheckBoxClick}

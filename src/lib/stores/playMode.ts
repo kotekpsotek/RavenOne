@@ -1,83 +1,220 @@
 import { get, writable } from "svelte/store";
-import type { File } from "./files";
+import { playMode, type File } from "./files";
+import { DocumentPlayablePoints } from "$lib/playMode";
+import { editor } from "./editor";
+import type { PlayMode as PointPlayMode } from "$lib/editorComponents/types/AIList";
 
-export const isPlayingDocuments = (() => {
-    const store = writable<File[]>([]);
+export interface PlayPoint {
+	pointId: string;
+	startTimestamp: number;
+}
+
+export interface DocumentPlayPoints {
+	document: File;
+    startTimestamp: number;
+	pointsFromLists: PlayPoint[]
+}
+
+export type PointCallFn = (pointId: string) => Promise<void>;
+type PlayModeConfig = false | { playMode: PointPlayMode };
+
+/**
+ * Methods of this store are about complex state management and are resposible to communicate with backend to avoid loops, since each point is playing indiciudally and stopped individually
+ */
+export const playableDocumentsWithPoints = (() => {
+    const store = writable<DocumentPlayPoints[]>([]);
 
     return {
         ...store,
+        isDocumentPlaying(checkDocument: File) {
+            const currentState = get(store);
+            // Not checking pointsList can be usefull for then where is possible to have different items than pointers under what condition the document occurance in store means documents are playing
+            return currentState.some(someDocumentState => someDocumentState.document.id === checkDocument.id);
+        },
         /**
          * Sets file only when doesn't exist already as playing
          * @param file - the file to setup
+         * @param playPointFn - plays point and all subppoints
          * @returns {boolean} - returns the play state
          */
-        setFile(file: File): boolean {
-            const storeState = get(store);
-            const isFilePlaying = storeState.some(storeFile => {
-                return storeFile.id === file.id;
-            })
+        setFullDocumentPlaying(document: File, playPointFn?: PointCallFn): boolean {
+            const editorLocal = get(editor);
 
-            // Check: Is file playing
-            if (isFilePlaying) {
+            if (!editorLocal) {
+                console.error(`Cannot play points while editor isn't initialzied`);
                 return false;
             }
 
-            // Add file to rest of files
-            store.update(files => [...files, file]);
+            // Check: Is file playing -> Don't allow to play document more than once
+            if (this.isDocumentPlaying(document)) {
+                return false;
+            }
+
+            // Gets the all playable points compilant with play mode
+            const allPlayablePointIds = DocumentPlayablePoints.getDocumentAllPlayablePoints(editorLocal, {
+                playMode: get(playMode)
+            });
+
+            // Play all points
+            if (playPointFn) {
+                for (const pointId of allPlayablePointIds) {
+                    playPointFn(pointId)
+                        .catch(err => console.error(`Error for point "${pointId}" play operation`, err));
+                }
+            }
+
+            // Add file to rest of files with all playable points marked as playing
+            store.update(documents => [
+                ...documents,
+                {
+                    document: document,
+                    startTimestamp: Date.now(),
+                    pointsFromLists: allPlayablePointIds.map(point => ({
+                        pointId: point,
+                        startTimestamp: Date.now()
+                    } satisfies PlayPoint)) // 
+                }
+            ]);
             
             // Return state
             return true;
         },
         /**
-         * Unsets file playing state
-         * @param file - is the file supposed to be playing before this action call
+         * @param stopPointFn - STOPs playing point and all subppoints
+         * @param file 
+         * @param stopPointFn 
          */
-        unsetFile(file: File) {
-            store.update(state => {
-                return state.map(fileState => {
-                    if (fileState.id === file.id) {
-                        return;
+        unsetFullDocumentPlaying(file: File, stopPointFn?: PointCallFn) {
+            store.update(state => state.filter(documentState => documentState.document.id !== file.id));
+        },
+        // ------------------------------
+        // --- Below are points state ---
+        // ------------------------------
+        /**
+         * @param playPointFn - plays point and all subppoints
+        */
+        setUpPointPlaying(selectedDocument: File, pointId: string, playPointFn?: PointCallFn, playModeConfig?: PlayModeConfig) {
+            store.update(documentsPlayingList => {
+                const editorLocal = get(editor);
+                if (!editorLocal) {
+                    console.error(`Editor isn't specified`);
+                    return documentsPlayingList;
+                }
+
+                const modeConfig: PlayModeConfig = playModeConfig ?? { playMode: get(playMode) };
+
+                const doesPlayablePointExist = DocumentPlayablePoints.doesPlayablePointExists(editorLocal, pointId, modeConfig);
+                if (!doesPlayablePointExist) {
+                    console.error(`Playable point with id: "${pointId}" doesn't exists!`);
+                    return documentsPlayingList;
+                }
+
+                const now = Date.now();
+                const incomingPoints: PlayPoint[] = [
+                    {
+                        pointId,
+                        startTimestamp: now
+                    },
+                    ...DocumentPlayablePoints.getParentPointPlayableChildPoints(editorLocal, pointId, modeConfig).map(pointElement => ({
+                        pointId: pointElement.id,
+                        startTimestamp: now
+                    } satisfies PlayPoint))
+                ];
+
+                const pointIdsToPlay = [
+                    pointId,
+                    ...DocumentPlayablePoints.getParentPointPlayableChildPoints(editorLocal, pointId, modeConfig).map(point => point.id)
+                ].filter((id, index, list) => Boolean(id) && list.indexOf(id) === index);
+
+                const existingDocumentIndex = documentsPlayingList.findIndex(documentStore => documentStore.document.id === selectedDocument.id);
+
+                if (existingDocumentIndex === -1) {
+                    if (playPointFn) {
+                        for (const pointToPlayId of pointIdsToPlay) {
+                            playPointFn(pointToPlayId)
+                                .catch(err => console.error(`Error for point "${pointToPlayId}" play operation`, err));
+                        }
                     }
 
-                    return fileState;
-                }).filter(v => v !== undefined);
-            })
+                    return [
+                        ...documentsPlayingList,
+                        {
+                            document: selectedDocument,
+                            startTimestamp: now,
+                            pointsFromLists: incomingPoints
+                        }
+                    ];
+                }
+
+                const existingDocument = documentsPlayingList[existingDocumentIndex];
+                const existingPointIds = new Set(existingDocument.pointsFromLists.map(point => point.pointId));
+                const pointsToAdd = incomingPoints.filter(point => !existingPointIds.has(point.pointId));
+
+                if (!pointsToAdd.length) {
+                    return documentsPlayingList;
+                }
+
+                if (playPointFn) {
+                    for (const pointToPlayId of pointIdsToPlay.filter(id => !existingPointIds.has(id))) {
+                        playPointFn(pointToPlayId)
+                            .catch(err => console.error(`Error for point "${pointToPlayId}" play operation`, err));
+                    }
+                }
+
+                return documentsPlayingList.map((documentState, index) => {
+                    if (index !== existingDocumentIndex) {
+                        return documentState;
+                    }
+
+                    return {
+                        ...documentState,
+                        pointsFromLists: [...documentState.pointsFromLists, ...pointsToAdd]
+                    };
+                });
+            });
         },
         /**
-         * Checks whether file is playing
-         * @param file - file to be check whether is playing
-         */
-        isFilePlaying(file: File) {
+         * @param stopPointFn - setups point plaing for point and its subpoints
+        */
+        unsetPointPlaying(pointId: string, stopPointFn?: PointCallFn, playModeConfig?: PlayModeConfig) {
+            const editorLocal = get(editor);
+            const modeConfig: PlayModeConfig = playModeConfig ?? { playMode: get(playMode) };
+            const pointIdsToStop = editorLocal
+                ? [
+                    pointId,
+                    ...DocumentPlayablePoints.getParentPointPlayableChildPoints(editorLocal, pointId, modeConfig).map(point => point.id)
+                ].filter((id, index, list) => Boolean(id) && list.indexOf(id) === index)
+                : [pointId];
+
+            if (stopPointFn) {
+                for (const pointToStopId of pointIdsToStop) {
+                    stopPointFn(pointToStopId)
+                        .catch(err => console.error(`Error for point "${pointToStopId}" stop operation`, err));
+                }
+            }
+
+            store.update(documentsPlayingList => {
+                return documentsPlayingList
+                    .map(documentState => {
+                        const nextPoints = documentState.pointsFromLists.filter(point => !pointIdsToStop.includes(point.pointId));
+
+                        return {
+                            ...documentState,
+                            pointsFromLists: nextPoints
+                        };
+                    })
+                    .filter(documentState => documentState.pointsFromLists.length > 0);
+            });
+        },
+        isPointPlayingInDocument(selectedDocument: File, pointId: string) {
             const state = get(store);
-            return state.some(stateFile => stateFile.id === file.id);
-        }
-    }
-})();
+            const documentState = state.find(documentStore => documentStore.document.id === selectedDocument.id);
 
-/**
- * Contains list with playing items and its childs from multiple documents without sorting for document
- * E.g: Playing list items and its belonging nested childrens
-*/
-export const isPlayingItems = (() => {
-    const itemsIdsStore = writable<string[]>([]);
-
-    return {
-        ...itemsIdsStore,
-        setUpItemPlaying(itemId: string) {
-            const state = get(itemsIdsStore);
-            if (state.includes(itemId)) {
+            if (!documentState) {
                 return false;
             }
 
-            itemsIdsStore.update(ids => [...ids, itemId]);
-            return true;
+            return documentState.pointsFromLists.some(point => point.pointId === pointId);
         },
-        unsetItemPlaying(itemId: string) {
-            itemsIdsStore.update(state => state.filter(stateItemId => stateItemId !== itemId));
-        },
-        isItemPlaying(itemId: string) {
-            const state = get(itemsIdsStore);
-            return state.includes(itemId);
-        }
     }
 })();

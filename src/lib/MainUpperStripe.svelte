@@ -9,9 +9,9 @@
     import { mcpConfigurationStore, selectedMcpServers } from "./stores/mcpConfig";
     import { alertState } from "./utils/alert";
     import type { ContextSpecificationPayload, PlayMode } from "./editorComponents/types/AIList";
-    import { hasFileSomePlayableNode, play, type PlayConfig } from "./playMode";
+    import { DocumentPlayablePoints, play, type PlayConfig } from "./playMode";
     import { editor } from "./stores/editor";
-    import { isPlayingDocuments } from "./stores/playMode";
+    import { playableDocumentsWithPoints } from "./stores/playMode";
     import { get } from "svelte/store";
     import McpSelectionModal from "./modals/McpSelectionModal.svelte";
     import { UI } from "@ravenlens/frontend";
@@ -284,8 +284,18 @@
             contextSpec: get(contextSpecification)
         };
 
-        // Setups playing mode for this document
-        const setupState = isPlayingDocuments.setFile(seletedFileLocal);
+        // Setups playing mode for this document and plays each compilant point
+        const setupState = playableDocumentsWithPoints.setFullDocumentPlaying(
+            seletedFileLocal,
+            async (pointId: string) => {
+                await play({
+                    ...config,
+                    itemId: pointId
+                });
+
+                playableDocumentsWithPoints.unsetPointPlaying(pointId, undefined, false);
+            }
+        );
         if (!setupState) {
             $alertState = {
                 alert: {
@@ -297,12 +307,6 @@
             }
             return;
         }
-
-        // Plays fill document since `itemId` isn't specified
-        await play(config);
-
-        // Unsets playing mode for this document
-        isPlayingDocuments.unsetFile(seletedFileLocal);
     }
 
     function onStopPlaying() {
@@ -310,7 +314,7 @@
             return;
         }
         
-        isPlayingDocuments.unsetFile($selectedFile);
+        playableDocumentsWithPoints.unsetFullDocumentPlaying($selectedFile);
     }
 </script>
 
@@ -437,8 +441,8 @@
                 </button>
 
                 <div class="join">
-                    {#key $isPlayingDocuments}
-                        {#if isPlayingDocuments.isFilePlaying($selectedFile)}
+                    {#key $playableDocumentsWithPoints}
+                        {#if playableDocumentsWithPoints.isDocumentPlaying($selectedFile)}
                             <button 
                                 class="btn btn-sm join-item btn-neutral" 
                                 onclick={onStopPlaying}
@@ -448,7 +452,7 @@
                                 <span>Stop Playing</span>
                             </button>
                         {:else}
-                            {@const isPlayingDisabled = !hasFileSomePlayableNode($selectedFile, $editor)}
+                            {@const isPlayingDisabled = !$editor || !DocumentPlayablePoints.hasDocumentSomePlayableList($editor)}
 
                             <div
                                 class="inline-block"
