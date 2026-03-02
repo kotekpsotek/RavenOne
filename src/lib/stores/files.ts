@@ -27,7 +27,19 @@ export const availableTools = ["Web search"] as BrowserToolsUnion[];
 // File config
 export const selectedModel = writable<AI.RavenLensAvaiableAIModel | undefined>(undefined);
 export const playMode = writable<PlayMode>("run-non-runned");
-export const selectedTools = writable<string[]>([]);
+
+const STORAGE_KEY = "raven_selected_tools";
+const initialTools = (typeof window !== 'undefined' && localStorage.getItem(STORAGE_KEY)) 
+    ? JSON.parse(localStorage.getItem(STORAGE_KEY)!) 
+    : [];
+
+export const selectedTools = writable<string[]>(initialTools);
+
+if (typeof window !== 'undefined') {
+    selectedTools.subscribe(tools => {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(tools));
+    });
+}
 
 
 export const isSearchModalOpen = writable(false);

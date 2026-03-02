@@ -11,6 +11,7 @@
     import { isPlayingItems } from '$lib/stores/playMode';
     import ContextSelectionModal from '$lib/modals/ContextSelectionModal.svelte';
     import PlayModeDropdownContent from '$lib/components/PlayModeDropdownContent.svelte';
+    import { editor } from '$lib/stores/editor';
 
     let {
         visible = false,
@@ -28,9 +29,10 @@
 
     // Setup Local Item state
     const selectedItemModel = $state<AI.RavenLensAvaiableAIModel | undefined>($selectedModel);
-    let selectedItemPlayMode = $state<PlayMode>($playMode);
     const availableItemTools = $state($selectedTools);
     const selectedItemMcpServers = $state($selectedMcpServers);
+    let selectedItemPlayMode = $state<PlayMode>($playMode);
+    
     let isPointContextModalOpen = $state(false);
     let isPointPlayModeModalOpen = $state(false);
     let pointPlayModeDropdownPosition = $state<{ x: number; y: number } | null>(null);
@@ -199,14 +201,57 @@
             return;
         }
 
-        const hasSetState = isPlayingItems.setUpItemPlaying(itemId);
-        if (!hasSetState) {
-            return;
-        }
+        // Setup the state of playing for childrent elements according to childrens
+        const editorContent = $editor?.getHTML() ?? "";
+        const editorDom = new DOMParser().parseFromString(editorContent, "text/html");
+
+        /// Collects child -> collects all childs of all nested lists
+        const _thisListItemElement = editorDom.getElementById(itemId);
+        const thisListItemSubPoints = editorDom.querySelectorAll(`#${itemId} li`); // matches multiple layers of subpoints
+        const itemsMatchTheMode = Array.from(thisListItemSubPoints)
+            .map(item => {
+                switch(selectedItemPlayMode) {
+                    case 'run-non-runned':
+                        const itemAnswersAttr = item.getAttribute("aianswers") ?? item.getAttribute("aiAnswers");
+                        if (!itemAnswersAttr) {
+                            return item.id;
+                        }
+                        else {
+                            try {
+                                const parsed = JSON.parse(itemAnswersAttr);
+
+                                if (parsed instanceof Array) { // This is supposed to be list with ai-answers
+                                    if (!parsed.length) { // when item is empty in this mode is passed as playable item
+                                        return item.id;
+                                    }
+                                    else return; // when item isn't empty in this mode is ignored
+                                }
+                                else throw("'aianswers' attr is supposed to be array while it is: " + typeof parsed);
+                            }
+                            catch(err) {
+                                console.error(`Error while parsing aianswers of item with id: '${item.id}'`, err);
+                                // return;
+                            }
+                        }
+                    break;
+
+                    case 'run-all': // all subpoinrts in this layer are accepted
+                        return item.id;
+                }
+            })
+            .filter(item => item !== undefined);
 
         // Plays for specific item since `itemId` property is specified
         try {
-            await play({
+            // Setups the state for item parent
+            const hasSetState = isPlayingItems.setUpItemPlaying(itemId);
+            if (!hasSetState) {
+                return;
+            }
+            console.log(hasSetState, isPlayingItems.isItemPlaying(itemId))
+            
+            // Play parent
+            play({
                 document: $selectedFile,
                 itemId,
                 mode: selectedItemPlayMode,
@@ -214,9 +259,31 @@
                 tools: availableItemTools,
                 mcpServers: selectedItemMcpServers,
                 contextSpec: getEffectivePointContextPayload()
-            });
-        } finally {
-            isPlayingItems.unsetItemPlaying(itemId);
+            })
+                .then(() => isPlayingItems.unsetItemPlaying(itemId))
+                .catch(err => {throw err});
+
+            // Play childs
+            for (const subitemPlayId of itemsMatchTheMode) {
+                // Setup child state as playing
+                isPlayingItems.setUpItemPlaying(subitemPlayId)
+                
+                // Play child
+                play({
+                    document: $selectedFile,
+                    itemId: subitemPlayId,
+                    mode: selectedItemPlayMode,
+                    model: selectedItemModel,
+                    tools: availableItemTools,
+                    mcpServers: selectedItemMcpServers,
+                    contextSpec: getEffectivePointContextPayload()
+                })
+                    .then(() => isPlayingItems.unsetItemPlaying(subitemPlayId))
+                    .catch(err => {throw err});
+            }
+        }
+        catch(err) {
+            console.error(`Error resolved:`, err);
         }
     }
 
@@ -250,6 +317,7 @@
                 type="button"
                 class="play-point btn btn-ghost btn-xs min-h-0 h-6 w-6 p-0 text-base-content/70 hover:text-base-content"
                 aria-label="Run action"
+                title="Click right-mouse to check the possible modes"
                 onclick={onPlay}
                 oncontextmenu={onOpenPointPlayModeModal}
             >
@@ -258,9 +326,20 @@
         {/if}
     {/key}
 
+    <!-- Modes/Settings button -->
+    <button 
+        type="button"
+        class="btn btn-ghost btn-xs min-h-0 h-6 w-6 p-0 text-base-content/70 hover:text-base-content"
+        aria-label="Selection modes"
+        title="Show possible modes"
+        onclick={onOpenPointPlayModeModal}
+    >
+        <Icon icon="mdi:tune-variant" width="14" height="14" />
+    </button>
+
     <!-- Context addition to the specific element -->
     <button type="button" class="btn btn-ghost btn-xs min-h-0 h-6 w-6 p-0 text-base-content/70 hover:text-base-content" aria-label="Comment action" onclick={onOpenPointContextModal}>
-        <Icon icon="mdi:message-text-outline" width="14" height="14" />
+        <Icon icon="material-symbols:note-stack-outline-rounded" width="14" height="14" />
     </button>
     
     <!-- TODO: Connect the plugins for playing -->

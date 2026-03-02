@@ -55,7 +55,7 @@ export const isPlayingDocuments = (() => {
 })();
 
 /**
- * Contains list with playing items and its childs
+ * Contains list with playing items and its childs from multiple documents without sorting for document
  * E.g: Playing list items and its belonging nested childrens
 */
 export const isPlayingItems = (() => {

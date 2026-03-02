@@ -9,7 +9,15 @@ export const clickedListItemId = (() => {
         handleMouseMenuClick(itemId: string) {
             return (ev: Event) => {
                 ev.stopPropagation();
-                store.update(id => !id ? itemId : null);
+                store.update(id => {
+                    if (!id) { // setup id
+                        return itemId;
+                    }
+                    else if (id !== itemId) { // setup different item id
+                        return itemId;
+                    }
+                    else return null; // setup null
+                });
             }
         }
     }
