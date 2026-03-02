@@ -6,6 +6,7 @@
     import IconSelectionModal from "$lib/modals/IconSelectionModal.svelte";
     import WallpaperSelectionModal from "$lib/modals/WallpaperSelectionModal.svelte";
     import IconValue from "$lib/IconValue.svelte";
+    import { get } from "svelte/store";
 
     let { isExpanded = false }: { isExpanded?: boolean } = $props();
 
@@ -143,7 +144,23 @@
     function updateFileById(items: File[], fileId: string, updater: (item: File) => File): File[] {
         return items.map((item) => {
             if (item.id === fileId) {
-                return updater(item);
+                const updaterValue = updater(item);
+
+                // Local File updation
+                const selectedFileLocal = get(selectedFile);
+                if (selectedFileLocal?.id === fileId) {
+                    selectedFile.set({
+                        ...selectedFileLocal,
+                        name: updaterValue.name
+                    });
+
+                    document.dispatchEvent(new CustomEvent("file-name-change:leftstripe", {
+                        detail: updaterValue.name
+                    }));
+                }
+                
+                // Entries updation
+                return updaterValue;
             }
 
             if (item.subentries?.length) {
@@ -236,6 +253,8 @@
             ...entry,
             name: nextName
         })));
+
+        
 
         renamingId = null;
     }

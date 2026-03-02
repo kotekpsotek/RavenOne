@@ -1,20 +1,163 @@
 <script lang="ts">
+	import { onMount, tick } from "svelte";
 	import type { NodeViewProps } from "@tiptap/core";
 	import Icon from "@iconify/svelte";
 	import { NodeViewContent, NodeViewWrapper } from "svelte-tiptap";
 	import IconSelectionModal from "$lib/modals/IconSelectionModal.svelte";
 	import WallpaperSelectionModal from "$lib/modals/WallpaperSelectionModal.svelte";
 	import IconValue from "$lib/IconValue.svelte";
+    import { entriesList, selectedFile } from "$lib/stores/files";
 
-	let { node, updateAttributes }: NodeViewProps = $props();
+	let { node, updateAttributes, editor, getPos }: NodeViewProps = $props();
 
 	let isIconPickerOpen = $state(false);
 	let isWallpaperPickerOpen = $state(false);
+	let typingDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+	let lastCommittedHeading = "";
+	let lastObservedHeading = "";
 
 	let icon = $derived((node.attrs.icon as string | undefined) ?? "");
 	let walper = $derived((node.attrs.walper as string | undefined) ?? "");
 	let isHeadingEmpty = $derived((node.textContent ?? "").trim().length === 0);
 
+	function dispatchHeadingTyping(isTyping: boolean, value: string) {
+		document.dispatchEvent(
+			new CustomEvent("file-heading-typing:editor", {
+				detail: { isTyping, value }
+			})
+		);
+	}
+
+	function dispatchHeadingChanged(value: string) {
+		document.dispatchEvent(
+			new CustomEvent("file-heading-change:editor", {
+				detail: { value }
+			})
+		);
+	}
+
+	function getCurrentHeadingText() {
+		const position = getPos();
+
+		if (typeof position !== "number") {
+			return (node.textContent ?? "").trim();
+		}
+
+		const headingNode = editor.state.doc.nodeAt(position);
+		return (headingNode?.textContent ?? node.textContent ?? "").trim();
+	}
+
+	function onHeadingInput() {
+		const nextHeading = getCurrentHeadingText();
+		dispatchHeadingTyping(true, nextHeading);
+
+		if (typingDebounceTimer) {
+			clearTimeout(typingDebounceTimer);
+		}
+
+		typingDebounceTimer = setTimeout(() => {
+			dispatchHeadingTyping(false, nextHeading);
+			typingDebounceTimer = null;
+
+			// Update selected file
+			if ($selectedFile) {
+				$selectedFile.name = nextHeading;
+			}
+
+			// Update the file on entires list
+			entriesList.update(entries => {
+				return entries.map(entry => {
+					if (entry.id === $selectedFile?.id) {
+						return {
+							...entry,
+							name: nextHeading
+						}
+					}
+					else return entry;
+				});
+			})
+		}, 300);
+	}
+
+	function onHeadingBlur() {
+		if (typingDebounceTimer) {
+			clearTimeout(typingDebounceTimer);
+			typingDebounceTimer = null;
+		}
+
+		const nextHeading = getCurrentHeadingText();
+		dispatchHeadingTyping(false, nextHeading);
+
+		if (nextHeading !== lastCommittedHeading) {
+			lastCommittedHeading = nextHeading;
+			dispatchHeadingChanged(nextHeading);
+		}
+
+		lastObservedHeading = nextHeading;
+	}
+
+	onMount(() => {
+		lastCommittedHeading = getCurrentHeadingText();
+		lastObservedHeading = lastCommittedHeading;
+
+		let headingElement: HTMLElement | null = null;
+
+		void (async () => {
+			await tick();
+			headingElement = editor.view.dom.querySelector("h1.document-title");
+			headingElement?.addEventListener("input", onHeadingInput);
+			headingElement?.addEventListener("focusout", onHeadingBlur);
+		})();
+
+		const onEditorUpdate = () => {
+			const nextHeading = getCurrentHeadingText();
+			console.log(nextHeading)
+
+			if (nextHeading === lastObservedHeading) {
+				return;
+			}
+
+			lastObservedHeading = nextHeading;
+			onHeadingInput();
+		};
+
+		const onFileNameChange = (event: Event) => {
+			const customEvent = event as CustomEvent<string>;
+			const nextTitle = customEvent.detail;
+			const position = getPos();
+
+			if (typeof position !== "number") {
+				return;
+			}
+
+			const from = position + 1;
+			const to = position + node.nodeSize - 1;
+			const tr = editor.state.tr.insertText(nextTitle, from, to);
+
+			editor.view.dispatch(tr);
+			lastCommittedHeading = nextTitle.trim();
+			lastObservedHeading = lastCommittedHeading;
+			dispatchHeadingChanged(lastCommittedHeading);
+		};
+
+		// Event retrived only when selected file name was editted from leftstripe
+		editor.on("update", onEditorUpdate);
+		document.addEventListener("file-name-change:leftstripe", onFileNameChange);
+
+		return () => {
+			headingElement?.removeEventListener("input", onHeadingInput);
+			headingElement?.removeEventListener("focusout", onHeadingBlur);
+			editor.off("update", onEditorUpdate);
+
+			if (typingDebounceTimer) {
+				clearTimeout(typingDebounceTimer);
+				typingDebounceTimer = null;
+			}
+
+			document.removeEventListener("file-name-change:leftstripe", onFileNameChange);
+		};
+	});
+	
 	function openWallpaperPicker() {
 		isWallpaperPickerOpen = true;
 	}
