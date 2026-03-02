@@ -55,6 +55,7 @@ export const editor = (() => {
                     content,
                     extensions: [
                         StarterKit.configure({
+                            document: false,
                             bulletList: false,
                             orderedList: false,
                             listItem: false,
