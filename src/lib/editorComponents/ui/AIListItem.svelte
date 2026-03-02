@@ -6,9 +6,10 @@
     import { v4 as uuid } from 'uuid';
     import ListItemHoverActions from './mod/AIListItemHoverActions.svelte';
     import AIAnswersList from './mod/AIAnswersList.svelte';
-    import { hoveredListItemId, mouseOutTimeout } from '../../stores/hoveredListItem';
+    import { clickedListItemId, hoveredListItemId, mouseOutTimeout } from '../../stores/hoveredListItem';
     import { getAIAnswers } from '../types/AIList';
     import type { AIPoint } from '../types/AIList';
+    import AITaskOpenButton from './mod/AITaskOpenButton.svelte';
 
     let { node, updateAttributes, editor, deleteNode }: NodeViewProps = $props();
     const aiAnswers = $derived(getAIAnswers(node["attrs"]["aiAnswers"]));
@@ -238,26 +239,30 @@ function testPerformance() {
 </script>
 
 <NodeViewWrapper
-    as="li"
-    class="custom-list-item my-1 relative"
-    onmouseenter={handleMouseEnter}
-    onmouseleave={handleMouseLeave}
+    class="flex gap-2 items-start w-full gap-5"
 >
-    <ListItemHoverActions 
-        visible={$hoveredListItemId === itemId}
-        {itemId}
-        aiAnswers={visibleAiAnswers}
-        onDeletePoint={onDeletePoint}
-    />
+    <AITaskOpenButton {itemId}/>
 
-    <div bind:this={contentHostElement}>
-        <NodeViewContent as="div" class="w-full" />
-    </div>
-
-    {#if visibleAiAnswers !== null && visibleAiAnswers.length > 0}
-        <div class="mt-2 w-full" contenteditable="false" bind:this={answersContainerElement}>
-            <AIAnswersList aiAnswers={visibleAiAnswers} {itemId} />
+    <li
+        class="custom-list-item my-1 relative"
+        onmouseenter={handleMouseEnter}
+        onmouseleave={handleMouseLeave}
+    >
+        <ListItemHoverActions 
+            visible={$hoveredListItemId === itemId || $clickedListItemId === itemId}
+            {itemId}
+            aiAnswers={visibleAiAnswers}
+            onDeletePoint={onDeletePoint}
+        />
+    
+        <div bind:this={contentHostElement}>
+            <NodeViewContent as="div" class="w-full" />
         </div>
-    {/if}
-
+    
+        {#if visibleAiAnswers !== null && visibleAiAnswers.length > 0}
+            <div class="mt-2 w-full" contenteditable="false" bind:this={answersContainerElement}>
+                <AIAnswersList aiAnswers={visibleAiAnswers} {itemId} />
+            </div>
+        {/if}
+    </li>
 </NodeViewWrapper>

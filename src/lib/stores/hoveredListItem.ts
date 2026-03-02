@@ -1,6 +1,19 @@
 import { writable } from 'svelte/store';
 
 export const hoveredListItemId = writable<string | null>(null);
+export const clickedListItemId = (() => {
+    const store = writable<string | null>(null);
+
+    return {
+        ...store,
+        handleMouseMenuClick(itemId: string) {
+            return (ev: Event) => {
+                ev.stopPropagation();
+                store.update(id => !id ? itemId : null);
+            }
+        }
+    }
+})();
 /** Manages the visibility the tray with items */
 export const mouseOutTimeout = (() => {
     const { ...all } = writable<NodeJS.Timeout | null>(null);

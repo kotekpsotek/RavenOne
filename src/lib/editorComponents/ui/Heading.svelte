@@ -52,8 +52,8 @@
 	}
 </script>
 
-<NodeViewWrapper class="group block">
-	<section class="relative overflow-hidden rounded-2xl bg-transparent space-y-4">
+<NodeViewWrapper class="group block mb-2">
+	<section class="relative overflow-visible rounded-2xl bg-transparent space-y-4">
 		{#if walper}
 			<button
 				type="button"
@@ -75,7 +75,7 @@
 			</button>
 		{/if}
 
-		<div class="relative">
+		<div class="relative pt-3">
 			<IconSelectionModal
 				open={isIconPickerOpen}
 				currentValue={icon}
@@ -87,7 +87,7 @@
 			{#if icon}
 				<button
 					type="button"
-					class="mb-2 rounded-xl px-3 py-2 leading-none transition-colors duration-150 hover:bg-base-300/50"
+					class="mb-2 mt-2 rounded-xl px-3 py-2 leading-none transition-colors duration-150 hover:bg-base-300/50"
 					contenteditable="false"
 					onclick={openIconPrompt}
 					aria-label="Change icon"
@@ -102,7 +102,7 @@
 				</button>
 			{/if}
 
-			<div class="mb-3 flex items-center gap-2 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+			<div class="py-1 flex items-center gap-2 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
 				{#if !icon}
 					<button
 						type="button"
@@ -145,7 +145,7 @@
 
 				<NodeViewContent
 					as="h1"
-					class="document-title m-0 mb-0 min-h-[3.75rem] text-5xl font-bold leading-tight text-base-content outline-none"
+					class="document-title pt-1 m-0 mb-0 min-h-[3.75rem] text-5xl font-semibold leading-tight text-base-content outline-none"
 				/>
 			</div>
 		</div>

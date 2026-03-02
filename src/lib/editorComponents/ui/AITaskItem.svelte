@@ -6,9 +6,10 @@
     import { v4 as uuid } from 'uuid';
     import ListItemHoverActions from './mod/AIListItemHoverActions.svelte';
     import AIAnswersList from './mod/AIAnswersList.svelte';
-    import { hoveredListItemId, mouseOutTimeout } from '../../stores/hoveredListItem';
+    import { clickedListItemId, hoveredListItemId, mouseOutTimeout } from '../../stores/hoveredListItem';
     import { getAIAnswers } from '../types/AIList';
     import type { AIPoint } from '../types/AIList';
+    import AITaskOpenButton from './mod/AITaskOpenButton.svelte';
 
     let { node, updateAttributes, editor, deleteNode }: NodeViewProps = $props();
     const aiAnswers = $derived(getAIAnswers(node["attrs"]["aiAnswers"]));
@@ -224,38 +225,43 @@
 </script>
 
 <NodeViewWrapper 
-    as="li" 
-    class="custom-task-item flex items-start gap-2 my-1 relative"
     data-type="taskItem"
+    class="flex gap-2 items-start w-full"
     data-checked={node.attrs.checked}
-    onmouseenter={handleMouseEnter}
-    onmouseleave={handleMouseLeave}
 >
-    <ListItemHoverActions
-        visible={$hoveredListItemId === itemId}
-        {itemId}
-        aiAnswers={visibleAiAnswers}
-        onDeletePoint={onDeletePoint}
-    />
-    <label class="flex items-center mt-1 cursor-pointer">
-        <input 
-            type="checkbox" 
-            class="checkbox checkbox-sm checkbox-primary" 
-            checked={node.attrs.checked}
-            title="Checkbox will be checked-out once ai has resolved"
-            onchange={handleChange} 
-            onclick={handleCheckBoxClick}
-        />
-    </label>
-    <div class="flex-1">
-        <div bind:this={contentHostElement}>
-            <NodeViewContent as="div" class="w-full" />
-        </div>
+    <AITaskOpenButton {itemId}/>
 
-        {#if visibleAiAnswers !== null && visibleAiAnswers.length > 0}
-            <div class="mt-2" contenteditable="false" bind:this={answersContainerElement}>
-                <AIAnswersList aiAnswers={visibleAiAnswers} {itemId} />
+    <li 
+        class="custom-task-item w-full flex items-start gap-2 my-1 relative"
+        onmouseenter={handleMouseEnter}
+        onmouseleave={handleMouseLeave}
+    >
+        <ListItemHoverActions
+            visible={$hoveredListItemId === itemId || $clickedListItemId === itemId}
+            {itemId}
+            aiAnswers={visibleAiAnswers}
+            onDeletePoint={onDeletePoint}
+        />
+        <label class="flex items-center mt-1 cursor-pointer">
+            <input 
+                type="checkbox" 
+                class="checkbox checkbox-sm checkbox-primary" 
+                checked={node.attrs.checked}
+                title="Checkbox will be checked-out once ai has resolved"
+                onchange={handleChange} 
+                onclick={handleCheckBoxClick}
+            />
+        </label>
+        <div class="flex-1">
+            <div bind:this={contentHostElement}>
+                <NodeViewContent as="div" class="w-full" />
             </div>
-        {/if}
-    </div>
+    
+            {#if visibleAiAnswers !== null && visibleAiAnswers.length > 0}
+                <div class="mt-2" contenteditable="false" bind:this={answersContainerElement}>
+                    <AIAnswersList aiAnswers={visibleAiAnswers} {itemId} />
+                </div>
+            {/if}
+        </div>
+    </li>
 </NodeViewWrapper>
