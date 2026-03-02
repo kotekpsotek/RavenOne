@@ -10,8 +10,11 @@
     import { getAIAnswers } from '../types/AIList';
     import type { AIPoint } from '../types/AIList';
     import AITaskOpenButton from './mod/AITaskOpenButton.svelte';
+    import AITaskPlayingState from './mod/AITaskPlayingState.svelte';
 
-    let { node, updateAttributes, editor, deleteNode }: NodeViewProps = $props();
+    let nodeViewProps = $props();
+    // svelte-ignore state_referenced_locally
+    let { node, updateAttributes, editor, deleteNode }= nodeViewProps;
     const aiAnswers = $derived(getAIAnswers(node["attrs"]["aiAnswers"]));
     const itemId = $derived((node["attrs"]["id"] as string | undefined) ?? "");
 
@@ -137,7 +140,7 @@ function testPerformance() {
     function isUniqueItemId(id: string) {
         let occurrences = 0;
 
-        editor.state.doc.descendants((docNode) => {
+        editor.state.doc.descendants((docNode: any) => {
             const isTargetNodeType = docNode.type.name === 'listItem' || docNode.type.name === 'taskItem';
             if (!isTargetNodeType) {
                 return true;
@@ -253,6 +256,7 @@ function testPerformance() {
             {itemId}
             aiAnswers={visibleAiAnswers}
             onDeletePoint={onDeletePoint}
+            {nodeViewProps}
         />
     
         <div bind:this={contentHostElement} class="w-full min-w-0">
@@ -266,7 +270,7 @@ function testPerformance() {
         {/if}
     </li>
 
-    <div class="timer shrink-0 w-8 flex justify-center items-start pt-1">
-        x
-    </div>
+    <AITaskPlayingState 
+        {itemId}
+    />
 </NodeViewWrapper>

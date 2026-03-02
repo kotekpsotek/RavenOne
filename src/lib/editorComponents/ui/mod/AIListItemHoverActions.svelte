@@ -11,19 +11,22 @@
     import { playableDocumentsWithPoints } from '$lib/stores/playMode';
     import ContextSelectionModal from '$lib/modals/ContextSelectionModal.svelte';
     import PlayModeDropdownContent from '$lib/components/PlayModeDropdownContent.svelte';
-    import { editor } from '$lib/stores/editor';
-    import { derived } from 'svelte/store';
+    import { get } from 'svelte/store';
+    import type { NodeViewProps } from '@tiptap/core';
+    import { appendPointAIAnswer } from '$lib/utils/appendPointAIAnswer';
 
     let {
         visible = false,
         itemId,
         aiAnswers,
-        onDeletePoint
+        nodeViewProps,
+        onDeletePoint,
     }: {
         visible?: boolean,
         itemId: string,
         aiAnswers: AIPoint["aiAnswers"] | null,
-        onDeletePoint?: () => void
+        nodeViewProps: NodeViewProps,
+        onDeletePoint?: () => void,
     } = $props();
 
     const POINT_CONTEXT_STORAGE_KEY_PREFIX = 'ravenone:point-context:';
@@ -48,7 +51,7 @@
     /**
      * Point is playing always when documents are playing but the point 
      */
-    const isFilePlayingAndThisPointPlaying = derived([playableDocumentsWithPoints, selectedFile], ([$playingDocumentsStore, $selectedFile]) => {
+    const isFilePlayingAndThisPointPlaying = $derived.by(() => {
         if (!$selectedFile) {
             return false;
         }
@@ -195,8 +198,9 @@
     async function onPlay(event: MouseEvent) {
         event.preventDefault();
         event.stopPropagation();
+        const selectedFileLocal = get(selectedFile);
 
-        if (!$selectedFile) {
+        if (!selectedFileLocal) {
             // FIXME: Add alert
             return;
         }
@@ -214,20 +218,28 @@
         }
 
         playableDocumentsWithPoints.setUpPointPlaying(
-            $selectedFile,
+            selectedFileLocal,
             itemId,
-            async (pointToPlayId: string) => {
-                await play({
-                    document: $selectedFile,
-                    itemId: pointToPlayId,
-                    mode: selectedItemPlayMode,
-                    model: selectedItemModel,
-                    tools: availableItemTools,
-                    mcpServers: selectedItemMcpServers,
-                    contextSpec: getEffectivePointContextPayload()
-                });
+            async (pointToPlayId, document) => {
+                await play(
+                    // Saves the ai answers for this point
+                    async (aiAnswer) => {
+                        await appendPointAIAnswer(nodeViewProps.editor, pointToPlayId, aiAnswer);
+                    },
+                    // config
+                    {
+                        document: selectedFileLocal,
+                        itemId: pointToPlayId,
+                        mode: selectedItemPlayMode,
+                        model: selectedItemModel,
+                        tools: availableItemTools,
+                        mcpServers: selectedItemMcpServers,
+                        contextSpec: getEffectivePointContextPayload()
+                    }
+                );
 
-                playableDocumentsWithPoints.unsetPointPlaying(pointToPlayId, undefined, false);
+                //
+                playableDocumentsWithPoints.unsetPointPlaying(pointToPlayId, selectedFileLocal, undefined, false);
             },
             { playMode: selectedItemPlayMode }
         );
@@ -237,7 +249,12 @@
         event.preventDefault();
         event.stopPropagation();
 
-        playableDocumentsWithPoints.unsetPointPlaying(itemId, undefined, { playMode: selectedItemPlayMode });
+        if (!$selectedFile) {
+            console.error(`Cannot stop playing since selected file doesn't exist"`)
+            return;
+        }
+
+        playableDocumentsWithPoints.unsetPointPlaying(itemId, $selectedFile, undefined, { playMode: selectedItemPlayMode });
     }
 </script>
 
@@ -249,8 +266,7 @@
 >
     <!-- Playing the specific element TODO: Show the possible modes -->
     {#key $playableDocumentsWithPoints}
-        {@debug $isFilePlayingAndThisPointPlaying}
-        {#if $isFilePlayingAndThisPointPlaying}
+        {#if isFilePlayingAndThisPointPlaying}
             <button 
                 type="button"
                 class="btn btn-ghost btn-xs min-h-0 h-6 w-6 p-0 text-base-content/70 hover:text-base-content"

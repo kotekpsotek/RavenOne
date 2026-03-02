@@ -17,6 +17,7 @@
     import { UI } from "@ravenlens/frontend";
     import ContextSelectionModal from "./modals/ContextSelectionModal.svelte";
     import PlayModeDropdownContent from "./components/PlayModeDropdownContent.svelte";
+    import { appendPointAIAnswer } from "./utils/appendPointAIAnswer";
 
     type DropdownName = "model-settings" | "mcp-tools" | "play-settings" | "share";
 
@@ -53,9 +54,6 @@
         avaiableModels.find((model) => model.model === key);
 
     const currentModel = $derived(getModelByKey(selectedModelKey));
-    $effect(() => {
-        selectedModel.set(currentModel);
-    })
 
     const getCurrentModelWeight = () => modelWeights[selectedModelKey] ?? 1;
 
@@ -287,15 +285,29 @@
         // Setups playing mode for this document and plays each compilant point
         const setupState = playableDocumentsWithPoints.setFullDocumentPlaying(
             seletedFileLocal,
-            async (pointId: string) => {
-                await play({
-                    ...config,
-                    itemId: pointId
-                });
+            async (pointId, document) => {
+                await play(
+                    // Answers
+                    async (aiAnswer) => {
+                        // Cannot save the answer for different document that for what was playing
+                        if (!$selectedFile || $selectedFile.id !== document.id) {
+                            return;
+                        }
 
-                playableDocumentsWithPoints.unsetPointPlaying(pointId, undefined, false);
+                        await appendPointAIAnswer(get(editor), pointId, aiAnswer);
+                    }, 
+                    // Config
+                    {
+                        ...config,
+                        itemId: pointId
+                    }
+                );
+
+                playableDocumentsWithPoints.unsetPointPlaying(pointId, seletedFileLocal, undefined, false);
             }
         );
+
+        //
         if (!setupState) {
             $alertState = {
                 alert: {

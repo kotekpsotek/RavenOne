@@ -1,23 +1,8 @@
 import type { AI } from "@ravenlens/shared";
-import type { ContextSpecificationPayload, PlayMode } from "./editorComponents/types/AIList";
+import type { AIAnswer, ContextSpecificationPayload, PlayMode } from "./editorComponents/types/AIList";
 import type { File } from "./stores/files";
 import type { Editor } from "svelte-tiptap";
-
-export interface PlayConfig {
-    document: File;
-    /** 
-     * It's the unique in document id of item was playing
-     * It presence means play mode was used for specific item
-     * Rest is handled by the logic of each point e.g: retriving the point answers and point subasnwers will proceed with this logic
-    */
-    itemId?: string;
-    /** It's the play mode is selected */
-    mode: PlayMode;
-    model: AI.RavenLensAvaiableAIModel;
-    tools: string[];
-    mcpServers: string[];
-    contextSpec: ContextSpecificationPayload;
-}
+import type { NodeViewProps } from "@tiptap/core";
 
 interface PlayModeCompliance {
     playMode: PlayMode;
@@ -129,7 +114,56 @@ export class DocumentPlayablePoints {
     }
 }
 
-export async function play(config: PlayConfig) {
+export interface PlayConfig {
+    document: File;
+    /** 
+     * It's the unique in document id of item was playing
+     * It presence means play mode was used for specific item
+     * Rest is handled by the logic of each point e.g: retriving the point answers and point subasnwers will proceed with this logic
+    */
+    itemId?: string;
+    /** It's the play mode is selected */
+    mode: PlayMode;
+    model: AI.RavenLensAvaiableAIModel;
+    tools: string[];
+    mcpServers: string[];
+    contextSpec: ContextSpecificationPayload;
+}
+
+/**
+ * 
+ * @param updateAiAnswers - function is calling when server has generated answer for point
+ * @param config 
+ */
+export async function play(updateAiAnswers: (aiAnswerOutcome: AIAnswer) => Promise<void>, config: PlayConfig) {
+    const startDateTimestamp = Date.now();
+
     // TODO: This is simulation / send this to backend with socket.io connection
-    return new Promise(res => setTimeout(res, 5_000));
+    await new Promise(res => setTimeout(res, 5_000));
+    const endDateTimestamp = Date.now();
+
+    // Save the result of playing to aiAnswers attribute FIXME: Show real
+    const exampleAnswer: AIAnswer = {
+        playMode: config.mode,
+        startDateTimestamp,
+        endDateTimestamp,
+        model: {
+            id: `${config.model.provider}:${config.model.model}`,
+            name: config.model.model,
+            provider: config.model.provider,
+            weight: 1
+        },
+        context: [
+            ...config.contextSpec.desktopFiles,
+            ...config.contextSpec.editorFiles,
+            ...config.contextSpec.networkUrls
+        ],
+        mcp: config.mcpServers[0] ?? false,
+        tools: {
+            webSearch: config.tools.includes("webSearch")
+        },
+        answerTipTapHTML: `<p>This is an example AI generated response for item ${config.itemId ?? "unknown"}.</p>`
+    }
+    
+    await updateAiAnswers(exampleAnswer)
 }

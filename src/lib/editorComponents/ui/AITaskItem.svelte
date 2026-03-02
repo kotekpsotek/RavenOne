@@ -10,8 +10,12 @@
     import { getAIAnswers } from '../types/AIList';
     import type { AIPoint } from '../types/AIList';
     import AITaskOpenButton from './mod/AITaskOpenButton.svelte';
+    import AITaskPlayingState from './mod/AITaskPlayingState.svelte';
 
-    let { node, updateAttributes, editor, deleteNode }: NodeViewProps = $props();
+    let nodeViewProps: NodeViewProps = $props()
+    // svelte-ignore state_referenced_locally
+    let { node, updateAttributes, editor, deleteNode } = nodeViewProps;
+
     const aiAnswers = $derived(getAIAnswers(node["attrs"]["aiAnswers"]));
     const itemId = $derived((node["attrs"]["id"] as string | undefined) ?? "");
 
@@ -21,7 +25,8 @@
     const simulatedAiAnswers: AIPoint["aiAnswers"] = [
         {
             playMode: "run-all",
-            dateTimestamp: Date.now() - 1000 * 60 * 8,
+            startDateTimestamp: (Date.now() - 1000 * 60 * 8) - 50_000,
+            endDateTimestamp: (Date.now() - 1000 * 60 * 4),
             model: {
                 id: "gpt-5.2",
                 name: "GPT-5.2",
@@ -37,7 +42,8 @@
         },
         {
             playMode: "run-non-runned",
-            dateTimestamp: Date.now() - 1000 * 60 * 4,
+            startDateTimestamp: (Date.now() - 1000 * 60 * 4) - 50_000,
+            endDateTimestamp: (Date.now() - 1000 * 60 * 4),
             model: {
                 id: "gpt-5.2",
                 name: "GPT-5.2",
@@ -241,6 +247,7 @@
             {itemId}
             aiAnswers={visibleAiAnswers}
             onDeletePoint={onDeletePoint}
+            {nodeViewProps}
         />
         <label class="flex items-center mt-1 cursor-pointer shrink-0">
             <input 
@@ -265,7 +272,7 @@
         </div>
     </li>
 
-    <div class="timer shrink-0 w-8 flex justify-center items-start pt-1">
-        x
-    </div>
+    <AITaskPlayingState 
+        {itemId}
+    />
 </NodeViewWrapper>

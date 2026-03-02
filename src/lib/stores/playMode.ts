@@ -15,7 +15,7 @@ export interface DocumentPlayPoints {
 	pointsFromLists: PlayPoint[]
 }
 
-export type PointCallFn = (pointId: string) => Promise<void>;
+export type PointCallFn = (pointId: string, document: File) => Promise<void>;
 type PlayModeConfig = false | { playMode: PointPlayMode };
 
 /**
@@ -58,7 +58,7 @@ export const playableDocumentsWithPoints = (() => {
             // Play all points
             if (playPointFn) {
                 for (const pointId of allPlayablePointIds) {
-                    playPointFn(pointId)
+                    playPointFn(pointId, document)
                         .catch(err => console.error(`Error for point "${pointId}" play operation`, err));
                 }
             }
@@ -79,6 +79,7 @@ export const playableDocumentsWithPoints = (() => {
             // Return state
             return true;
         },
+        // FIXME:
         /**
          * @param stopPointFn - STOPs playing point and all subppoints
          * @param file 
@@ -131,7 +132,7 @@ export const playableDocumentsWithPoints = (() => {
                 if (existingDocumentIndex === -1) {
                     if (playPointFn) {
                         for (const pointToPlayId of pointIdsToPlay) {
-                            playPointFn(pointToPlayId)
+                            playPointFn(pointToPlayId, selectedDocument)
                                 .catch(err => console.error(`Error for point "${pointToPlayId}" play operation`, err));
                         }
                     }
@@ -156,7 +157,7 @@ export const playableDocumentsWithPoints = (() => {
 
                 if (playPointFn) {
                     for (const pointToPlayId of pointIdsToPlay.filter(id => !existingPointIds.has(id))) {
-                        playPointFn(pointToPlayId)
+                        playPointFn(pointToPlayId, selectedDocument)
                             .catch(err => console.error(`Error for point "${pointToPlayId}" play operation`, err));
                     }
                 }
@@ -176,7 +177,7 @@ export const playableDocumentsWithPoints = (() => {
         /**
          * @param stopPointFn - setups point plaing for point and its subpoints
         */
-        unsetPointPlaying(pointId: string, stopPointFn?: PointCallFn, playModeConfig?: PlayModeConfig) {
+        unsetPointPlaying(pointId: string, selectedDocument: File, stopPointFn?: PointCallFn, playModeConfig?: PlayModeConfig) {
             const editorLocal = get(editor);
             const modeConfig: PlayModeConfig = playModeConfig ?? { playMode: get(playMode) };
             const pointIdsToStop = editorLocal
@@ -188,7 +189,7 @@ export const playableDocumentsWithPoints = (() => {
 
             if (stopPointFn) {
                 for (const pointToStopId of pointIdsToStop) {
-                    stopPointFn(pointToStopId)
+                    stopPointFn(pointToStopId, selectedDocument)
                         .catch(err => console.error(`Error for point "${pointToStopId}" stop operation`, err));
                 }
             }
@@ -216,5 +217,15 @@ export const playableDocumentsWithPoints = (() => {
 
             return documentState.pointsFromLists.some(point => point.pointId === pointId);
         },
+        getPointPlayable(selectedDocument: File, pointId: string) {
+            const state = get(store);
+            const documentState = state.find(documentStore => documentStore.document.id === selectedDocument.id);
+
+            if (!documentState) {
+                return;
+            }
+
+            return documentState.pointsFromLists.find(point => point.pointId === pointId);
+        }
     }
 })();

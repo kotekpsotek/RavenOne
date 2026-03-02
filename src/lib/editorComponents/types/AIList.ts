@@ -1,4 +1,4 @@
-import type { ProviderID } from "@ravenlens/shared";
+import { AI } from "@ravenlens/shared";
 
 /* Has the types defined for AI List */
 export type PlayMode = "run-non-runned" | "run-all";
@@ -35,16 +35,17 @@ export interface BrowserToolsSpec {
     webSearch: boolean;
 }
 
-interface AIAnswer {
+export interface AIAnswer {
     playMode: PlayMode;
-    dateTimestamp: number;
+    startDateTimestamp: number;
+    endDateTimestamp: number;
     model: {
         /** Is the id of model from configured user models -> It can be the custom model */
         id: string;
         /** It's the model name of specified user models */
         name: string;
         /** It's the provider name or different custom provider name */
-        provider: ProviderID | { provider: string };
+        provider: AI.ProviderID | { provider: string };
         /** Is the wieght of specified  */
         weight: number;
         
