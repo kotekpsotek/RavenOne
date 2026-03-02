@@ -8,10 +8,11 @@
     import type { AI } from '@ravenlens/shared';
     import { selectedMcpServers } from '$lib/stores/mcpConfig';
     import { contextSpecification } from '$lib/stores/contextSpec';
-    import { isPlayingItems } from '$lib/stores/playMode';
+    import { isPlayingDocuments, isPlayingItems } from '$lib/stores/playMode';
     import ContextSelectionModal from '$lib/modals/ContextSelectionModal.svelte';
     import PlayModeDropdownContent from '$lib/components/PlayModeDropdownContent.svelte';
     import { editor } from '$lib/stores/editor';
+    import { derived } from 'svelte/store';
 
     let {
         visible = false,
@@ -42,6 +43,17 @@
         desktopFiles: [],
         editorFiles: [],
         networkUrls: []
+    });
+
+    /**
+     * Point is playing always when documents are playing but the point 
+     */
+    const isFilePlayingAndThisPointPlaying = derived([isPlayingDocuments, selectedFile], ([documents, $selectedFile]) => {
+        if (!$selectedFile) {
+            return false;
+        }
+        
+        return isPlayingDocuments.isFilePlaying($selectedFile) && ($playMode === "run-all" || ($playMode === "run-non-runned" && !aiAnswers?.length))
     });
 
     function getPointContextStorageKey(currentItemId: string) {
@@ -303,11 +315,13 @@
 >
     <!-- Playing the specific element TODO: Show the possible modes -->
     {#key $isPlayingItems}
-        {#if isPlayingItems.isItemPlaying(itemId)}
+        {@debug $isFilePlayingAndThisPointPlaying}
+        {#if isPlayingItems.isItemPlaying(itemId) || $isFilePlayingAndThisPointPlaying}
             <button 
                 type="button"
                 class="btn btn-ghost btn-xs min-h-0 h-6 w-6 p-0 text-base-content/70 hover:text-base-content"
                 aria-label="Stop action"
+                disabled={$isFilePlayingAndThisPointPlaying}
                 onclick={onStop}
             >
                 <Icon icon="mdi:stop" width="14" height="14" />

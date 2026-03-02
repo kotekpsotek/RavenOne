@@ -16,7 +16,7 @@
     const itemId = $derived((node["attrs"]["id"] as string | undefined) ?? "");
 
     const simulatedAiAnswers: AIPoint["aiAnswers"] = [
-        {
+        /* {
             playMode: "run-all",
             dateTimestamp: Date.now() - 1000 * 60 * 8,
             model: {
@@ -70,7 +70,7 @@ function testPerformance() {
                 webSearch: true
             },
             answerTipTapHTML: "<p>Answer content 1</p><p>Answer content 1</p><p>Answer content 1</p>"
-        }
+        } */
     ];
     const visibleAiAnswers = $derived(
         aiAnswers !== null && aiAnswers.length > 0
@@ -239,12 +239,12 @@ function testPerformance() {
 </script>
 
 <NodeViewWrapper
-    class="flex gap-2 items-start w-full gap-5"
+    class="flex gap-5 items-start w-full min-w-0"
 >
     <AITaskOpenButton {itemId}/>
 
     <li
-        class="custom-list-item my-1 relative"
+        class="custom-list-item flex-1 min-w-0 my-1 relative list-item"
         onmouseenter={handleMouseEnter}
         onmouseleave={handleMouseLeave}
     >
@@ -255,8 +255,8 @@ function testPerformance() {
             onDeletePoint={onDeletePoint}
         />
     
-        <div bind:this={contentHostElement}>
-            <NodeViewContent as="div" class="w-full" />
+        <div bind:this={contentHostElement} class="w-full min-w-0">
+            <NodeViewContent as="div" class="w-full whitespace-pre-wrap break-words"/>
         </div>
     
         {#if visibleAiAnswers !== null && visibleAiAnswers.length > 0}
@@ -265,4 +265,8 @@ function testPerformance() {
             </div>
         {/if}
     </li>
+
+    <div class="timer shrink-0 w-8 flex justify-center items-start pt-1">
+        x
+    </div>
 </NodeViewWrapper>

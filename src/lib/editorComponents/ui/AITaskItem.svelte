@@ -226,13 +226,13 @@
 
 <NodeViewWrapper 
     data-type="taskItem"
-    class="flex gap-2 items-start w-full"
+    class="flex gap-2 items-start w-full min-w-0"
     data-checked={node.attrs.checked}
 >
     <AITaskOpenButton {itemId}/>
 
     <li 
-        class="custom-task-item w-full flex items-start gap-2 my-1 relative"
+        class="custom-task-item flex-1 min-w-0 flex items-start gap-2 my-1 relative"
         onmouseenter={handleMouseEnter}
         onmouseleave={handleMouseLeave}
     >
@@ -242,7 +242,7 @@
             aiAnswers={visibleAiAnswers}
             onDeletePoint={onDeletePoint}
         />
-        <label class="flex items-center mt-1 cursor-pointer">
+        <label class="flex items-center mt-1 cursor-pointer shrink-0">
             <input 
                 type="checkbox" 
                 class="checkbox checkbox-sm checkbox-primary" 
@@ -252,16 +252,20 @@
                 onclick={handleCheckBoxClick}
             />
         </label>
-        <div class="flex-1">
-            <div bind:this={contentHostElement}>
-                <NodeViewContent as="div" class="w-full" />
+        <div class="flex-1 min-w-0 w-full overflow-hidden">
+            <div bind:this={contentHostElement} class="w-full min-w-0">
+                <NodeViewContent as="div" class="w-full whitespace-pre-wrap break-words" />
             </div>
     
             {#if visibleAiAnswers !== null && visibleAiAnswers.length > 0}
-                <div class="mt-2" contenteditable="false" bind:this={answersContainerElement}>
+                <div class="mt-2 w-full" contenteditable="false" bind:this={answersContainerElement}>
                     <AIAnswersList aiAnswers={visibleAiAnswers} {itemId} />
                 </div>
             {/if}
         </div>
     </li>
+
+    <div class="timer shrink-0 w-8 flex justify-center items-start pt-1">
+        x
+    </div>
 </NodeViewWrapper>
