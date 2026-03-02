@@ -16,7 +16,7 @@
     // svelte-ignore state_referenced_locally
     let { node, updateAttributes, editor, deleteNode }= nodeViewProps;
     const aiAnswers = $derived(getAIAnswers(node["attrs"]["aiAnswers"]));
-    const itemId = $derived((node["attrs"]["id"] as string | undefined) ?? "");
+    let itemId = $derived((node["attrs"]["id"] as string | undefined) ?? "");
 
     const simulatedAiAnswers: AIPoint["aiAnswers"] = [
         /* {
@@ -156,10 +156,14 @@ function testPerformance() {
         return occurrences === 1;
     }
 
-    function ensureUniqueItemId() {
-        if (!itemId || !isUniqueItemId(itemId)) {
-            updateAttributes({ id: `listItem-${uuid()}` });
+    function ensureUniqueItemId(itemId: string) {
+        if (!itemId.trim().length || !isUniqueItemId(itemId)) {
+            const id = `listItem-${uuid()}`;
+            updateAttributes({ id: id });
+            return id;
         }
+
+        return itemId;
     }
 
     function resolveContentElement() {
@@ -204,7 +208,7 @@ function testPerformance() {
     }
 
     $effect(() => {
-        ensureUniqueItemId();
+        itemId = ensureUniqueItemId(itemId);
     });
 
     $effect(() => {

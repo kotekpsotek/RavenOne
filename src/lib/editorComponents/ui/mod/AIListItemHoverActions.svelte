@@ -14,6 +14,7 @@
     import { get } from 'svelte/store';
     import type { NodeViewProps } from '@tiptap/core';
     import { appendPointAIAnswer } from '$lib/utils/appendPointAIAnswer';
+    import { v4 as uuid } from 'uuid';
 
     let {
         visible = false,
@@ -46,17 +47,6 @@
         desktopFiles: [],
         editorFiles: [],
         networkUrls: []
-    });
-
-    /**
-     * Point is playing always when documents are playing but the point 
-     */
-    const isFilePlayingAndThisPointPlaying = $derived.by(() => {
-        if (!$selectedFile) {
-            return false;
-        }
-
-        return playableDocumentsWithPoints.isPointPlayingInDocument($selectedFile, itemId);
     });
 
     function getPointContextStorageKey(currentItemId: string) {
@@ -192,6 +182,20 @@
         closePointActionsDropdown();
     }
 
+    function resolvePointId() {
+        if (itemId.trim().length > 0) {
+            return itemId;
+        }
+
+        const generatedPointId = `listItem-${uuid()}`;
+        nodeViewProps.updateAttributes({
+            ...nodeViewProps.node.attrs,
+            id: generatedPointId
+        });
+
+        return generatedPointId;
+    }
+
     /** Play Mode */
     // TODO: Handle the Play according to selected playmode where it's one of type for `PlayMode`
     // TODO: Add backend socket.io server handling for onPlay
@@ -217,9 +221,15 @@
             return;
         }
 
+        const pointId = resolvePointId();
+        if (!pointId.trim().length) {
+            console.error("Cannot play point: point id is empty.");
+            return;
+        }
+
         playableDocumentsWithPoints.setUpPointPlaying(
             selectedFileLocal,
-            itemId,
+            pointId,
             async (pointToPlayId, document) => {
                 await play(
                     // Saves the ai answers for this point
@@ -266,7 +276,7 @@
 >
     <!-- Playing the specific element TODO: Show the possible modes -->
     {#key $playableDocumentsWithPoints}
-        {#if isFilePlayingAndThisPointPlaying}
+        {#if $selectedFile && playableDocumentsWithPoints.isPointPlayingInDocument($selectedFile, itemId)}
             <button 
                 type="button"
                 class="btn btn-ghost btn-xs min-h-0 h-6 w-6 p-0 text-base-content/70 hover:text-base-content"

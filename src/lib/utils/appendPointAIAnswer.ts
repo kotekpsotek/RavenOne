@@ -3,48 +3,49 @@ import { getAIAnswers, type AIAnswer } from "$lib/editorComponents/types/AIList"
 
 const editorAppendQueue = new WeakMap<Editor, Promise<void>>();
 
-function clampSelectionPosition(position: number, maxPosition: number) {
-    if (!Number.isFinite(position)) {
-        return 1;
+function getCurrentAnswers(aiAnswersAttr: unknown) {
+    if (Array.isArray(aiAnswersAttr)) {
+        return aiAnswersAttr;
     }
 
-    return Math.max(1, Math.min(position, Math.max(1, maxPosition)));
+    if (typeof aiAnswersAttr === "string") {
+        return getAIAnswers(aiAnswersAttr) ?? [];
+    }
+
+    return [];
 }
 
 function appendPointAIAnswerOnce(editor: Editor, pointId: string, aiAnswer: AIAnswer) {
-    const documentContent = editor.getHTML() ?? "";
-    const parsedDocument = new DOMParser().parseFromString(documentContent, "text/html");
-    const pointElement = parsedDocument.getElementById(pointId);
+    const { state, view } = editor;
+    let foundPointPosition: number | undefined;
+    let foundPointAttrs: Record<string, unknown> | undefined;
 
-    if (!pointElement) {
+    state.doc.descendants((docNode, pos) => {
+        const nodeId = (docNode.attrs?.id as string | undefined) ?? "";
+        if (nodeId !== pointId) {
+            return true;
+        }
+
+        foundPointPosition = pos;
+        foundPointAttrs = (docNode.attrs ?? {}) as Record<string, unknown>;
+
+        return false;
+    });
+
+    if (foundPointPosition === undefined || foundPointAttrs === undefined) {
         console.error(`Cannot append aiAnswer: playable point with id \"${pointId}\" was not found in editor content.`);
         return false;
     }
 
-    const pointAnswersAttr = pointElement.getAttribute("aianswers") ?? pointElement.getAttribute("aiAnswers") ?? "[]";
-    const pointAnswers = getAIAnswers(pointAnswersAttr) ?? [];
+    const pointAnswers = getCurrentAnswers(foundPointAttrs.aiAnswers);
     const nextPointAnswers = [...pointAnswers, aiAnswer];
-    const serializedAnswers = JSON.stringify(nextPointAnswers);
+    const nextAttrs = {
+        ...foundPointAttrs,
+        aiAnswers: JSON.stringify(nextPointAnswers)
+    };
 
-    pointElement.setAttribute("aianswers", serializedAnswers);
-    pointElement.setAttribute("aiAnswers", serializedAnswers);
-
-    const wasEditorFocused = editor.isFocused;
-    const previousSelection = editor.state.selection;
-
-    editor.commands.setContent(parsedDocument.body.innerHTML);
-
-    if (wasEditorFocused) {
-        const maxPosition = editor.state.doc.content.size;
-        const nextFrom = clampSelectionPosition(previousSelection.from, maxPosition);
-        const nextTo = clampSelectionPosition(previousSelection.to, maxPosition);
-
-        try {
-            editor.chain().setTextSelection({ from: nextFrom, to: nextTo }).focus().run();
-        } catch (error) {
-            console.error("Failed to restore editor selection after aiAnswer append.", error);
-        }
-    }
+    const transaction = state.tr.setNodeMarkup(foundPointPosition, undefined, nextAttrs);
+    view.dispatch(transaction);
 
     return true;
 }

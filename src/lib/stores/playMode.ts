@@ -96,6 +96,11 @@ export const playableDocumentsWithPoints = (() => {
         */
         setUpPointPlaying(selectedDocument: File, pointId: string, playPointFn?: PointCallFn, playModeConfig?: PlayModeConfig) {
             store.update(documentsPlayingList => {
+                if (!pointId.trim().length) {
+                    console.error("Cannot play point: point id is empty.");
+                    return documentsPlayingList;
+                }
+
                 const editorLocal = get(editor);
                 if (!editorLocal) {
                     console.error(`Editor isn't specified`);
@@ -104,11 +109,16 @@ export const playableDocumentsWithPoints = (() => {
 
                 const modeConfig: PlayModeConfig = playModeConfig ?? { playMode: get(playMode) };
 
-                const doesPlayablePointExist = DocumentPlayablePoints.doesPlayablePointExists(editorLocal, pointId, modeConfig);
-                if (!doesPlayablePointExist) {
+                const doesPointExistInDocument = DocumentPlayablePoints.doesPlayablePointExists(editorLocal, pointId, false);
+                if (!doesPointExistInDocument) {
                     console.error(`Playable point with id: "${pointId}" doesn't exists!`);
                     return documentsPlayingList;
                 }
+
+                const doesPlayablePointExist = DocumentPlayablePoints.doesPlayablePointExists(editorLocal, pointId, modeConfig);
+                const childPoints = doesPlayablePointExist
+                    ? DocumentPlayablePoints.getParentPointPlayableChildPoints(editorLocal, pointId, modeConfig)
+                    : [];
 
                 const now = Date.now();
                 const incomingPoints: PlayPoint[] = [
@@ -116,7 +126,7 @@ export const playableDocumentsWithPoints = (() => {
                         pointId,
                         startTimestamp: now
                     },
-                    ...DocumentPlayablePoints.getParentPointPlayableChildPoints(editorLocal, pointId, modeConfig).map(pointElement => ({
+                    ...childPoints.map(pointElement => ({
                         pointId: pointElement.id,
                         startTimestamp: now
                     } satisfies PlayPoint))
@@ -124,7 +134,7 @@ export const playableDocumentsWithPoints = (() => {
 
                 const pointIdsToPlay = [
                     pointId,
-                    ...DocumentPlayablePoints.getParentPointPlayableChildPoints(editorLocal, pointId, modeConfig).map(point => point.id)
+                    ...childPoints.map(point => point.id)
                 ].filter((id, index, list) => Boolean(id) && list.indexOf(id) === index);
 
                 const existingDocumentIndex = documentsPlayingList.findIndex(documentStore => documentStore.document.id === selectedDocument.id);

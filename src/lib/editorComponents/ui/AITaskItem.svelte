@@ -1,6 +1,6 @@
 <script lang="ts">
     import { dev } from '$app/environment';
-    import { tick, type ComponentEvents } from 'svelte';
+    import { tick } from 'svelte';
     import { NodeViewWrapper, NodeViewContent } from 'svelte-tiptap';
     import type { NodeViewProps } from '@tiptap/core';
     import { v4 as uuid } from 'uuid';
@@ -17,7 +17,7 @@
     let { node, updateAttributes, editor, deleteNode } = nodeViewProps;
 
     const aiAnswers = $derived(getAIAnswers(node["attrs"]["aiAnswers"]));
-    const itemId = $derived((node["attrs"]["id"] as string | undefined) ?? "");
+    let itemId = $derived((node["attrs"]["id"] as string | undefined) ?? "");
 
     let contentHostElement = $state<HTMLDivElement | null>(null);
     let answersContainerElement = $state<HTMLDivElement | null>(null);
@@ -145,10 +145,14 @@
         return occurrences === 1;
     }
 
-    function ensureUniqueItemId() {
-        if (!itemId || !isUniqueItemId(itemId)) {
-            updateAttributes({ id: `listItem-${uuid()}` });
+    function ensureUniqueItemId(itemId: string) {
+        if (!itemId.trim().length || !isUniqueItemId(itemId)) {
+            const id = `listItem-${uuid()}`;
+            updateAttributes({ id });
+            return id;
         }
+
+        return itemId;
     }
 
     function resolveContentElement() {
@@ -193,7 +197,7 @@
     }
 
     $effect(() => {
-        ensureUniqueItemId();
+        itemId = ensureUniqueItemId(itemId);
     });
 
     $effect(() => {
@@ -228,6 +232,7 @@
             observer?.disconnect();
         };
     });
+
 </script>
 
 <NodeViewWrapper 

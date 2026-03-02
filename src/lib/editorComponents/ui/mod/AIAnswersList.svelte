@@ -131,7 +131,7 @@
         {#if aiAnswers.length === 0}
             <p class="px-4 py-3 text-xs opacity-70">No AI answers available.</p>
         {:else}
-            {#each aiAnswers as answer, index (answer.dateTimestamp + index)}
+            {#each aiAnswers as answer, index (answer.startDateTimestamp + index)}
                 <div class="border-b border-base-300 last:border-b-0">
                     <div class="flex items-start justify-between gap-3 px-4 py-3">
                         <button
