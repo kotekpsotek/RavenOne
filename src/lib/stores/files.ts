@@ -26,7 +26,7 @@ export const availableTools = ["Web search"] as BrowserToolsUnion[];
 
 // File config
 export const selectedModel = writable<AI.RavenLensAvaiableAIModel | undefined>(undefined);
-export const playMode = writable<PlayMode>("run-non-runned");
+export const playMode = writable<PlayMode>("run-all");
 
 const STORAGE_KEY = "raven_selected_tools";
 const initialTools = (typeof window !== 'undefined' && localStorage.getItem(STORAGE_KEY)) 

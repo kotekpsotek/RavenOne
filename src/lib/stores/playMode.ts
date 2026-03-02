@@ -17,6 +17,9 @@ export interface DocumentPlayPoints {
 
 export type PointCallFn = (pointId: string, document: File) => Promise<void>;
 type PlayModeConfig = false | { playMode: PointPlayMode };
+interface UnsetPointOptions {
+    includeChildPoints?: boolean;
+}
 
 /**
  * Methods of this store are about complex state management and are resposible to communicate with backend to avoid loops, since each point is playing indiciudally and stopped individually
@@ -54,6 +57,10 @@ export const playableDocumentsWithPoints = (() => {
             const allPlayablePointIds = DocumentPlayablePoints.getDocumentAllPlayablePoints(editorLocal, {
                 playMode: get(playMode)
             });
+
+            if (!allPlayablePointIds.length) {
+                return false;
+            }
 
             // Play all points
             if (playPointFn) {
@@ -187,15 +194,23 @@ export const playableDocumentsWithPoints = (() => {
         /**
          * @param stopPointFn - setups point plaing for point and its subpoints
         */
-        unsetPointPlaying(pointId: string, selectedDocument: File, stopPointFn?: PointCallFn, playModeConfig?: PlayModeConfig) {
+        unsetPointPlaying(
+            pointId: string,
+            selectedDocument: File,
+            stopPointFn?: PointCallFn,
+            playModeConfig?: PlayModeConfig,
+            options?: UnsetPointOptions
+        ) {
             const editorLocal = get(editor);
             const modeConfig: PlayModeConfig = playModeConfig ?? { playMode: get(playMode) };
-            const pointIdsToStop = editorLocal
-                ? [
-                    pointId,
-                    ...DocumentPlayablePoints.getParentPointPlayableChildPoints(editorLocal, pointId, modeConfig).map(point => point.id)
-                ].filter((id, index, list) => Boolean(id) && list.indexOf(id) === index)
-                : [pointId];
+            const includeChildPoints = options?.includeChildPoints ?? true;
+            const childPointIds = includeChildPoints && editorLocal
+                ? DocumentPlayablePoints.getParentPointPlayableChildPoints(editorLocal, pointId, modeConfig).map(point => point.id)
+                : [];
+            const pointIdsToStop = [
+                pointId,
+                ...childPointIds
+            ].filter((id, index, list) => Boolean(id) && list.indexOf(id) === index);
 
             if (stopPointFn) {
                 for (const pointToStopId of pointIdsToStop) {
@@ -207,6 +222,10 @@ export const playableDocumentsWithPoints = (() => {
             store.update(documentsPlayingList => {
                 return documentsPlayingList
                     .map(documentState => {
+                        if (documentState.document.id !== selectedDocument.id) {
+                            return documentState;
+                        }
+
                         const nextPoints = documentState.pointsFromLists.filter(point => !pointIdsToStop.includes(point.pointId));
 
                         return {

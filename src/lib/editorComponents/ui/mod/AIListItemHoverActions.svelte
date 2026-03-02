@@ -249,7 +249,13 @@
                 );
 
                 //
-                playableDocumentsWithPoints.unsetPointPlaying(pointToPlayId, selectedFileLocal, undefined, false);
+                playableDocumentsWithPoints.unsetPointPlaying(
+                    pointToPlayId,
+                    selectedFileLocal,
+                    undefined,
+                    false,
+                    { includeChildPoints: false }
+                );
             },
             { playMode: selectedItemPlayMode }
         );

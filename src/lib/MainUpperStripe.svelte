@@ -282,6 +282,19 @@
             contextSpec: get(contextSpecification)
         };
 
+        const isAlreadyPlaying = playableDocumentsWithPoints.isDocumentPlaying(seletedFileLocal);
+        if (isAlreadyPlaying) {
+            $alertState = {
+                alert: {
+                    type: "info",
+                    name: "Cannot play file",
+                    description: "Cannot play file since it's aready playing"
+                },
+                timeoutMs: 6_500
+            }
+            return;
+        }
+
         // Setups playing mode for this document and plays each compilant point
         const setupState = playableDocumentsWithPoints.setFullDocumentPlaying(
             seletedFileLocal,
@@ -303,17 +316,22 @@
                     }
                 );
 
-                playableDocumentsWithPoints.unsetPointPlaying(pointId, seletedFileLocal, undefined, false);
+                playableDocumentsWithPoints.unsetPointPlaying(
+                    pointId,
+                    seletedFileLocal,
+                    undefined,
+                    false,
+                    { includeChildPoints: false }
+                );
             }
         );
 
-        //
         if (!setupState) {
             $alertState = {
                 alert: {
                     type: "info",
-                    name: "Cannot play file",
-                    description: "Cannot play file since it's aready playing"
+                    name: "No playable points",
+                    description: "No points match the selected play mode. Try switching play mode to Run all."
                 },
                 timeoutMs: 6_500
             }
