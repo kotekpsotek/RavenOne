@@ -3,6 +3,7 @@ import { playMode, type File } from "./files";
 import { DocumentPlayablePoints } from "$lib/playMode";
 import { editor } from "./editor";
 import type { PlayMode as PointPlayMode } from "$lib/editorComponents/types/AIList";
+import type { Editor, Editor as TipTapEditor } from "svelte-tiptap";
 
 export interface PlayPoint {
 	pointId: string;
@@ -27,6 +28,25 @@ interface UnsetPointOptions {
 export const playableDocumentsWithPoints = (() => {
     const store = writable<DocumentPlayPoints[]>([]);
 
+    function isPlayablePointEmpty(editorLocal: TipTapEditor, pointId: string) {
+        const pointElement = DocumentPlayablePoints.getElementIsPlayablePoint(editorLocal, pointId);
+
+        if (!pointElement) {
+            return true;
+        }
+
+        const pointClone = pointElement.cloneNode(true) as HTMLElement;
+        pointClone.querySelectorAll('ul, ol').forEach(list => list.remove());
+
+        const normalizedTextContent = (pointClone.textContent ?? "")
+            .replaceAll('\u200B', '')
+            .trim();
+
+        const hasMeaningfulNonTextContent = !!pointClone.querySelector('img, video, audio, svg, pre, code, table, iframe, canvas, blockquote');
+
+        return !normalizedTextContent.length && !hasMeaningfulNonTextContent;
+    }
+
     return {
         ...store,
         isDocumentPlaying(checkDocument: File) {
@@ -40,9 +60,8 @@ export const playableDocumentsWithPoints = (() => {
          * @param playPointFn - plays point and all subppoints
          * @returns {boolean} - returns the play state
          */
-        setFullDocumentPlaying(document: File, playPointFn?: PointCallFn): boolean {
-            const editorLocal = get(editor);
-
+        // TODO: Don't allow to  play subpoints are empty nor empty point -> use commnet to mark where is logic for empty point and where is for empty subpoints
+        setFullDocumentPlaying(document: File, editorLocal: Editor, playPointFn?: PointCallFn): boolean | "empty-points-are-not-playable" {
             if (!editorLocal) {
                 console.error(`Cannot play points while editor isn't initialzied`);
                 return false;
@@ -58,13 +77,16 @@ export const playableDocumentsWithPoints = (() => {
                 playMode: get(playMode)
             });
 
-            if (!allPlayablePointIds.length) {
-                return false;
+            // Empty point logic (in full-document mode it applies for points and subpoints).
+            const nonEmptyPlayablePointIds = allPlayablePointIds.filter(pointId => !isPlayablePointEmpty(editorLocal, pointId));
+
+            if (!nonEmptyPlayablePointIds.length) {
+                return "empty-points-are-not-playable";
             }
 
             // Play all points
             if (playPointFn) {
-                for (const pointId of allPlayablePointIds) {
+                for (const pointId of nonEmptyPlayablePointIds) {
                     playPointFn(pointId, document)
                         .catch(err => console.error(`Error for point "${pointId}" play operation`, err));
                 }
@@ -76,7 +98,7 @@ export const playableDocumentsWithPoints = (() => {
                 {
                     document: document,
                     startTimestamp: Date.now(),
-                    pointsFromLists: allPlayablePointIds.map(point => ({
+                    pointsFromLists: nonEmptyPlayablePointIds.map(point => ({
                         pointId: point,
                         startTimestamp: Date.now()
                     } satisfies PlayPoint)) // 
@@ -117,6 +139,7 @@ export const playableDocumentsWithPoints = (() => {
         /**
          * @param playPointFn - plays point and all subppoints
         */
+        // TODO: Don't allow to  play subpoints are empty nor empty point -> use commnet to mark where is logic for empty point and where is for empty subpoints
         setUpPointPlaying(selectedDocument: File, pointId: string, playPointFn?: PointCallFn, playModeConfig?: PlayModeConfig) {
             store.update(documentsPlayingList => {
                 if (!pointId.trim().length) {
@@ -143,21 +166,32 @@ export const playableDocumentsWithPoints = (() => {
                     ? DocumentPlayablePoints.getParentPointPlayableChildPoints(editorLocal, pointId, modeConfig)
                     : [];
 
+                // Empty point logic (for the selected parent point).
+                const isParentPointEmpty = isPlayablePointEmpty(editorLocal, pointId);
+
+                // Empty subpoints logic (for child points under the selected parent point).
+                const playableChildPoints = childPoints.filter(pointElement => !isPlayablePointEmpty(editorLocal, pointElement.id));
+
                 const now = Date.now();
                 const incomingPoints: PlayPoint[] = [
-                    {
+                    ...(!isParentPointEmpty ? [{
                         pointId,
                         startTimestamp: now
-                    },
-                    ...childPoints.map(pointElement => ({
+                    }] : []),
+                    ...playableChildPoints.map(pointElement => ({
                         pointId: pointElement.id,
                         startTimestamp: now
                     } satisfies PlayPoint))
                 ];
 
+                if (!incomingPoints.length) {
+                    console.error(`Cannot play point: point "${pointId}" and all its subpoints are empty.`);
+                    return documentsPlayingList;
+                }
+
                 const pointIdsToPlay = [
-                    pointId,
-                    ...childPoints.map(point => point.id)
+                    ...(!isParentPointEmpty ? [pointId] : []),
+                    ...playableChildPoints.map(point => point.id)
                 ].filter((id, index, list) => Boolean(id) && list.indexOf(id) === index);
 
                 const existingDocumentIndex = documentsPlayingList.findIndex(documentStore => documentStore.document.id === selectedDocument.id);

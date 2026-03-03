@@ -296,9 +296,15 @@
             return;
         }
 
+        if (!$editor) {
+            console.error("Cannot play because editor is undefined");
+            return;
+        }
+
         // Setups playing mode for this document and plays each compilant point
         const setupState = playableDocumentsWithPoints.setFullDocumentPlaying(
             seletedFileLocal,
+            $editor,
             async (pointId, documentLocal) => {
                 await play(
                     // Answers
@@ -337,6 +343,17 @@
                     type: "info",
                     name: "No playable points",
                     description: "No points match the selected play mode. Try switching play mode to Run all."
+                },
+                timeoutMs: 6_500
+            }
+            return;
+        }
+        else if (setupState === "empty-points-are-not-playable") {
+            $alertState = {
+                alert: {
+                    type: "info",
+                    name: "Empty playable points aren't playable",
+                    description: "In document aren't points ready to play. Fill the points with task to allow to play 'em"
                 },
                 timeoutMs: 6_500
             }

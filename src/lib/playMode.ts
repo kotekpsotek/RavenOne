@@ -113,6 +113,32 @@ export class DocumentPlayablePoints {
         const allPlayablePoints = DocumentPlayablePoints.getDocumentAllPlayablePoints(editorLocal, playMode);
         return allPlayablePoints.includes(pointId);
     }
+
+    static getElementIsPlayablePoint(editorLocal: Editor, pointId: string): HTMLElement | undefined {
+        const normalizedPointId = pointId.trim();
+        if (!normalizedPointId.length) {
+            return;
+        }
+
+        const editorDom = DocumentPlayablePoints.getEditorDom(editorLocal);
+        const pointElement = editorDom.getElementById(normalizedPointId);
+
+        if (!pointElement || pointElement.nodeType !== Node.ELEMENT_NODE) {
+            return;
+        }
+
+        const playableListSelector = DocumentPlayablePoints.playablePointNodeTypes
+            .map(nodeType => `[data-type="${nodeType}"]`)
+            .join(', ');
+
+        const playableListRoot = pointElement.closest(playableListSelector);
+
+        if (!playableListRoot) {
+            return;
+        }
+
+        return pointElement as HTMLElement;
+    }
 }
 
 export interface PlayConfig {

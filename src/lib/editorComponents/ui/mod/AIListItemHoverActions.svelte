@@ -2,7 +2,7 @@
     import { browser } from '$app/environment';
     import Icon from '@iconify/svelte';
     import type { AIPoint, ContextSpecificationPayload, PlayMode } from '../../types/AIList';
-    import { onRemovePlayablePoint, play, PointAnswerUpdation } from '$lib/playMode';
+    import { DocumentPlayablePoints, onRemovePlayablePoint, play, PointAnswerUpdation } from '$lib/playMode';
     import { playMode, selectedFile, selectedTools } from '$lib/stores/files';
     import { selectedModel } from '$lib/stores/files';
     import type { AI } from '@ravenlens/shared';
@@ -15,6 +15,7 @@
     import type { NodeViewProps } from '@tiptap/core';
     import { appendPointAIAnswer } from '$lib/utils/appendPointAIAnswer';
     import { v4 as uuid } from 'uuid';
+    import { editor } from '$lib/stores/editor';
 
     let {
         visible = false,
@@ -299,17 +300,26 @@
             >
                 <Icon icon="mdi:stop" width="14" height="14" />
             </button>
-        {:else}
-            <button 
-                type="button"
-                class="play-point btn btn-ghost btn-xs min-h-0 h-6 w-6 p-0 text-base-content/70 hover:text-base-content"
-                aria-label="Run action"
-                title="Click right-mouse to check the possible modes"
-                onclick={onPlay}
-                oncontextmenu={onOpenPointPlayModeModal}
+        {:else if $editor}
+            {@const pointElement = DocumentPlayablePoints.getElementIsPlayablePoint($editor, itemId)}
+            {@const isPointPlayable = pointElement && pointElement?.textContent.trim().length > 0}
+
+            <div
+                class="h-full w-fit flex items-center justify-center"
+                title="Cannot play item since it's no content"
             >
-                <Icon icon="mdi:play" width="14" height="14" />
-            </button>
+                <button 
+                    type="button"
+                    class="play-point btn btn-ghost btn-xs min-h-0 h-6 w-6 p-0 text-base-content/70 hover:text-base-content"
+                    aria-label="Run action"
+                    title="Click right-mouse to check the possible modes"
+                    disabled={!isPointPlayable}
+                    onclick={onPlay}
+                    oncontextmenu={onOpenPointPlayModeModal}
+                >
+                    <Icon icon="mdi:play" width="14" height="14" />
+                </button>
+            </div>
         {/if}
     {/key}
 
