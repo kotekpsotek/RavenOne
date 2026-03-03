@@ -15,10 +15,12 @@
 	let typingDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 	let lastCommittedHeading = "";
 	let lastObservedHeading = "";
+	let lastSyncedFileId = "";
+	let lastSyncedFileName = "";
 
 	let icon = $derived((node.attrs.icon as string | undefined) ?? "");
 	let walper = $derived((node.attrs.walper as string | undefined) ?? "");
-	let isHeadingEmpty = $derived((node.textContent ?? "").trim().length === 0);
+	let isHeadingEmpty = $state(true);
 
 	function dispatchHeadingTyping(isTyping: boolean, value: string) {
 		document.dispatchEvent(
@@ -67,8 +69,39 @@
 		return (headingNode?.textContent ?? node.textContent ?? "").trim();
 	}
 
+	function syncHeadingFromSelectedFile(nextTitle: string, shouldEmitChange = false) {
+		const position = getPos();
+
+		if (typeof position !== "number") {
+			return;
+		}
+
+		const currentHeading = getCurrentHeadingText();
+
+		if (currentHeading === nextTitle) {
+			lastCommittedHeading = nextTitle;
+			lastObservedHeading = nextTitle;
+			isHeadingEmpty = nextTitle.length === 0;
+			return;
+		}
+
+		const from = position + 1;
+		const to = position + node.nodeSize - 1;
+		const tr = editor.state.tr.insertText(nextTitle, from, to);
+
+		editor.view.dispatch(tr);
+		lastCommittedHeading = nextTitle;
+		lastObservedHeading = nextTitle;
+		isHeadingEmpty = nextTitle.length === 0;
+
+		if (shouldEmitChange) {
+			dispatchHeadingChanged(nextTitle);
+		}
+	}
+
 	function onHeadingInput() {
 		const nextHeading = getCurrentHeadingText();
+		isHeadingEmpty = nextHeading.length === 0;
 		dispatchHeadingTyping(true, nextHeading);
 
 		if (typingDebounceTimer) {
@@ -80,9 +113,7 @@
 			typingDebounceTimer = null;
 
 			// Update selected file
-			if ($selectedFile) {
-				$selectedFile.name = nextHeading;
-			}
+			selectedFile.update(current => (current ? { ...current, name: nextHeading } : current));
 
 			// Update the file on entires list
 			entriesList.update(entries => {
@@ -92,6 +123,13 @@
 
 				return updateEntryNameById(entries, $selectedFile.id, nextHeading);
 			});
+
+			if (nextHeading !== lastCommittedHeading) {
+				lastCommittedHeading = nextHeading;
+				dispatchHeadingChanged(nextHeading);
+			}
+
+			lastObservedHeading = nextHeading;
 		}, 300);
 	}
 
@@ -102,6 +140,7 @@
 		}
 
 		const nextHeading = getCurrentHeadingText();
+		isHeadingEmpty = nextHeading.length === 0;
 		dispatchHeadingTyping(false, nextHeading);
 
 		if (nextHeading !== lastCommittedHeading) {
@@ -111,67 +150,6 @@
 
 		lastObservedHeading = nextHeading;
 	}
-
-	onMount(() => {
-		lastCommittedHeading = getCurrentHeadingText();
-		lastObservedHeading = lastCommittedHeading;
-
-		let headingElement: HTMLElement | null = null;
-
-		void (async () => {
-			await tick();
-			headingElement = editor.view.dom.querySelector("h1.document-title");
-			headingElement?.addEventListener("input", onHeadingInput);
-			headingElement?.addEventListener("focusout", onHeadingBlur);
-		})();
-
-		const onEditorUpdate = () => {
-			const nextHeading = getCurrentHeadingText();
-
-			if (nextHeading === lastObservedHeading) {
-				return;
-			}
-
-			lastObservedHeading = nextHeading;
-			onHeadingInput();
-		};
-
-		const onFileNameChange = (event: Event) => {
-			const customEvent = event as CustomEvent<string>;
-			const nextTitle = customEvent.detail;
-			const position = getPos();
-
-			if (typeof position !== "number") {
-				return;
-			}
-
-			const from = position + 1;
-			const to = position + node.nodeSize - 1;
-			const tr = editor.state.tr.insertText(nextTitle, from, to);
-
-			editor.view.dispatch(tr);
-			lastCommittedHeading = nextTitle.trim();
-			lastObservedHeading = lastCommittedHeading;
-			dispatchHeadingChanged(lastCommittedHeading);
-		};
-
-		// Event retrived only when selected file name was editted from leftstripe
-		editor.on("update", onEditorUpdate);
-		document.addEventListener("file-name-change:leftstripe", onFileNameChange);
-
-		return () => {
-			headingElement?.removeEventListener("input", onHeadingInput);
-			headingElement?.removeEventListener("focusout", onHeadingBlur);
-			editor.off("update", onEditorUpdate);
-
-			if (typingDebounceTimer) {
-				clearTimeout(typingDebounceTimer);
-				typingDebounceTimer = null;
-			}
-
-			document.removeEventListener("file-name-change:leftstripe", onFileNameChange);
-		};
-	});
 	
 	function openWallpaperPicker() {
 		isWallpaperPickerOpen = true;
@@ -208,6 +186,80 @@
 		updateAttributes({ icon: "" });
 		isIconPickerOpen = false;
 	}
+
+	$effect(() => {
+		const selectedId = $selectedFile?.id ?? "";
+		const selectedName = ($selectedFile?.name ?? "").trim();
+
+		if (!selectedId) {
+			return;
+		}
+
+		if (selectedId === lastSyncedFileId && selectedName === lastSyncedFileName) {
+			return;
+		}
+
+		lastSyncedFileId = selectedId;
+		lastSyncedFileName = selectedName;
+		syncHeadingFromSelectedFile(selectedName);
+	});
+
+	onMount(() => {
+		lastCommittedHeading = getCurrentHeadingText();
+		lastObservedHeading = lastCommittedHeading;
+
+		void (async () => {
+			await tick();
+
+			const initialHeading = ($selectedFile?.name ?? "").trim();
+			syncHeadingFromSelectedFile(initialHeading);
+		})();
+
+		const onEditorUpdate = () => {
+			const nextHeading = getCurrentHeadingText();
+
+			if (nextHeading === lastObservedHeading) {
+				return;
+			}
+
+			lastObservedHeading = nextHeading;
+			onHeadingInput();
+		};
+
+		const onFileNameChange = (event: Event) => {
+			const customEvent = event as CustomEvent<string | { value?: string }>;
+			const detail = customEvent.detail;
+			const nextTitle = (typeof detail === "string" ? detail : detail?.value ?? "").trim();
+			syncHeadingFromSelectedFile(nextTitle);
+
+			selectedFile.update(current => (current ? { ...current, name: nextTitle } : current));
+			entriesList.update(entries => {
+				if (!$selectedFile?.id) {
+					return entries;
+				}
+
+				return updateEntryNameById(entries, $selectedFile.id, nextTitle);
+			});
+
+			lastSyncedFileName = nextTitle;
+			dispatchHeadingChanged(lastCommittedHeading);
+		};
+
+		// Event retrived only when selected file name was editted from leftstripe
+		editor.on("update", onEditorUpdate);
+		document.addEventListener("file-name-change:leftstripe", onFileNameChange);
+
+		return () => {
+			editor.off("update", onEditorUpdate);
+
+			if (typingDebounceTimer) {
+				clearTimeout(typingDebounceTimer);
+				typingDebounceTimer = null;
+			}
+
+			document.removeEventListener("file-name-change:leftstripe", onFileNameChange);
+		};
+	});
 </script>
 
 <NodeViewWrapper class="group block mb-2">
@@ -304,6 +356,8 @@
 				<NodeViewContent
 					as="h1"
 					class="document-title pt-1 m-0 mb-0 min-h-[3.75rem] text-5xl font-semibold leading-tight text-base-content outline-none"
+					oninput={onHeadingInput}
+					onfocusout={onHeadingBlur}
 				/>
 			</div>
 		</div>
