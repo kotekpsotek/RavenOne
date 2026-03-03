@@ -43,6 +43,7 @@
     let isDarkMode = $derived($theme === "dark");
     let isEditable = $derived(editor?.isEditable ?? false);
     let description = $state("");
+    let currentCode = $state("");
     let isCopied = $state(false);
     let copiedResetTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -51,7 +52,7 @@
     // Logic
     /// In near future -> replace alert to custom one
     function onCopy() {
-        navigator.clipboard.writeText(nodeAttrs?.code  ?? "");
+        navigator.clipboard.writeText(currentCode ?? "");
 
         isCopied = true;
 
@@ -145,6 +146,8 @@
     }
 
     function onCodeChanged(nextCode: string) {
+        currentCode = nextCode;
+
         updateAttributes({
             ...nodeAttrs,
             code: nextCode
@@ -176,6 +179,7 @@
 
     onMount(() => {
         description = nodeAttrs?.description ?? ""
+        currentCode = nodeAttrs?.code ?? "";
         
         // Required to apply the syntax highlighting
         setTimeout(() => {            
@@ -218,7 +222,7 @@
         <div id="code" class="bg-base-100 overflow-y-auto">
             <!-- TODO: Configure theme, add cover when content changed via: on:change event -->
             {#key isDarkMode || !isDarkMode || codeMirrorPickedUpLang}
-                <CodeMirror class="code-mirror-of-code-snippet" value={nodeAttrs?.code ?? ""} editable={isEditable} lang={codeMirrorPickedUpLang} extensions={[myTheme]} theme={isDarkMode ? oneDark : undefined} onchange={onCodeChanged}/>
+                <CodeMirror class="code-mirror-of-code-snippet" value={currentCode} editable={isEditable} lang={codeMirrorPickedUpLang} extensions={[myTheme]} theme={isDarkMode ? oneDark : undefined} onchange={onCodeChanged}/>
             {/key}
         </div>
         {#if nodeAttrs?.description || isDescriptionAdding}
