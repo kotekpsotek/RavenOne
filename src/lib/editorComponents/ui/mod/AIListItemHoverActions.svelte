@@ -390,15 +390,24 @@
             }}
         >
             <div class="dropdown-content z-[80] min-w-40 rounded-box border border-base-300 bg-base-100 p-1 shadow-md">
-                <button
-                    type="button"
-                    class="delete-btn btn btn-ghost w-full btn-sm justify-start gap-2"
-                    aria-label="Delete point"
-                    onclick={onDeletePointClick}
-                >
-                    <Icon icon="mdi:trash-can-outline" width="16" height="16" />
-                    <span>Clear Content</span>
-                </button>
+                {#key $playableDocumentsWithPoints}
+                    {@const isPointPlaying = playableDocumentsWithPoints.isPointPlayingInDocument($selectedFile!, itemId)}
+                
+                    <div
+                        title={isPointPlaying ? `Cannot clear content of playing point` : ""}
+                    >
+                        <button
+                            type="button"
+                            class="delete-btn btn btn-ghost w-full btn-sm justify-start gap-2"
+                            aria-label="Delete point"
+                            disabled={isPointPlaying}
+                            onclick={onDeletePointClick}
+                        >
+                            <Icon icon="mdi:trash-can-outline" width="16" height="16" />
+                            <span>Clear Content</span>
+                        </button>
+                    </div>
+                {/key}
             </div>
         </div>
     {/if}

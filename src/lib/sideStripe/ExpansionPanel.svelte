@@ -7,6 +7,7 @@
     import WallpaperSelectionModal from "$lib/modals/WallpaperSelectionModal.svelte";
     import IconValue from "$lib/IconValue.svelte";
     import { get } from "svelte/store";
+    import { playableDocumentsWithPoints } from "$lib/stores/playMode";
 
     let { isExpanded = false }: { isExpanded?: boolean } = $props();
 
@@ -402,6 +403,7 @@
             $selectedFile = undefined;
         }
 
+        playableDocumentsWithPoints.unsetFullDocumentPlaying(target);
         deleteTarget = null;
     }
 

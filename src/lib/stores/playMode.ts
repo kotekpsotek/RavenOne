@@ -93,6 +93,22 @@ export const playableDocumentsWithPoints = (() => {
          * @param stopPointFn 
          */
         unsetFullDocumentPlaying(file: File, stopPointFn?: PointCallFn) {
+            if (stopPointFn) {
+                const currentState = get(store);
+                const documentState = currentState.find(state => state.document.id === file.id);
+
+                if (documentState) {
+                    const pointIdsToStop = documentState.pointsFromLists
+                        .map(point => point.pointId)
+                        .filter((id, index, list) => Boolean(id) && list.indexOf(id) === index);
+
+                    for (const pointId of pointIdsToStop) {
+                        stopPointFn(pointId, file)
+                            .catch(err => console.error(`Error for point "${pointId}" stop operation`, err));
+                    }
+                }
+            }
+
             store.update(state => state.filter(documentState => documentState.document.id !== file.id));
         },
         // ------------------------------
