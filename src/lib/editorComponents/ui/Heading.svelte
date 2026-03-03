@@ -58,6 +58,47 @@
 		});
 	}
 
+	function updateEntryIconById(entries: any[], fileId: string, nextIcon: string): any[] {
+		return entries.map(entry => {
+			if (entry.id === fileId) {
+				return {
+					...entry,
+					icon: nextIcon || undefined
+				};
+			}
+
+			if (entry.subentries?.length) {
+				return {
+					...entry,
+					subentries: updateEntryIconById(entry.subentries, fileId, nextIcon)
+				};
+			}
+
+			return entry;
+		});
+	}
+
+	function syncSelectedFileIcon(nextIcon: string) {
+		const selectedId = $selectedFile?.id;
+
+		if (!selectedId) {
+			return;
+		}
+
+		selectedFile.update(current => {
+			if (!current || current.id !== selectedId) {
+				return current;
+			}
+
+			return {
+				...current,
+				icon: nextIcon || undefined
+			};
+		});
+
+		entriesList.update(entries => updateEntryIconById(entries, selectedId, nextIcon));
+	}
+
 	function getCurrentHeadingText() {
 		const position = getPos();
 
@@ -178,31 +219,17 @@
 	}
 
 	function applyHeadingIcon(nextIcon: string) {
-		updateAttributes({ icon: nextIcon.trim() });
+		const normalizedIcon = nextIcon.trim();
+		updateAttributes({ icon: normalizedIcon });
+		syncSelectedFileIcon(normalizedIcon);
 		isIconPickerOpen = false;
 	}
 
 	function removeHeadingIcon() {
 		updateAttributes({ icon: "" });
+		syncSelectedFileIcon("");
 		isIconPickerOpen = false;
 	}
-
-	$effect(() => {
-		const selectedId = $selectedFile?.id ?? "";
-		const selectedName = ($selectedFile?.name ?? "").trim();
-
-		if (!selectedId) {
-			return;
-		}
-
-		if (selectedId === lastSyncedFileId && selectedName === lastSyncedFileName) {
-			return;
-		}
-
-		lastSyncedFileId = selectedId;
-		lastSyncedFileName = selectedName;
-		syncHeadingFromSelectedFile(selectedName);
-	});
 
 	onMount(() => {
 		lastCommittedHeading = getCurrentHeadingText();
@@ -245,9 +272,54 @@
 			dispatchHeadingChanged(lastCommittedHeading);
 		};
 
+		const onFileIconChange = (event: Event) => {
+			const customEvent = event as CustomEvent<string | { fileId?: string; icon?: string }>;
+			const detail = customEvent.detail;
+			const nextIcon = (typeof detail === "string" ? detail : detail?.icon ?? "").trim();
+			const fileId = typeof detail === "string" ? ($selectedFile?.id ?? "") : (detail?.fileId ?? "");
+
+			if (!fileId || fileId !== $selectedFile?.id) {
+				return;
+			}
+
+			updateAttributes({ icon: nextIcon });
+			syncSelectedFileIcon(nextIcon);
+		};
+
 		// Event retrived only when selected file name was editted from leftstripe
+		const stopSelectedFileSync = selectedFile.subscribe(current => {
+			const selectedId = current?.id ?? "";
+			const selectedName = (current?.name ?? "").trim();
+			const selectedIcon = current?.icon ?? "";
+			const selectedWalper = current?.walper ?? "";
+
+			if (!selectedId) {
+				return;
+			}
+
+			if (selectedId === lastSyncedFileId && selectedName === lastSyncedFileName) {
+				return;
+			}
+
+			lastSyncedFileId = selectedId;
+			lastSyncedFileName = selectedName;
+			icon = selectedIcon;
+			walper = selectedWalper;
+
+			if (icon !== node.attrs.icon || walper !== node.attrs.walper) {
+				updateAttributes({
+					...node.attrs,
+					icon: icon,
+					walper: walper
+				})
+			}
+
+			syncHeadingFromSelectedFile(selectedName);
+		});
+
 		editor.on("update", onEditorUpdate);
 		document.addEventListener("file-name-change:leftstripe", onFileNameChange);
+		document.addEventListener("file-icon-change:leftstripe", onFileIconChange);
 
 		return () => {
 			editor.off("update", onEditorUpdate);
@@ -258,6 +330,8 @@
 			}
 
 			document.removeEventListener("file-name-change:leftstripe", onFileNameChange);
+			document.removeEventListener("file-icon-change:leftstripe", onFileIconChange);
+			stopSelectedFileSync();
 		};
 	});
 </script>

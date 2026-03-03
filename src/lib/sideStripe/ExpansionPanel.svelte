@@ -151,12 +151,14 @@
                 if (selectedFileLocal?.id === fileId) {
                     selectedFile.set({
                         ...selectedFileLocal,
-                        name: updaterValue.name
+                        ...updaterValue
                     });
 
-                    document.dispatchEvent(new CustomEvent("file-name-change:leftstripe", {
-                        detail: updaterValue.name
-                    }));
+                    if (updaterValue.name !== selectedFileLocal.name) {
+                        document.dispatchEvent(new CustomEvent("file-name-change:leftstripe", {
+                            detail: updaterValue.name
+                        }));
+                    }
                 }
                 
                 // Entries updation
@@ -281,11 +283,21 @@
         }
 
         const entryId = iconPickerEntryId;
+        const normalizedIconValue = iconValue.trim();
 
         entriesList.update((list) => updateFileById(list, entryId, (entry) => ({
             ...entry,
-            icon: iconValue
+            icon: normalizedIconValue
         })));
+
+        if ($selectedFile?.id === entryId) {
+            document.dispatchEvent(new CustomEvent("file-icon-change:leftstripe", {
+                detail: {
+                    fileId: entryId,
+                    icon: normalizedIconValue
+                }
+            }));
+        }
 
         closeIconPicker();
     }
@@ -301,6 +313,15 @@
             ...entry,
             icon: undefined
         })));
+
+        if ($selectedFile?.id === entryId) {
+            document.dispatchEvent(new CustomEvent("file-icon-change:leftstripe", {
+                detail: {
+                    fileId: entryId,
+                    icon: ""
+                }
+            }));
+        }
 
         closeIconPicker();
     }
