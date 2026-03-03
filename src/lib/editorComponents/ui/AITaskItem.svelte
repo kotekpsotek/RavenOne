@@ -1,6 +1,6 @@
 <script lang="ts">
     import { dev } from '$app/environment';
-    import { tick } from 'svelte';
+    import { onDestroy, tick } from 'svelte';
     import { NodeViewWrapper, NodeViewContent } from 'svelte-tiptap';
     import type { NodeViewProps } from '@tiptap/core';
     import { v4 as uuid } from 'uuid';
@@ -11,6 +11,8 @@
     import type { AIPoint } from '../types/AIList';
     import AITaskOpenButton from './mod/AITaskOpenButton.svelte';
     import AITaskPlayingState from './mod/AITaskPlayingState.svelte';
+    import { selectedFile } from '$lib/stores/files';
+    import { onRemovePlayablePoint } from '$lib/playMode';
 
     let nodeViewProps: NodeViewProps = $props()
     // svelte-ignore state_referenced_locally
@@ -233,6 +235,9 @@
         };
     });
 
+    onDestroy(() => {
+        onRemovePlayablePoint($selectedFile, itemId);
+    })
 </script>
 
 <NodeViewWrapper 

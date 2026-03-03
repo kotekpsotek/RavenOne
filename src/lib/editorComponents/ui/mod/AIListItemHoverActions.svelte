@@ -2,7 +2,7 @@
     import { browser } from '$app/environment';
     import Icon from '@iconify/svelte';
     import type { AIPoint, ContextSpecificationPayload, PlayMode } from '../../types/AIList';
-    import { play } from '$lib/playMode';
+    import { onRemovePlayablePoint, play } from '$lib/playMode';
     import { playMode, selectedFile, selectedTools } from '$lib/stores/files';
     import { selectedModel } from '$lib/stores/files';
     import type { AI } from '@ravenlens/shared';
@@ -165,6 +165,10 @@
             localStorage.removeItem(getPointContextStorageKey(itemId));
         }
 
+        // Stop the point playing and its subpoints -> Removes from stores, setups logic as deleted
+        onRemovePlayablePoint($selectedFile, itemId);
+
+        // Remove the frontend point and its subpoints
         onDeletePoint?.();
     }
 
@@ -270,7 +274,7 @@
             return;
         }
 
-        playableDocumentsWithPoints.unsetPointPlaying(itemId, $selectedFile, undefined, { playMode: selectedItemPlayMode });
+        playableDocumentsWithPoints.unsetPointPlaying(itemId, $selectedFile, undefined, { playMode: selectedItemPlayMode }, { includeChildPoints: true });
     }
 </script>
 

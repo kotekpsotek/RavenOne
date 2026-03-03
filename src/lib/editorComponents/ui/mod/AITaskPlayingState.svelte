@@ -45,10 +45,20 @@
         return `${Math.floor(elapsedMs / 1000)}s`;
     });
 
+    let previousTrackKey = "";
+
     onMount(() => {
         let timeoutId: ReturnType<typeof setTimeout>;
 
         const tick = () => {
+            const trackKey = `${$selectedFile?.id ?? ""}:${itemId}`;
+
+            if (trackKey !== previousTrackKey) {
+                previousTrackKey = trackKey;
+                wasPlaying = false;
+                finishedUntil = null;
+            }
+
             const isPlaying = Boolean(playablePoint);
 
             if (wasPlaying && !isPlaying) {

@@ -3,6 +3,7 @@ import type { AIAnswer, ContextSpecificationPayload, PlayMode } from "./editorCo
 import type { File } from "./stores/files";
 import type { Editor } from "svelte-tiptap";
 import type { NodeViewProps } from "@tiptap/core";
+import { playableDocumentsWithPoints } from "./stores/playMode";
 
 interface PlayModeCompliance {
     playMode: PlayMode;
@@ -166,4 +167,21 @@ export async function play(updateAiAnswers: (aiAnswerOutcome: AIAnswer) => Promi
     }
     
     await updateAiAnswers(exampleAnswer)
+}
+
+/** Exectuted once point was destroyed. It's designed to:
+ *  - Mark point as removed when was destroyed
+*/
+export function onRemovePlayablePoint(document: File | undefined, pointId: string) {
+    if (!document) {
+        return false;
+    }
+    
+    // FIXME: Add function to call backend to stop point playing
+    // Childs points are removed since removal of parent remmoves the sub-elements
+    playableDocumentsWithPoints.unsetPointPlaying(pointId, document, undefined, false, {
+        includeChildPoints: true
+    });
+
+    return true;
 }
