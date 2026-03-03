@@ -12,6 +12,21 @@ import {
   setSuggestionState
 } from "../ui/SuggestionsHandlers.js";
 
+function createSafeClientRectResolver(clientRect: unknown) {
+  return () => {
+    if (typeof clientRect === "function") {
+      const resolvedRect = clientRect();
+      return resolvedRect ?? new DOMRect(0, 0, 0, 0);
+    }
+
+    if (clientRect && typeof clientRect === "object") {
+      return clientRect as DOMRect;
+    }
+
+    return new DOMRect(0, 0, 0, 0);
+  };
+}
+
 export const SlashCommand = Extension.create({
   name: "slashCommand",
 
@@ -51,7 +66,7 @@ export const SlashCommand = Extension.create({
 
               popup.set(
                 tippy("body", {
-                  getReferenceClientRect: props.clientRect,
+                  getReferenceClientRect: createSafeClientRectResolver(props.clientRect),
                   appendTo: () => document.body,
                   content: wrapper,
                   showOnCreate: true,
@@ -71,7 +86,7 @@ export const SlashCommand = Extension.create({
                 }
 
                 activePopup[0].setProps({
-                  getReferenceClientRect: props.clientRect
+                  getReferenceClientRect: createSafeClientRectResolver(props.clientRect)
                 });
 
                 return activePopup;

@@ -1,0 +1,20 @@
+.code-mirror-of-code-snippet,
+.code-mirror-of-code-snippet .cm-editor,
+.code-mirror-of-code-snippet .cm-scroller {
+  height: 100%;
+  min-height: 0;
+}
+
+.code-mirror-of-code-snippet {
+    overflow-y: auto;
+    scrollbar-width: thin; /* Firefox */
+    scrollbar-color: #b3b3b3 #f5f5f5; /* Firefox */
+}
+.code-mirror-of-code-snippet::-webkit-scrollbar {
+    width: 6px;
+    background: #f5f5f5;
+}
+.code-mirror-of-code-snippet::-webkit-scrollbar-thumb {
+    background: #b3b3b3;
+    border-radius: 4px;
+}

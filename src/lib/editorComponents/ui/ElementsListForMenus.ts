@@ -98,9 +98,9 @@ export const menuElements: ElementInsertionItem[] = [
         }
     },
     {
-        name: "Code block",
+        name: "Code snippet",
         icon: "material-symbols:code-rounded",
-        aliases: ["code", "snippet"],
+        aliases: ["code", "snippet", "code block"],
         command: (editor, range) => {
             editor.chain().focus().deleteRange(range).toggleCodeBlock().run();
         }

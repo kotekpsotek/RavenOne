@@ -27,6 +27,7 @@ import { StandardOrderedList } from "../editorComponents/components/StandardOrde
 import { StandardListItem } from "../editorComponents/components/StandardListItem.js";
 import { StandardTaskList } from "../editorComponents/components/StandardTaskList.js";
 import { StandardTaskItem } from "../editorComponents/components/StandardTaskItem.js";
+import { CodeSnippet } from "../editorComponents/components/CodeSnippet.js";
 
 export const editor = (() => {
     const { subscribe, set, update } = writable<SvelteEditor | undefined>(undefined);
@@ -59,6 +60,7 @@ export const editor = (() => {
                             bulletList: false,
                             orderedList: false,
                             listItem: false,
+                            codeBlock: false,
                         }),
                         FileHeading,
                         HeadingStartDocument,
@@ -85,7 +87,8 @@ export const editor = (() => {
                         StandardOrderedList,
                         StandardListItem,
                         StandardTaskList,
-                        StandardTaskItem
+                        StandardTaskItem,
+                        CodeSnippet
                     ],
                 });
                 
