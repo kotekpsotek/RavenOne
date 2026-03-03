@@ -1,6 +1,6 @@
 <script lang="ts">
     import { dev } from '$app/environment';
-    import { onDestroy, tick } from 'svelte';
+    import { onDestroy, onMount, tick } from 'svelte';
     import { NodeViewWrapper, NodeViewContent } from 'svelte-tiptap';
     import type { NodeViewProps } from '@tiptap/core';
     import { v4 as uuid } from 'uuid';
@@ -12,13 +12,13 @@
     import AITaskOpenButton from './mod/AITaskOpenButton.svelte';
     import AITaskPlayingState from './mod/AITaskPlayingState.svelte';
     import { selectedFile } from '$lib/stores/files';
-    import { onRemovePlayablePoint } from '$lib/playMode';
+    import { onRemovePlayablePoint, PointAnswerUpdation } from '$lib/playMode';
 
     let nodeViewProps: NodeViewProps = $props()
     // svelte-ignore state_referenced_locally
     let { node, updateAttributes, editor, deleteNode } = nodeViewProps;
 
-    const aiAnswers = $derived(getAIAnswers(node["attrs"]["aiAnswers"]));
+    let aiAnswers = $derived(getAIAnswers(node["attrs"]["aiAnswers"]));
     let itemId = $derived((node["attrs"]["id"] as string | undefined) ?? "");
 
     let contentHostElement = $state<HTMLDivElement | null>(null);
@@ -235,6 +235,24 @@
         };
     });
 
+    onMount(() => {
+        new PointAnswerUpdation(itemId)
+            .listen(aiAnswer => {
+                // Update attrs
+                updateAttributes({
+                    ...node["attrs"],
+                    id: itemId,
+                    aiAnswers: [...(aiAnswers ?? []), aiAnswer]
+                });
+
+                // Add ai answer
+                aiAnswers = [
+                    ...(aiAnswers ?? []),
+                    aiAnswer
+                ];
+            })
+    });
+    
     onDestroy(() => {
         onRemovePlayablePoint($selectedFile, itemId);
     })

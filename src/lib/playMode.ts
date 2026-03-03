@@ -119,10 +119,8 @@ export interface PlayConfig {
     document: File;
     /** 
      * It's the unique in document id of item was playing
-     * It presence means play mode was used for specific item
-     * Rest is handled by the logic of each point e.g: retriving the point answers and point subasnwers will proceed with this logic
     */
-    itemId?: string;
+    itemId: string;
     /** It's the play mode is selected */
     mode: PlayMode;
     model: AI.RavenLensAvaiableAIModel;
@@ -166,7 +164,53 @@ export async function play(updateAiAnswers: (aiAnswerOutcome: AIAnswer) => Promi
         answerTipTapHTML: `<p>This is an example AI generated response for item ${config.itemId ?? "unknown"}.</p>`
     }
     
-    await updateAiAnswers(exampleAnswer)
+    const isPointPlaying = playableDocumentsWithPoints.isPointPlayingInDocument(
+        config.document,
+        config.itemId
+    );
+
+    // Execute only when point is setup as playing in store
+    if (isPointPlaying) {
+        await updateAiAnswers(exampleAnswer)
+    }
+    else console.warn(`Cannot update answer because poinrt "${config.itemId}" isn't playing!`);
+}
+
+export class PointAnswerUpdation {
+    static eventName: string = "newPointAIAnswer";
+    pointId: string;
+    aiAnswer?: AIAnswer;
+    
+    /**
+     * @param aiAnswer - for `listen` it's not required
+    */
+    constructor(pointId: string, aiAnswer?: AIAnswer) {
+        this.pointId = pointId;
+        this.aiAnswer = aiAnswer;
+    }
+
+    dispatch() {
+        document.dispatchEvent(new CustomEvent(
+            PointAnswerUpdation.eventName,
+            {
+                detail: {
+                    pointId: this.pointId,
+                    aiAnswer: this.aiAnswer
+                }
+            }
+        ));
+    }
+
+    /** Listen for updation event -> executed only for event with same point id as was passed to class instance */
+    listen(listener: (aiAnswer: AIAnswer) => any | Promise<any>) {
+        document.addEventListener(PointAnswerUpdation.eventName, async ev => {
+            const { pointId, aiAnswer } = (ev as CustomEvent).detail;
+
+            if (pointId === this.pointId) {
+                await listener(aiAnswer);
+            }
+        })
+    }
 }
 
 /** Exectuted once point was destroyed. It's designed to:

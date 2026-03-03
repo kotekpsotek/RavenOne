@@ -9,7 +9,7 @@
     import { mcpConfigurationStore, selectedMcpServers } from "./stores/mcpConfig";
     import { alertState } from "./utils/alert";
     import type { ContextSpecificationPayload, PlayMode } from "./editorComponents/types/AIList";
-    import { DocumentPlayablePoints, play, type PlayConfig } from "./playMode";
+    import { DocumentPlayablePoints, play, PointAnswerUpdation, type PlayConfig } from "./playMode";
     import { editor } from "./stores/editor";
     import { playableDocumentsWithPoints } from "./stores/playMode";
     import { get } from "svelte/store";
@@ -276,6 +276,7 @@
                 content: $editor?.getHTML() ?? seletedFileLocal.content ?? ""
             },
             mode: $playMode,
+            itemId: "", // Unassinged in this spot
             model: selectedModelLocal,
             tools: $selectedTools,
             mcpServers: useMcpServers ? $selectedMcpServers : [],
@@ -298,15 +299,19 @@
         // Setups playing mode for this document and plays each compilant point
         const setupState = playableDocumentsWithPoints.setFullDocumentPlaying(
             seletedFileLocal,
-            async (pointId, document) => {
+            async (pointId, documentLocal) => {
                 await play(
                     // Answers
                     async (aiAnswer) => {
                         // Cannot save the answer for different document that for what was playing
-                        if (!$selectedFile || $selectedFile.id !== document.id) {
+                        if (!$selectedFile || $selectedFile.id !== documentLocal.id) {
                             return;
                         }
 
+                        // Dispatched new point 
+                        new PointAnswerUpdation(pointId, aiAnswer).dispatch();
+
+                        //
                         await appendPointAIAnswer(get(editor), pointId, aiAnswer);
                     }, 
                     // Config

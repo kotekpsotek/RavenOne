@@ -2,7 +2,7 @@
     import { browser } from '$app/environment';
     import Icon from '@iconify/svelte';
     import type { AIPoint, ContextSpecificationPayload, PlayMode } from '../../types/AIList';
-    import { onRemovePlayablePoint, play } from '$lib/playMode';
+    import { onRemovePlayablePoint, play, PointAnswerUpdation } from '$lib/playMode';
     import { playMode, selectedFile, selectedTools } from '$lib/stores/files';
     import { selectedModel } from '$lib/stores/files';
     import type { AI } from '@ravenlens/shared';
@@ -238,6 +238,10 @@
                 await play(
                     // Saves the ai answers for this point
                     async (aiAnswer) => {
+                        // Dispatched new point 
+                        new PointAnswerUpdation(pointToPlayId, aiAnswer).dispatch();
+                        
+                        //
                         await appendPointAIAnswer(nodeViewProps.editor, pointToPlayId, aiAnswer);
                     },
                     // config

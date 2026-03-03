@@ -15,6 +15,7 @@ function getCurrentAnswers(aiAnswersAttr: unknown) {
     return [];
 }
 
+/** Add point new answer to html attribute of the point was playing */
 function appendPointAIAnswerOnce(editor: Editor, pointId: string, aiAnswer: AIAnswer) {
     const { state, view } = editor;
     let foundPointPosition: number | undefined;
@@ -51,7 +52,7 @@ function appendPointAIAnswerOnce(editor: Editor, pointId: string, aiAnswer: AIAn
 }
 
 /**
-  * Updates the point `aiAnswer` by attaching new `aiAnswer` to the end of its list. Do what is specified here:
+  * Updates the point `aiAnswer` by attaching new `aiAnswer` to the end of its list of **html node**. Do what is specified here:
   * 1. Get the document is open content
   * 2. Parse the document content with use: `new DOMParser().parseFromString(documentContent, "text/html");`
   * 3. Find the point was playing by seeking with its id
