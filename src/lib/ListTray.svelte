@@ -81,7 +81,7 @@
             }
             :
             {
-                id: "",
+                id: createListId(),
                 text: "",
                 depth: 0
             }

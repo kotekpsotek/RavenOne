@@ -17,6 +17,10 @@
         onPlay,
         onStop,
         onClearContent,
+        selectedItemModel = $bindable($selectedModel),
+        availableItemTools = $bindable($selectedTools),
+        selectedItemMcpServers = $bindable($selectedMcpServers),
+        selectedItemPlayMode = $bindable($playMode)
     }: {
         visible?: boolean;
         itemId: string;
@@ -34,14 +38,13 @@
         ) => void | Promise<void>;
         onStop?: (pointId: string) => void | Promise<void>;
         onClearContent?: () => void;
+        selectedItemModel: AI.RavenLensAvaiableAIModel | undefined;
+        availableItemTools: string[],
+        selectedItemMcpServers: string[],
+        selectedItemPlayMode: PlayMode
     } = $props();
 
     const POINT_CONTEXT_STORAGE_KEY_PREFIX = 'ravenone:point-context:';
-
-    const selectedItemModel = $state<AI.RavenLensAvaiableAIModel | undefined>($selectedModel);
-    const availableItemTools = $state($selectedTools);
-    const selectedItemMcpServers = $state($selectedMcpServers);
-    let selectedItemPlayMode = $state<PlayMode>($playMode);
 
     let isPointContextModalOpen = $state(false);
     let isPointPlayModeModalOpen = $state(false);
@@ -250,6 +253,7 @@
         class="btn btn-ghost btn-xs min-h-0 h-6 w-6 p-0 text-base-content/70 hover:text-base-content"
         aria-label="Selection modes"
         title="Show possible modes"
+        disabled={isPointPlaying}
         onclick={onOpenPointPlayModeModal}
     >
         <Icon icon="mdi:tune-variant" width="14" height="14" />
@@ -258,7 +262,8 @@
     <button
         type="button"
         class="btn btn-ghost btn-xs min-h-0 h-6 w-6 p-0 text-base-content/70 hover:text-base-content"
-        aria-label="Comment action"
+        aria-label="Action Context"
+        disabled={isPointPlaying}
         onclick={onOpenPointContextModal}
     >
         <Icon icon="material-symbols:note-stack-outline-rounded" width="14" height="14" />

@@ -1,4 +1,4 @@
-import type { File } from "$lib/stores/files";
+import type { EditableListItem, File } from "$lib/stores/files";
 import { playableDocumentsAndListsWithPoints } from "$lib/stores/playModeStore";
 import { v4 as uuid } from "uuid";
 
@@ -8,6 +8,46 @@ export function createListId() {
 
 export function createListItemId() {
     return `list-item-${uuid()}`;
+}
+
+export function findItemIndex(items: EditableListItem[], itemId: string) {
+    return items.findIndex((item) => item.id === itemId);
+}
+
+export function findSubtreeEndIndex(items: EditableListItem[], startIndex: number) {
+    const rootDepth = items[startIndex]?.depth ?? 0;
+    let endIndex = startIndex + 1;
+
+    while (endIndex < items.length && items[endIndex].depth > rootDepth) {
+        endIndex += 1;
+    }
+
+    return endIndex;
+}
+
+/** Find items with depth about 1 bigger than others */
+export function findItemDirectSubitems(items: EditableListItem[], item: EditableListItem) {
+    const itemIndex = findItemIndex(items, item.id);
+    if (itemIndex === -1) {
+        console.warn(`Item doesn't exist so it hasn't got subitems`)
+        return [];
+    }
+
+    const depth = item.depth;
+    const foundSubItems: EditableListItem[] = [];
+    for (let index = itemIndex + 1; index < items.length; index += 1) {
+        const currentItem = items[index];
+
+        if (currentItem.depth <= depth) {
+            break;
+        }
+
+        if (currentItem.depth === depth + 1) {
+            foundSubItems.push(currentItem);
+        }
+    }
+
+    return foundSubItems;
 }
 
 /**
@@ -23,4 +63,22 @@ export function isFilePlayable(file: File) {
         
         return list.items.length > 0 && itemCheck;
     });
+}
+
+function getNonEmptyChildItemsCount(items: EditableListItem[], itemId: string) {
+    const itemIndex = findItemIndex(items, itemId);
+    if (itemIndex === -1) {
+        return 0;
+    }
+
+    const subtreeEndIndex = findSubtreeEndIndex(items, itemIndex);
+    return items
+        .slice(itemIndex + 1, subtreeEndIndex)
+        .filter((item) => item.text.trim().length > 0).length;
+}
+
+export function isPointPlayable(items: EditableListItem[], itemId: string) {
+    const itemIndex = findItemIndex(items, itemId);
+
+    return getNonEmptyChildItemsCount(items, itemId) > 0 || items[itemIndex].text.trim().length > 0;
 }

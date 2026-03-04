@@ -4,8 +4,12 @@
     import { clickedListItemId, hoveredListItemId, mouseOutTimeout } from '$lib/stores/hoveredListItem';
     import AITaskOpenButton from '$lib/listItems/AITaskOpenButton.svelte';
     import AIListItemHoverActions from '$lib/listItems/AIListItemHoverActions.svelte';
-    import { selectedFile, type EditableListItem, type ListItemKind, type SpawnedList } from '$lib/stores/files';
-    import { createListItemId } from './utils';
+    import { playMode, selectedFile, selectedModel, selectedTools, type EditableListItem, type ListItemKind, type SpawnedList } from '$lib/stores/files';
+    import { createListItemId, findItemIndex, findSubtreeEndIndex, isPointPlayable } from './utils';
+    import { playableDocumentsAndListsWithPoints } from '$lib/stores/playModeStore';
+    import { AI } from '@ravenlens/shared';
+    import type { PlayMode } from '$lib/editorComponents/types/AIList';
+    import { selectedMcpServers } from '$lib/stores/mcpConfig';
 
     let {
         kind,
@@ -17,6 +21,11 @@
         onEmptyList?: () => void;
     } = $props();
 
+    let selectedItemModel = $state<AI.RavenLensAvaiableAIModel | undefined>($selectedModel);
+    let availableItemTools = $state($selectedTools);
+    let selectedItemMcpServers = $state($selectedMcpServers);
+    let selectedItemPlayMode = $state<PlayMode>($playMode);
+
     const INDENT_SIZE = 24;
     const ITEM_ID_ATTR = 'data-list-item-id';
     const PLAY_SIMULATION_DELAY = 5000;
@@ -24,9 +33,6 @@
     let items = $derived(spawnedList!.items);
     let pendingFocusId = $state<string | null>(null);
     let removeTargetItemId = $state<string | null>(null);
-    let playingItemIds = $state<Record<string, boolean>>({});
-
-    let playTimeouts = $state<Record<string, ReturnType<typeof setTimeout>>>({});
 
     function createItem(depth: number): EditableListItem {
         return {
@@ -37,52 +43,31 @@
         };
     }
 
-    function isItemPlaying(itemId: string) {
-        return Boolean(playingItemIds[itemId]);
-    }
-
-    function setItemPlaying(itemId: string, isPlaying: boolean) {
-        if (isPlaying) {
-            playingItemIds = {
-                ...playingItemIds,
-                [itemId]: true
-            };
-            return;
-        }
-
-        const { [itemId]: _, ...rest } = playingItemIds;
-        playingItemIds = rest;
-    }
-
     function startPlayingItem(itemId: string) {
-        if (isItemPlaying(itemId)) {
+        if (playableDocumentsAndListsWithPoints.isPointPlaying($selectedFile, spawnedList.id, itemId)) {
             return;
         }
 
-        setItemPlaying(itemId, true);
-
-        const timeout = setTimeout(() => {
-            const { [itemId]: _, ...restTimeouts } = playTimeouts;
-            playTimeouts = restTimeouts;
-            setItemPlaying(itemId, false);
-        }, PLAY_SIMULATION_DELAY);
-
-        playTimeouts = {
-            ...playTimeouts,
-            [itemId]: timeout
-        };
+        if (!$selectedModel) {
+            alert("Too play point Model has to be set up")
+            return;
+        }
+        
+        const itemIndex = findItemIndex(items, itemId);
+        playableDocumentsAndListsWithPoints.playPoint($selectedFile!, spawnedList.id, items[itemIndex], {
+            model: $selectedModel,
+            tools: $selectedTools ?? [],
+            selectedItemMcpServers: $selectedMcpServers ?? [],
+            selectedItemPlayMode: selectedItemPlayMode
+        });
     }
 
     function stopPlayingItem(itemId: string) {
-        const timeout = playTimeouts[itemId];
-        if (timeout) {
-            clearTimeout(timeout);
-
-            const { [itemId]: _, ...restTimeouts } = playTimeouts;
-            playTimeouts = restTimeouts;
+        if (!playableDocumentsAndListsWithPoints.isPointPlaying($selectedFile, spawnedList.id, itemId)) {
+            return;
         }
 
-        setItemPlaying(itemId, false);
+        playableDocumentsAndListsWithPoints.stopPlayingPoint($selectedFile!, spawnedList.id, itemId);
     }
 
     function handleItemMouseEnter(itemId: string) {
@@ -119,21 +104,6 @@
         pendingFocusId = null;
     }
 
-    function findItemIndex(itemId: string) {
-        return items.findIndex((item) => item.id === itemId);
-    }
-
-    function findSubtreeEndIndex(startIndex: number) {
-        const rootDepth = items[startIndex]?.depth ?? 0;
-        let endIndex = startIndex + 1;
-
-        while (endIndex < items.length && items[endIndex].depth > rootDepth) {
-            endIndex += 1;
-        }
-
-        return endIndex;
-    }
-
     async function updateItemText(itemId: string, text: string) {
         items = items.map((item) => {
             if (item.id !== itemId) {
@@ -163,13 +133,13 @@
     }
 
     function addSiblingItem(itemId: string) {
-        const itemIndex = findItemIndex(itemId);
+        const itemIndex = findItemIndex(items, itemId);
         if (itemIndex === -1) {
             return;
         }
 
         const currentItem = items[itemIndex];
-        const insertIndex = findSubtreeEndIndex(itemIndex);
+        const insertIndex = findSubtreeEndIndex(items, itemIndex);
         const newItem = createItem(currentItem.depth);
 
         items = [
@@ -182,13 +152,13 @@
     }
 
     function changeIndent(itemId: string, indentDelta: number) {
-        const itemIndex = findItemIndex(itemId);
+        const itemIndex = findItemIndex(items, itemId);
         if (itemIndex === -1) {
             return;
         }
 
         const currentItem = items[itemIndex];
-        const subtreeEndIndex = findSubtreeEndIndex(itemIndex);
+        const subtreeEndIndex = findSubtreeEndIndex(items, itemIndex);
 
         const previousItem = items[itemIndex - 1];
         const maxDepth = previousItem ? previousItem.depth + 1 : 0;
@@ -214,8 +184,7 @@
 
     /** Show alert only when item has some child isn't empty - otherwise remove simply */
     function requestRemoveItem(itemId: string) {
-        const itemIndex = findItemIndex(itemId);
-        if (getNonEmptyChildItemsCount(itemId) === 0 || $state.snapshot(items)[itemIndex].text.trim().length > 0) {
+        if (!isPointPlayable(items, itemId)) {
             removeItemWithChildren(itemId);
             return;
         }
@@ -228,35 +197,23 @@
     }
 
     function getChildItemsCount(itemId: string) {
-        const itemIndex = findItemIndex(itemId);
+        const itemIndex = findItemIndex(items, itemId);
         if (itemIndex === -1) {
             return 0;
         }
 
-        const subtreeEndIndex = findSubtreeEndIndex(itemIndex);
+        const subtreeEndIndex = findSubtreeEndIndex(items, itemIndex);
         return Math.max(0, subtreeEndIndex - itemIndex - 1);
     }
 
-    function getNonEmptyChildItemsCount(itemId: string) {
-        const itemIndex = findItemIndex(itemId);
-        if (itemIndex === -1) {
-            return 0;
-        }
-
-        const subtreeEndIndex = findSubtreeEndIndex(itemIndex);
-        return items
-            .slice(itemIndex + 1, subtreeEndIndex)
-            .filter((item) => item.text.trim().length > 0).length;
-    }
-    
     function removeItemWithChildren(itemId: string) {
-        const itemIndex = findItemIndex(itemId);
+        const itemIndex = findItemIndex(items, itemId);
         if (itemIndex === -1) {
             closeRemoveModal();
             return;
         }
 
-        const subtreeEndIndex = findSubtreeEndIndex(itemIndex);
+        const subtreeEndIndex = findSubtreeEndIndex(items, itemIndex);
         const removedItemIds = items.slice(itemIndex, subtreeEndIndex).map((item) => item.id);
         const focusCandidateId = items[itemIndex - 1]?.id ?? items[subtreeEndIndex]?.id ?? null;
 
@@ -367,16 +324,12 @@
             changeIndent(itemId, event.shiftKey ? -1 : 1);
         }
     }
-
-    onDestroy(() => {
-        for (const timeout of Object.values(playTimeouts)) {
-            clearTimeout(timeout);
-        }
-    });
 </script>
 
 <div class="space-y-1">
     {#each items as item, itemIndex (item.id)}
+        {@const isPointPlaying = playableDocumentsAndListsWithPoints.isPointPlaying($selectedFile, spawnedList.id, item.id)}
+    
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
             class="flex w-full min-w-0 items-center py-0.5"
@@ -390,11 +343,15 @@
                 <AIListItemHoverActions
                     visible={$hoveredListItemId === item.id || $clickedListItemId === item.id}
                     itemId={item.id}
-                    isPointPlaying={isItemPlaying(item.id)}
-                    isPointPlayable={item.text.trim().length > 0}
+                    {isPointPlaying}
+                    isPointPlayable={isPointPlayable(items, item.id)}
                     onPlay={(pointId) => startPlayingItem(pointId)}
                     onStop={(pointId) => stopPlayingItem(pointId)}
                     onClearContent={() => requestRemoveItem(item.id)}
+                    bind:selectedItemModel
+                    bind:availableItemTools
+                    bind:selectedItemMcpServers
+                    bind:selectedItemPlayMode
                 />
 
                 {#if kind === 'ordered'}
@@ -417,12 +374,15 @@
                     value={item.text}
                     data-list-item-id={item.id}
                     placeholder="Type and press Enter"
+                    disabled={isPointPlaying}
                     class="w-full min-w-0 resize-none overflow-hidden rounded-md border border-transparent bg-transparent px-1 py-1 text-sm leading-6 outline-none focus:border-base-300 focus:bg-base-100"
                     oninput={(event) => onItemInput(event, item.id)}
                     onkeydown={(event) => onItemKeyDown(event, item.id)}
                     onfocus={(event) => resizeTextarea(event.currentTarget as HTMLTextAreaElement)}
                 ></textarea>
             </div>
+
+            <!-- TODO: Add playing state here -->
         </div>
     {/each}
 </div>
@@ -448,7 +408,7 @@
 
                 <div class="space-y-4">
                     <p class="text-sm text-base-content/80">
-                        This list item will be removed.
+                        This list item will be removed with its subpoints.
                         {#if getChildItemsCount(removeTargetItemId) > 0}
                             It will also remove {getChildItemsCount(removeTargetItemId)} child item(s).
                         {/if}

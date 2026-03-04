@@ -1,4 +1,4 @@
-import type { PlayMode } from "$lib/editorComponents/types/AIList";
+import type { AIAnswer, PlayMode } from "$lib/editorComponents/types/AIList";
 import type { AI } from "@ravenlens/shared";
 import { writable } from "svelte/store";
 
@@ -9,6 +9,8 @@ export type EditableListItem = {
     text: string;
     depth: number;
     checked?: boolean;
+    /** Present only when answers were provided */
+    answers?: AIAnswer[];
 };
 
 export interface SpawnedList {
@@ -67,7 +69,7 @@ export const selectedFile = (() => {
                     return file;
                 })
             })
-        }
+        },
     };
 })();
 
@@ -83,7 +85,7 @@ const initialTools = (typeof window !== 'undefined' && localStorage.getItem(STOR
     ? JSON.parse(localStorage.getItem(STORAGE_KEY)!) 
     : [];
 
-export const selectedTools = writable<string[]>(initialTools);
+export const selectedTools = writable<BrowserToolsUnion[]>(initialTools);
 
 if (typeof window !== 'undefined') {
     selectedTools.subscribe(tools => {
