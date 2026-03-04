@@ -260,7 +260,22 @@ export const playableDocumentsAndListsWithPoints = (() => {
             
             const currentPlayStartTimestamp = Date.now();
 
+            
             // 0.5. Set all points as playing but without actual play state - to make them marked as playing
+            const findSubpointsAndNestedWithPoint = (point: EditableListItem) => {
+                const subitemsOfPoint = findItemDirectSubitems(fileList.items, point);
+                let result: EditableListItem[] = [...subitemsOfPoint];
+                
+                for (const subpoint of subitemsOfPoint) {
+                    const subpoints = findSubpointsAndNestedWithPoint(subpoint);
+                    result = [
+                        ...result,
+                        ...subpoints
+                    ];
+                }
+
+                return result;
+            }
             playableStore.update(store => {
                 return [
                     ...store,
@@ -272,7 +287,10 @@ export const playableDocumentsAndListsWithPoints = (() => {
                                 ...fileList,
                                 list: {
                                     ...fileList,
-                                    items: fileList.items,
+                                    items: [
+                                        point,
+                                        ...findSubpointsAndNestedWithPoint(point)
+                                    ],
                                     startedAtTimestamp: currentPlayStartTimestamp
                                 },
                                 config: {
