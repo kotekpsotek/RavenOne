@@ -139,6 +139,17 @@ export class StopPlayEvent {
 export const playableDocumentsAndListsWithPoints = (() => {
     /** Is a has document and set of lists are playing */
     const playableStore = writable<PlayableDocumentsWithListsAndPoints[]>([]);
+    const playDocumentRunVersions = new Map<string, number>();
+
+    const beginDocumentRun = (documentId: string) => {
+        const nextVersion = (playDocumentRunVersions.get(documentId) ?? 0) + 1;
+        playDocumentRunVersions.set(documentId, nextVersion);
+        return nextVersion;
+    };
+
+    const isCurrentDocumentRun = (documentId: string, version: number) => {
+        return (playDocumentRunVersions.get(documentId) ?? 0) === version;
+    };
 
     return {
         ...playableStore,
@@ -299,6 +310,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
             }
 
             let hasAnyPointStarted = false;
+            const playDocumentRunVersion = beginDocumentRun(selectedDocumentLocal.id);
             
             // Emit play event
             PlayEvent.dispatch({
@@ -308,6 +320,10 @@ export const playableDocumentsAndListsWithPoints = (() => {
             
             // Play point by point
             for (const list of selectedDocumentLocal.lists) {
+                if (!isCurrentDocumentRun(selectedDocumentLocal.id, playDocumentRunVersion)) {
+                    return hasAnyPointStarted;
+                }
+
                 if (!list.items.length) {
                     continue;
                 }
@@ -316,6 +332,10 @@ export const playableDocumentsAndListsWithPoints = (() => {
                 const rootPoints = list.items.filter(item => item.depth === topDepth);
 
                 for (const rootPoint of rootPoints) {
+                    if (!isCurrentDocumentRun(selectedDocumentLocal.id, playDocumentRunVersion)) {
+                        return hasAnyPointStarted;
+                    }
+
                     if (playableDocumentsAndListsWithPoints.isPointPlaying(selectedDocumentLocal, list.id, rootPoint.id)) {
                         continue;
                     }
@@ -326,6 +346,10 @@ export const playableDocumentsAndListsWithPoints = (() => {
                         rootPoint,
                         config
                     );
+
+                    if (!isCurrentDocumentRun(selectedDocumentLocal.id, playDocumentRunVersion)) {
+                        return hasAnyPointStarted;
+                    }
 
                     if (result) {
                         hasAnyPointStarted = true;
@@ -771,6 +795,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
         },
         stopPlayingDocument(document: File) {
             let hasChanges = false;
+            beginDocumentRun(document.id);
 
             playableStore.update(store => {
                 const updatedStore = store.filter(documentState => documentState.document.id !== document.id);
