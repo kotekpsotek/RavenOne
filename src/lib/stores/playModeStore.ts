@@ -40,8 +40,6 @@ interface PlayableDocumentsWithListsAndPoints {
     startAtTimestamp: number;
 }
 
-const FINISHED_LIST_RETENTION_TIME_MS = 30_000;
-
 export const playableDocumentsAndListsWithPoints = (() => {
     /** Is a has document and set of lists are playing */
     const playableStore = writable<PlayableDocumentsWithListsAndPoints[]>([]);
@@ -73,50 +71,6 @@ export const playableDocumentsAndListsWithPoints = (() => {
 
             if (!fileList?.items.length) {
                 return false;
-            }
-
-            const removeFinishedListAndDocumentFromPlaying = () => {
-                playableStore.update(store => {
-                    let hasChanges = false;
-
-                    const updatedStore = store
-                        .map(playableDocument => {
-                            if (playableDocument.document.id !== selectedDocumentLocal.id) {
-                                return playableDocument;
-                            }
-
-                            const activeLists = playableDocument.lists.filter(playableList => {
-                                if (playableList.list.id !== listId) {
-                                    return true;
-                                }
-
-                                const isAllPointsFinished = playableList.list.items.every(item => item.finishedAtTimestamp);
-                                if (isAllPointsFinished) {
-                                    hasChanges = true;
-                                }
-
-                                return !isAllPointsFinished;
-                            });
-
-                            if (!activeLists.length) {
-                                hasChanges = true;
-                                return null;
-                            }
-
-                            if (activeLists.length !== playableDocument.lists.length) {
-                                hasChanges = true;
-                                return {
-                                    ...playableDocument,
-                                    lists: activeLists,
-                                };
-                            }
-
-                            return playableDocument;
-                        })
-                        .filter((playableDocument): playableDocument is PlayableDocumentsWithListsAndPoints => playableDocument !== null);
-
-                    return hasChanges ? updatedStore : store;
-                })
             }
 
             // Play lists according to type of list and specified config
@@ -304,6 +258,8 @@ export const playableDocumentsAndListsWithPoints = (() => {
                 return true;
             };
             
+            const currentPlayStartTimestamp = Date.now();
+
             // 0.5. Set all points as playing but without actual play state - to make them marked as playing
             playableStore.update(store => {
                 return [
@@ -317,7 +273,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
                                 list: {
                                     ...fileList,
                                     items: fileList.items,
-                                    startedAtTimestamp: Date.now()
+                                    startedAtTimestamp: currentPlayStartTimestamp
                                 },
                                 config: {
                                     model: config.model,
@@ -327,7 +283,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
                                 }
                             }
                         ],
-                        startAtTimestamp: Date.now()
+                        startAtTimestamp: currentPlayStartTimestamp
                     }
                 ];
             });
@@ -345,6 +301,34 @@ export const playableDocumentsAndListsWithPoints = (() => {
 
             // 2nd play childs from same depth according to type 
             const resultChilds = await findChildsFromHigherDepthAndPlay(point);
+
+            // Wait till all points from this list of store will be finished -> these have the playable store and when are then -> remove list from document of store and whe document in store hasn't got any list then remove this point
+            playableStore.update(store => {
+                return store
+                    .map(documentState => {
+                        if (documentState.document.id !== selectedDocumentLocal.id || documentState.startAtTimestamp !== currentPlayStartTimestamp) {
+                            return documentState;
+                        }
+
+                        const lists = documentState.lists.filter(playableList => {
+                            if (playableList.list.id !== listId || playableList.list.startedAtTimestamp !== currentPlayStartTimestamp) {
+                                return true;
+                            }
+
+                            const startedItems = playableList.list.items.filter(item => item.startedAtTimestamp !== undefined);
+                            const areAllStartedItemsFinished = startedItems.length > 0
+                                && startedItems.every(item => item.finishedAtTimestamp !== undefined);
+
+                            return !areAllStartedItemsFinished;
+                        });
+
+                        return {
+                            ...documentState,
+                            lists,
+                        };
+                    })
+                    .filter(documentState => documentState.lists.length > 0);
+            });
 
             //
             return resultChilds;

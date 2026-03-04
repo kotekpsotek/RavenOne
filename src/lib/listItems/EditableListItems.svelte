@@ -43,7 +43,7 @@
         };
     }
 
-    function startPlayingItem(itemId: string) {
+    async function startPlayingItem(itemId: string) {
         if (playableDocumentsAndListsWithPoints.isPointPlaying($selectedFile, spawnedList.id, itemId)) {
             return;
         }
@@ -54,7 +54,7 @@
         }
         
         const itemIndex = findItemIndex(items, itemId);
-        playableDocumentsAndListsWithPoints.playPoint($selectedFile!, spawnedList.id, items[itemIndex], {
+        await playableDocumentsAndListsWithPoints.playPoint($selectedFile!, spawnedList.id, items[itemIndex], {
             model: $selectedModel,
             tools: $selectedTools ?? [],
             selectedItemMcpServers: $selectedMcpServers ?? [],
@@ -142,11 +142,20 @@
         const insertIndex = findSubtreeEndIndex(items, itemIndex);
         const newItem = createItem(currentItem.depth);
 
-        items = [
-            ...items.slice(0, insertIndex),
-            newItem,
-            ...items.slice(insertIndex)
-        ];
+        selectedFile.update(sf => {
+            const listIndex = sf?.lists.findIndex(list => list.id === spawnedList.id);
+            if (listIndex === undefined || listIndex < 0) {
+                return sf
+            }
+
+            sf!.lists[listIndex].items = [
+                ...items.slice(0, insertIndex),
+                newItem,
+                ...items.slice(insertIndex)
+            ]
+            
+            return sf;
+        })
 
         void queueFocus(newItem.id);
     }
@@ -170,15 +179,24 @@
 
         const depthDelta = targetDepth - currentItem.depth;
 
-        items = items.map((item, index) => {
-            if (index < itemIndex || index >= subtreeEndIndex) {
-                return item;
+        selectedFile.update(sf => {
+            const listIndex = sf?.lists.findIndex(list => list.id === spawnedList.id);
+            if (listIndex === undefined || listIndex < 0) {
+                return sf
             }
 
-            return {
-                ...item,
-                depth: Math.max(0, item.depth + depthDelta)
-            };
+            sf!.lists[listIndex].items = items.map((item, index) => {
+                if (index < itemIndex || index >= subtreeEndIndex) {
+                    return item;
+                }
+
+                return {
+                    ...item,
+                    depth: Math.max(0, item.depth + depthDelta)
+                };
+            });
+            
+            return sf;
         });
     }
 
@@ -236,7 +254,18 @@
             ...items.slice(subtreeEndIndex)
         ];
 
-        items = nextItems;
+        // Removes from file
+        selectedFile.update(sf => {
+            const listIndex = sf?.lists.findIndex(list => list.id === spawnedList.id);
+            if (listIndex === undefined || listIndex < 0) {
+                return sf
+            }
+
+            sf!.lists[listIndex].items = nextItems;
+            
+            return sf;
+        })
+        
         closeRemoveModal();
 
         if (nextItems.length === 0) {
@@ -327,64 +356,66 @@
 </script>
 
 <div class="space-y-1">
-    {#each items as item, itemIndex (item.id)}
-        {@const isPointPlaying = playableDocumentsAndListsWithPoints.isPointPlaying($selectedFile, spawnedList.id, item.id)}
-    
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div
-            class="flex w-full min-w-0 items-center py-0.5"
-            style={`padding-left: ${item.depth * INDENT_SIZE}px`}
-            onmouseenter={() => handleItemMouseEnter(item.id)}
-            onmouseleave={handleItemMouseLeave}
-        >
-            <AITaskOpenButton itemId={item.id} />
+    {#key $playableDocumentsAndListsWithPoints}
+        {#each items as item, itemIndex (item.id)}
+            {@const isPointPlaying = playableDocumentsAndListsWithPoints.isPointPlaying($selectedFile, spawnedList.id, item.id)}
+        
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div
+                class="flex w-full min-w-0 items-center py-0.5"
+                style={`padding-left: ${item.depth * INDENT_SIZE}px`}
+                onmouseenter={() => handleItemMouseEnter(item.id)}
+                onmouseleave={handleItemMouseLeave}
+            >
+                <AITaskOpenButton itemId={item.id} />
 
-            <div class="relative flex w-full min-w-0 items-center gap-2">
-                <AIListItemHoverActions
-                    visible={$hoveredListItemId === item.id || $clickedListItemId === item.id}
-                    itemId={item.id}
-                    {isPointPlaying}
-                    isPointPlayable={isPointPlayable(items, item.id)}
-                    onPlay={(pointId) => startPlayingItem(pointId)}
-                    onStop={(pointId) => stopPlayingItem(pointId)}
-                    onClearContent={() => requestRemoveItem(item.id)}
-                    bind:selectedItemModel
-                    bind:availableItemTools
-                    bind:selectedItemMcpServers
-                    bind:selectedItemPlayMode
-                />
+                <div class="relative flex w-full min-w-0 items-center gap-2">
+                    <AIListItemHoverActions
+                        visible={$hoveredListItemId === item.id || $clickedListItemId === item.id}
+                        itemId={item.id}
+                        {isPointPlaying}
+                        isPointPlayable={isPointPlayable(items, item.id)}
+                        onPlay={(pointId) => startPlayingItem(pointId)}
+                        onStop={(pointId) => stopPlayingItem(pointId)}
+                        onClearContent={() => requestRemoveItem(item.id)}
+                        bind:selectedItemModel
+                        bind:availableItemTools
+                        bind:selectedItemMcpServers
+                        bind:selectedItemPlayMode
+                    />
 
-                {#if kind === 'ordered'}
-                    <span class="w-fit shrink-0 text-right text-sm text-base-content/70">{getOrderedMarker(itemIndex)}.</span>
-                {:else if kind === 'unordered'}
-                    <span class="w-fit shrink-0 text-center text-sm text-base-content/70">{getUnorderedMarker(item.depth)}</span>
-                {:else}
-                    <label class="flex w-6 shrink-0 items-center justify-center">
-                        <input
-                            type="checkbox"
-                            class="checkbox checkbox-sm checkbox-primary"
-                            checked={item.checked}
-                            onchange={(event) => toggleChecked(item.id, (event.currentTarget as HTMLInputElement).checked)}
-                        />
-                    </label>
-                {/if}
+                    {#if kind === 'ordered'}
+                        <span class="w-fit shrink-0 text-right text-sm text-base-content/70">{getOrderedMarker(itemIndex)}.</span>
+                    {:else if kind === 'unordered'}
+                        <span class="w-fit shrink-0 text-center text-sm text-base-content/70">{getUnorderedMarker(item.depth)}</span>
+                    {:else}
+                        <label class="flex w-6 shrink-0 items-center justify-center">
+                            <input
+                                type="checkbox"
+                                class="checkbox checkbox-sm checkbox-primary"
+                                checked={item.checked}
+                                onchange={(event) => toggleChecked(item.id, (event.currentTarget as HTMLInputElement).checked)}
+                            />
+                        </label>
+                    {/if}
 
-                <textarea
-                    rows="1"
-                    value={item.text}
-                    data-list-item-id={item.id}
-                    placeholder="Type and press Enter"
-                    disabled={isPointPlaying}
-                    class="w-full min-w-0 resize-none overflow-hidden rounded-md border border-transparent bg-transparent px-1 py-1 text-sm leading-6 outline-none focus:border-base-300 focus:bg-base-100"
-                    oninput={(event) => onItemInput(event, item.id)}
-                    onkeydown={(event) => onItemKeyDown(event, item.id)}
-                    onfocus={(event) => resizeTextarea(event.currentTarget as HTMLTextAreaElement)}
-                ></textarea>
+                    <textarea
+                        rows="1"
+                        value={item.text}
+                        data-list-item-id={item.id}
+                        placeholder="Type and press Enter"
+                        disabled={isPointPlaying}
+                        class="w-full min-w-0 resize-none overflow-hidden rounded-md border border-transparent bg-transparent px-1 py-1 text-sm leading-6 outline-none focus:border-base-300 focus:bg-base-100"
+                        oninput={(event) => onItemInput(event, item.id)}
+                        onkeydown={(event) => onItemKeyDown(event, item.id)}
+                        onfocus={(event) => resizeTextarea(event.currentTarget as HTMLTextAreaElement)}
+                    ></textarea>
+                </div>
+
+                <!-- TODO: Add playing state here -->
             </div>
-
-            <!-- TODO: Add playing state here -->
-        </div>
-    {/each}
+        {/each}
+    {/key}
 </div>
 
 {#if removeTargetItemId}
