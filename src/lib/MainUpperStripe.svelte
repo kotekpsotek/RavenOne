@@ -3,19 +3,18 @@
     import CodeMirror from "svelte-codemirror-editor";
     import { json } from "@codemirror/lang-json";
     import { avaiableModels, getProviderIconifyIcon } from "./config/models";
-    import { availableTools, playMode, selectedFile, selectedTools } from "./stores/files";
+    import { availableTools, playMode, selectedFile, selectedTools, type BrowserToolsUnion } from "./stores/files";
     import { selectedModel } from "./stores/files";
     import { contextSpecification } from "./stores/contextSpec";
     import { mcpConfigurationStore, selectedMcpServers } from "./stores/mcpConfig";
     import { alertState } from "./utils/alert";
-    import type { ContextSpecificationPayload, PlayMode } from "./editorComponents/types/AIList";
+    import type { BrowserToolsSpec, ContextSpecificationPayload, PlayMode } from "./editorComponents/types/AIList";
     import { editor } from "./stores/editor";
     import { get } from "svelte/store";
     import McpSelectionModal from "./modals/McpSelectionModal.svelte";
     import { UI } from "@ravenlens/frontend";
     import ContextSelectionModal from "./modals/ContextSelectionModal.svelte";
     import PlayModeDropdownContent from "./components/PlayModeDropdownContent.svelte";
-    import { appendPointAIAnswer } from "./utils/appendPointAIAnswer";
     import { playableDocumentsAndListsWithPoints } from "./stores/playModeStore";
     import { isFilePlayable } from "./listItems/utils";
 
@@ -81,11 +80,11 @@
         ensureModelWeight(nextModelKey);
     }
 
-    function toggleValue(state: string[], value: string) {
+    function toggleValue(state: BrowserToolsUnion[], value: BrowserToolsUnion): BrowserToolsUnion[] {
         if (state.includes(value)) {
-            return state.filter((entry) => entry !== value);
+            return state.filter((entry) => entry !== value) as any;
         }
-        return [...state, value];
+        return [...state, value] as any;
     }
 
     function updateCurrentModelWeight(weight: number) {
@@ -256,8 +255,8 @@
             return;
         }
     
-        const seletedFileLocal = get(selectedFile);
-        if (!seletedFileLocal) {
+        const selectedFileLocal = get(selectedFile);
+        if (!selectedFileLocal) {
             $alertState = {
                 alert: {
                     type: "error",
@@ -268,73 +267,36 @@
             }
             return;
         }
-        
-        /* const config: PlayConfig = {
-            document: {
-                ...seletedFileLocal,
-                // Get the freshest content of file from editor
-                content: $editor?.getHTML() ?? seletedFileLocal.content ?? ""
-            },
-            mode: $playMode,
-            itemId: "", // Unassinged in this spot
-            model: selectedModelLocal,
-            tools: $selectedTools,
-            mcpServers: useMcpServers ? $selectedMcpServers : [],
-            contextSpec: get(contextSpecification)
-        }; */
-
-        // TODO: 
-        /* const isAlreadyPlaying = playableDocumentsWithPoints.isDocumentPlaying(seletedFileLocal);
-        if (isAlreadyPlaying) {
-            $alertState = {
-                alert: {
-                    type: "info",
-                    name: "Cannot play file",
-                    description: "Cannot play file since it's aready playing"
-                },
-                timeoutMs: 6_500
-            }
-            return;
-        } */
 
         if (!$editor) {
             console.error("Cannot play because editor is undefined");
             return;
         }
 
-        // TODO: Setups playing mode for this document and plays each compilant point
-
-        /* if (!setupState) {
-            $alertState = {
-                alert: {
-                    type: "info",
-                    name: "No playable points",
-                    description: "No points match the selected play mode. Try switching play mode to Run all."
-                },
-                timeoutMs: 6_500
-            }
-            return;
-        }
-        else if (setupState === "empty-points-are-not-playable") {
-            $alertState = {
-                alert: {
-                    type: "info",
-                    name: "Empty playable points aren't playable",
-                    description: "In document aren't points ready to play. Fill the points with task to allow to play 'em"
-                },
-                timeoutMs: 6_500
-            }
-            return;
-        } */
+        const _setupState = await playableDocumentsAndListsWithPoints.playDocument(selectedFileLocal, {
+            model: selectedModelLocal,
+            tools: $selectedTools,
+            selectedItemMcpServers: useMcpServers ? $selectedMcpServers : [],
+            selectedItemPlayMode: $playMode
+        });
     }
 
     function onStopPlaying() {
         if (!$selectedFile) {
             return;
         }
-        
-        // TODO:
-        // playableDocumentsWithPoints.unsetFullDocumentPlaying($selectedFile);
+
+        playableDocumentsAndListsWithPoints.stopPlayingDocument($selectedFile);
+    }
+
+    function playingDisabledReason(isFilePlayable: boolean, isSomePointPlaying: boolean) {
+        if (!isFilePlayable) {
+            return "Playing is disabled since document has no playable node/element; Add some playable AI Node/Element first to make file playable";
+        }
+
+        if (isSomePointPlaying) {
+            return "Cannot play document since some point is already playing. Stop playing point or wait for its finish"
+        }
     }
 </script>
 
@@ -472,13 +434,13 @@
                                 <span>Stop Playing</span>
                             </button>
                         {:else}
-                            {@const isPlayingDisabled = !isFilePlayable($selectedFile)}
+                            {@const isFilePlayableLocal = isFilePlayable($selectedFile)}
+                            {@const isSomePointPlaying = playableDocumentsAndListsWithPoints.isSomePointPlayingInSomeList($selectedFile)}
+                            {@const isPlayingDisabled = !isFilePlayableLocal || isSomePointPlaying}
 
                             <div
                                 class="inline-block"
-                                title={isPlayingDisabled
-                                    ? "Playing is disabled since document has no playable node/element; Add some playable AI Node/Element first to make file playable"
-                                    : undefined}
+                                title={playingDisabledReason(isFilePlayableLocal, isSomePointPlaying)}
                             >
                                 <button
                                     class="btn btn-sm join-item btn-primary disabled:cursor-not-allowed"

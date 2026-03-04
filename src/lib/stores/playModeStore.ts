@@ -54,6 +54,16 @@ export const playableDocumentsAndListsWithPoints = (() => {
             const storeStateCurrent = get(playableStore);
             return storeStateCurrent?.some(state => state.document.id === selectedDocumentLocal.id) ?? false;
         },
+        isSomePointPlayingInSomeList(selectedDocumentLocal?: File) {
+            const storeStateCurrent = get(playableStore);
+            const documentStates = selectedDocumentLocal
+                ? storeStateCurrent.filter(state => state.document.id === selectedDocumentLocal.id)
+                : storeStateCurrent;
+
+            return documentStates.some(state => {
+                return state.lists.some(playableList => playableList.list.items.length > 0);
+            });
+        },
         isPointPlaying(selectedDocumentLocal: File | undefined, listId: string, pointId: string) {
             if (!selectedDocumentLocal) {
                 return false;
@@ -153,6 +163,41 @@ export const playableDocumentsAndListsWithPoints = (() => {
                             return playableList.list.items.some(item => childPointIds.has(item.id));
                         });
                 });
+        },
+        async playDocument(selectedDocumentLocal: File, config: PlayableList["config"]) {
+            if (!selectedDocumentLocal?.lists?.length) {
+                return false;
+            }
+
+            let hasAnyPointStarted = false;
+
+            for (const list of selectedDocumentLocal.lists) {
+                if (!list.items.length) {
+                    continue;
+                }
+
+                const topDepth = Math.min(...list.items.map(item => item.depth));
+                const rootPoints = list.items.filter(item => item.depth === topDepth);
+
+                for (const rootPoint of rootPoints) {
+                    if (playableDocumentsAndListsWithPoints.isPointPlaying(selectedDocumentLocal, list.id, rootPoint.id)) {
+                        continue;
+                    }
+
+                    const result = await playableDocumentsAndListsWithPoints.playPoint(
+                        selectedDocumentLocal,
+                        list.id,
+                        rootPoint,
+                        config
+                    );
+
+                    if (result) {
+                        hasAnyPointStarted = true;
+                    }
+                }
+            }
+
+            return hasAnyPointStarted;
         },
         /** Launches point playing and its subpoints */
         async playPoint(selectedDocumentLocal: File, listId: string, point: EditableListItem, config: PlayableList["config"]) {
@@ -571,6 +616,18 @@ export const playableDocumentsAndListsWithPoints = (() => {
                         };
                     })
                     .filter((documentState): documentState is PlayableDocumentsWithListsAndPoints => documentState !== null);
+
+                return hasChanges ? updatedStore : store;
+            });
+
+            return hasChanges;
+        },
+        stopPlayingDocument(document: File) {
+            let hasChanges = false;
+
+            playableStore.update(store => {
+                const updatedStore = store.filter(documentState => documentState.document.id !== document.id);
+                hasChanges = updatedStore.length !== store.length;
 
                 return hasChanges ? updatedStore : store;
             });
