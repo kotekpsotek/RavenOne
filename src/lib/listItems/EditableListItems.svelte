@@ -2,14 +2,15 @@
     import { tick } from 'svelte';
     import { UI } from '@ravenlens/frontend';
     import { clickedListItemId, hoveredListItemId, mouseOutTimeout } from '$lib/stores/hoveredListItem';
-    import AITaskOpenButton from '$lib/listItems/AITaskOpenButton.svelte';
-    import AIListItemHoverActions from '$lib/listItems/AIListItemHoverActions.svelte';
+    import AITaskOpenButton from '$lib/listItems/mods/AITaskOpenButton.svelte';
+    import AIListItemHoverActions from '$lib/listItems/mods/AIListItemHoverActions.svelte';
     import { playMode, selectedFile, selectedModel, selectedTools, type EditableListItem, type ListItemKind, type SpawnedList } from '$lib/stores/files';
     import { createListItemId, findItemIndex, findSubtreeEndIndex, isPointPlayable } from './utils';
     import { playableDocumentsAndListsWithPoints } from '$lib/stores/playModeStore';
     import { AI } from '@ravenlens/shared';
     import type { PlayMode } from '$lib/editorComponents/types/AIList';
     import { selectedMcpServers } from '$lib/stores/mcpConfig';
+    import AITaskPlayingState from './mods/AITaskPlayingState.svelte';
 
     let {
         kind,
@@ -387,70 +388,73 @@
 </script>
 
 <div class="space-y-1">
-    {#key $playableDocumentsAndListsWithPoints}
-        {#each items as item, itemIndex (item.id)}
-            {@const isPointPlaying = playableDocumentsAndListsWithPoints.isPointPlaying($selectedFile, spawnedList.id, item.id)}
-            {@const isPointPlayableState = isPointPlayable(items, item.id)}
-            {@const isSomeChildPlaying = playableDocumentsAndListsWithPoints.isPointSomeChildPlaying($selectedFile, spawnedList.id, item.id)}
-            {@const isPointParentPlaying = playableDocumentsAndListsWithPoints.isPointParentPlaying($selectedFile, spawnedList.id, item.id)}
-        
-            <!-- svelte-ignore a11y_no_static_element_interactions -->
-            <div
-                class="flex w-full min-w-0 items-center py-0.5"
-                style={`padding-left: ${item.depth * INDENT_SIZE}px`}
-                onmouseenter={() => handleItemMouseEnter(item.id)}
-                onmouseleave={handleItemMouseLeave}
-            >
-                <AITaskOpenButton itemId={item.id} />
+    {#each items as item, itemIndex (item.id)}
+        {@const playableStoreState = $playableDocumentsAndListsWithPoints}
+        {@const isPointPlaying = playableStoreState && playableDocumentsAndListsWithPoints.isPointPlaying($selectedFile, spawnedList.id, item.id)}
+        {@const isPointPlayableState = isPointPlayable(items, item.id)}
+        {@const isSomeChildPlaying = playableStoreState && playableDocumentsAndListsWithPoints.isPointSomeChildPlaying($selectedFile, spawnedList.id, item.id)}
+        {@const isPointParentPlaying = playableStoreState && playableDocumentsAndListsWithPoints.isPointParentPlaying($selectedFile, spawnedList.id, item.id)}
+    
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div
+            class="flex w-full min-w-0 items-center py-0.5"
+            style={`padding-left: ${item.depth * INDENT_SIZE}px`}
+            onmouseenter={() => handleItemMouseEnter(item.id)}
+            onmouseleave={handleItemMouseLeave}
+        >
+            <AITaskOpenButton itemId={item.id} />
 
-                <div class="relative flex w-full min-w-0 items-center gap-2">
-                    <AIListItemHoverActions
-                        visible={$hoveredListItemId === item.id || $clickedListItemId === item.id}
-                        itemId={item.id}
-                        {isPointPlaying}
-                        isPointPlayable={isPointPlayableState && !isSomeChildPlaying && !isPointParentPlaying}
-                        playDisabledReason={getDisabledReason(isSomeChildPlaying, isPointParentPlaying, isPointPlayableState)}
-                        onPlay={(pointId) => startPlayingItem(pointId)}
-                        onStop={(pointId) => stopPlayingItem(pointId)}
-                        onClearContent={() => requestRemoveItem(item.id)}
-                        bind:selectedItemModel
-                        bind:availableItemTools
-                        bind:selectedItemMcpServers
-                        bind:selectedItemPlayMode
-                    />
+            <div class="relative flex w-full min-w-0 items-center gap-2">
+                <AIListItemHoverActions
+                    visible={$hoveredListItemId === item.id || $clickedListItemId === item.id}
+                    itemId={item.id}
+                    {isPointPlaying}
+                    isPointPlayable={isPointPlayableState && !isSomeChildPlaying && !isPointParentPlaying}
+                    playDisabledReason={getDisabledReason(isSomeChildPlaying, isPointParentPlaying, isPointPlayableState)}
+                    onPlay={(pointId) => startPlayingItem(pointId)}
+                    onStop={(pointId) => stopPlayingItem(pointId)}
+                    onClearContent={() => requestRemoveItem(item.id)}
+                    bind:selectedItemModel
+                    bind:availableItemTools
+                    bind:selectedItemMcpServers
+                    bind:selectedItemPlayMode
+                />
 
-                    {#if kind === 'ordered'}
-                        <span class="w-fit shrink-0 text-right text-sm text-base-content/70">{getOrderedMarker(itemIndex)}.</span>
-                    {:else if kind === 'unordered'}
-                        <span class="w-fit shrink-0 text-center text-sm text-base-content/70">{getUnorderedMarker(item.depth)}</span>
-                    {:else}
-                        <label class="flex w-6 shrink-0 items-center justify-center">
-                            <input
-                                type="checkbox"
-                                class="checkbox checkbox-sm checkbox-primary"
-                                checked={item.checked}
-                                onchange={(event) => toggleChecked(item.id, (event.currentTarget as HTMLInputElement).checked)}
-                            />
-                        </label>
-                    {/if}
+                {#if kind === 'ordered'}
+                    <span class="w-fit shrink-0 text-right text-sm text-base-content/70">{getOrderedMarker(itemIndex)}.</span>
+                {:else if kind === 'unordered'}
+                    <span class="w-fit shrink-0 text-center text-sm text-base-content/70">{getUnorderedMarker(item.depth)}</span>
+                {:else}
+                    <label class="flex w-6 shrink-0 items-center justify-center">
+                        <input
+                            type="checkbox"
+                            class="checkbox checkbox-sm checkbox-primary"
+                            checked={item.checked}
+                            onchange={(event) => toggleChecked(item.id, (event.currentTarget as HTMLInputElement).checked)}
+                        />
+                    </label>
+                {/if}
 
-                    <textarea
-                        rows="1"
-                        value={item.text}
-                        data-list-item-id={item.id}
-                        placeholder="Type and press Enter"
-                        disabled={isPointPlaying}
-                        class="w-full min-w-0 resize-none overflow-hidden rounded-md border border-transparent bg-transparent px-1 py-1 text-sm leading-6 outline-none focus:border-base-300 focus:bg-base-100"
-                        oninput={(event) => onItemInput(event, item.id)}
-                        onkeydown={(event) => onItemKeyDown(event, item.id)}
-                        onfocus={(event) => resizeTextarea(event.currentTarget as HTMLTextAreaElement)}
-                    ></textarea>
-                </div>
-
-                <!-- TODO: Add playing state here -->
+                <textarea
+                    rows="1"
+                    value={item.text}
+                    data-list-item-id={item.id}
+                    placeholder="Type and press Enter"
+                    disabled={isPointPlaying}
+                    class="w-full min-w-0 resize-none overflow-hidden rounded-md border border-transparent bg-transparent px-1 py-1 text-sm leading-6 outline-none focus:border-base-300 focus:bg-base-100"
+                    oninput={(event) => onItemInput(event, item.id)}
+                    onkeydown={(event) => onItemKeyDown(event, item.id)}
+                    onfocus={(event) => resizeTextarea(event.currentTarget as HTMLTextAreaElement)}
+                ></textarea>
             </div>
-        {/each}
-    {/key}
+
+            <!-- TODO: Add playing state here -->
+            <AITaskPlayingState
+                itemId={item.id}
+                {spawnedList}
+            />
+        </div>
+    {/each}
 </div>
 
 {#if removeTargetItemId}

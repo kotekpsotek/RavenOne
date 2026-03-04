@@ -1,5 +1,6 @@
-import type { EditableListItem, File } from "$lib/stores/files";
+import { selectedFile, type EditableListItem, type File } from "$lib/stores/files";
 import { playableDocumentsAndListsWithPoints } from "$lib/stores/playModeStore";
+import { get } from "svelte/store";
 import { v4 as uuid } from "uuid";
 
 export function createListId() {
@@ -81,4 +82,29 @@ export function isPointPlayable(items: EditableListItem[], itemId: string) {
     const itemIndex = findItemIndex(items, itemId);
 
     return getNonEmptyChildItemsCount(items, itemId) > 0 || items[itemIndex].text.trim().length > 0;
+}
+
+export function isPointSuccessorOfPoint(itemId: string, pointId: string, listId: string) {
+    if (itemId === pointId) {
+        return false;
+    }
+
+    const selectedFileLocal = get(selectedFile);
+    if (!selectedFileLocal) {
+        return false;
+    }
+
+    const list = selectedFileLocal.lists.find(list => list.id === listId);
+    if (!list?.items.length) {
+        return false;
+    }
+
+    const pointIndex = findItemIndex(list.items, pointId);
+    const itemIndex = findItemIndex(list.items, itemId);
+    if (pointIndex < 0 || itemIndex < 0 || itemIndex <= pointIndex) {
+        return false;
+    }
+
+    const subtreeEndIndex = findSubtreeEndIndex(list.items, pointIndex);
+    return itemIndex < subtreeEndIndex;
 }

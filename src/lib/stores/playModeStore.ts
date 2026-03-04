@@ -40,6 +40,102 @@ interface PlayableDocumentsWithListsAndPoints {
     startAtTimestamp: number;
 }
 
+interface CancelEvent {
+    listId: string;
+    pointId: string;
+}
+
+export class CancelPointEvent {
+    static EventName = "cancel-point"
+    
+    static dispatch(listId: string, pointId: string) {
+        document.dispatchEvent(new CustomEvent(
+            CancelPointEvent.EventName,
+            {
+                detail: {
+                    listId,
+                    pointId
+                } satisfies CancelEvent
+            }
+        ));
+    }
+
+    static listen(callback: (listId: string, pointId: string) => void) {
+        document.addEventListener(CancelPointEvent.EventName, ev => {
+            const det = (ev as CustomEvent).detail as CancelEvent;
+            callback(det.listId, det.pointId)
+        });
+    }
+}
+
+interface DocumentEvent {
+    kind: "document";
+    document: File;
+}
+
+interface PointEvent {
+    kind: "point";
+    document: File;
+    listId: string;
+    pointId: string;
+}
+
+export class PlayEvent {
+    static EventName = "play-event"
+    
+    static dispatch(event: DocumentEvent | PointEvent) {
+        document.dispatchEvent(new CustomEvent(
+            PlayEvent.EventName,
+            {
+                detail: event
+            }
+        ));
+    }
+
+    static listen(callback: (targetEvent: DocumentEvent | PointEvent) => void) {
+        const listener = (ev: Event) => callback((ev as CustomEvent).detail);
+        document.addEventListener(PlayEvent.EventName, listener);
+
+        return () => {
+            document.removeEventListener(PlayEvent.EventName, listener);
+        };
+    }
+}
+
+interface StopDocumentEvent {
+    kind: "document";
+    document: File;
+}
+
+interface StopPointEvent {
+    kind: "point";
+    document: File;
+    listId: string;
+    pointId: string;
+}
+
+export class StopPlayEvent {
+    static EventName = "stop-play-event"
+    
+    static dispatch(event: StopDocumentEvent | StopPointEvent) {
+        document.dispatchEvent(new CustomEvent(
+            StopPlayEvent.EventName,
+            {
+                detail: event
+            }
+        ));
+    }
+
+    static listen(callback: (targetEvent: StopDocumentEvent | StopPointEvent) => void) {
+        const listener = (ev: Event) => callback((ev as CustomEvent).detail);
+        document.addEventListener(StopPlayEvent.EventName, listener);
+
+        return () => {
+            document.removeEventListener(StopPlayEvent.EventName, listener);
+        };
+    }
+}
+
 export const playableDocumentsAndListsWithPoints = (() => {
     /** Is a has document and set of lists are playing */
     const playableStore = writable<PlayableDocumentsWithListsAndPoints[]>([]);
@@ -64,6 +160,21 @@ export const playableDocumentsAndListsWithPoints = (() => {
                 return state.lists.some(playableList => playableList.list.items.length > 0);
             });
         },
+        isSomePointPlayingInThisList(selectedDocumentLocal: File | undefined, listId: string) {
+            if (!selectedDocumentLocal) {
+                return false;
+            }
+
+            const storeStateCurrent = get(playableStore);
+
+            return storeStateCurrent
+                .filter(state => state.document.id === selectedDocumentLocal.id)
+                .some(state => {
+                    return state.lists
+                        .filter(playableList => playableList.list.id === listId)
+                        .some(playableList => playableList.list.items.length > 0);
+                });
+        },
         isPointPlaying(selectedDocumentLocal: File | undefined, listId: string, pointId: string) {
             if (!selectedDocumentLocal) {
                 return false;
@@ -75,6 +186,24 @@ export const playableDocumentsAndListsWithPoints = (() => {
             const point = list?.items.find(item => item.id === pointId);
 
             return point ? true : false;
+        },
+        isPointActivelyPlaying(selectedDocumentLocal: File | undefined, listId: string, pointId: string) {
+            if (!selectedDocumentLocal) {
+                return false;
+            }
+            
+            const storeStateCurrent = get(playableStore);
+            const document = storeStateCurrent?.find(state => state.document.id === selectedDocumentLocal.id);
+            const list = document?.lists.flatMap(list => list.list).find(document => document.id === listId);
+            const point = list?.items.find(item => item.id === pointId);
+
+            if (point?.startedAtTimestamp !== undefined && !point.finishedAtTimestamp) {
+                return true;
+            }
+            else if (point?.finishedAtTimestamp) {
+                return "finished";
+            }
+            else return false;
         },
         isPointParentPlaying(selectedDocumentLocal: File | undefined, listId: string, pointId: string) {
             if (!selectedDocumentLocal) {
@@ -170,7 +299,14 @@ export const playableDocumentsAndListsWithPoints = (() => {
             }
 
             let hasAnyPointStarted = false;
-
+            
+            // Emit play event
+            PlayEvent.dispatch({
+                kind: "document",
+                document: selectedDocumentLocal
+            } satisfies DocumentEvent);
+            
+            // Play point by point
             for (const list of selectedDocumentLocal.lists) {
                 if (!list.items.length) {
                     continue;
@@ -286,7 +422,16 @@ export const playableDocumentsAndListsWithPoints = (() => {
                 // Set item as playing
                 playableStore.update(update(upd => {
                     upd.startedAtTimestamp = Date.now();
+                    upd.finishedAtTimestamp = undefined;
                 }))
+                
+                //
+                PlayEvent.dispatch({
+                    kind: "point",
+                    document: selectedDocumentLocal,
+                    listId,
+                    pointId: point.id
+                });
                 
                 // FIXME: Make real backend request
                 await new Promise<void>(res => setTimeout(res, 5_000));
@@ -299,16 +444,6 @@ export const playableDocumentsAndListsWithPoints = (() => {
                 playableStore.update(update((upd, list) => {
                     // Update finish time
                     upd.finishedAtTimestamp = Date.now();
-
-                    // Emit finish event to show finish state for point was runned
-                    document.dispatchEvent(new CustomEvent("point-finished", {
-                        detail: {
-                            pointId: upd.id,
-                            startedAtTimestamp: upd.startedAtTimestamp!,
-                            finishedAtTimestamp: upd.finishedAtTimestamp,
-                        } satisfies EventFinishedPlaying
-                    }))
-
                 }));
 
                 if (!isPointPlayingInCurrentRun(point.id)) {
@@ -446,6 +581,11 @@ export const playableDocumentsAndListsWithPoints = (() => {
 
                 return result;
             }
+            const toPlayableItem = (item: EditableListItem): PlayableListItem => ({
+                ...item,
+                startedAtTimestamp: undefined,
+                finishedAtTimestamp: undefined
+            });
             playableStore.update(store => {
                 return [
                     ...store,
@@ -458,8 +598,8 @@ export const playableDocumentsAndListsWithPoints = (() => {
                                 list: {
                                     ...fileList,
                                     items: [
-                                        point,
-                                        ...findSubpointsAndNestedWithPoint(point)
+                                        toPlayableItem(point),
+                                        ...findSubpointsAndNestedWithPoint(point).map(toPlayableItem)
                                     ],
                                     startedAtTimestamp: currentPlayStartTimestamp
                                 },
@@ -509,7 +649,6 @@ export const playableDocumentsAndListsWithPoints = (() => {
 
                             return !areAllStartedItemsFinished;
                         });
-
                         return {
                             ...documentState,
                             lists,
@@ -578,7 +717,15 @@ export const playableDocumentsAndListsWithPoints = (() => {
                                     return playableList;
                                 }
 
-                                const updatedItems = playableList.list.items.filter(item => !pointsToStop.has(item.id));
+                                const updatedItems = playableList.list.items.filter(item => {
+                                    if (!pointsToStop.has(item.id)) {
+                                        return true
+                                    }
+                                    else {
+                                        CancelPointEvent.dispatch(playableList.list.id, item.id);
+                                        return false;
+                                    }
+                                });
                                 if (updatedItems.length !== playableList.list.items.length) {
                                     hasDocumentChanges = true;
                                 }
@@ -631,6 +778,13 @@ export const playableDocumentsAndListsWithPoints = (() => {
 
                 return hasChanges ? updatedStore : store;
             });
+
+            if (hasChanges) {
+                StopPlayEvent.dispatch({
+                    kind: "document",
+                    document
+                } satisfies StopDocumentEvent);
+            }
 
             return hasChanges;
         }
