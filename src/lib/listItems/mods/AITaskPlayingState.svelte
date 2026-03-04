@@ -121,6 +121,10 @@
                 }
 
                 wasPlaying = { finishReason: "stoped" };
+                setTimeout(() => {
+                    wasPlaying = null;
+                    wasPlayingTimeout = null;
+                }, 30_000);
             }
         };
 
@@ -150,6 +154,10 @@
             }
 
             wasPlaying = { finishReason: "stoped" };
+            setTimeout(() => {
+                wasPlaying = null;
+                wasPlayingTimeout = null;
+            }, 30_000);
         });
 
         return () => {
