@@ -9,6 +9,9 @@ import { selectedFile } from "./files";
 import { isWorkspaceInAddition, isWorkspaceSelectionOpen } from "./workspace";
 import { FileHeading } from "../editorComponents/components/Heading";
 import { SlashCommand } from "../editorComponents/components/Suggestions.js";
+import { StandardTaskList } from "../editorComponents/components/StandardTaskList.js";
+import { StandardTaskItem } from "../editorComponents/components/StandardTaskItem.js";
+import { CodeSnippet } from "../editorComponents/components/CodeSnippet.js";
 
 function normalizeContent(content?: string): string {
     if (!content || !content.trim()) {
@@ -17,17 +20,6 @@ function normalizeContent(content?: string): string {
 
     return content;
 }
-import { AIBulletList } from "../editorComponents/components/AIBulletList.js";
-import { AIOrderedList } from "../editorComponents/components/AIOrderedList.js";
-import { AIListItem } from "../editorComponents/components/AIListItem.js";
-import { AITaskList } from "../editorComponents/components/AITaskList.js";
-import { AITaskItem } from "../editorComponents/components/AITaskItem.js";
-import { StandardBulletList } from "../editorComponents/components/StandardBulletList.js";
-import { StandardOrderedList } from "../editorComponents/components/StandardOrderedList.js";
-import { StandardListItem } from "../editorComponents/components/StandardListItem.js";
-import { StandardTaskList } from "../editorComponents/components/StandardTaskList.js";
-import { StandardTaskItem } from "../editorComponents/components/StandardTaskItem.js";
-import { CodeSnippet } from "../editorComponents/components/CodeSnippet.js";
 
 export const editor = (() => {
     const { subscribe, set, update } = writable<SvelteEditor | undefined>(undefined);
@@ -57,9 +49,6 @@ export const editor = (() => {
                     extensions: [
                         StarterKit.configure({
                             document: false,
-                            bulletList: false,
-                            orderedList: false,
-                            listItem: false,
                             codeBlock: false,
                         }),
                         FileHeading,
@@ -75,19 +64,10 @@ export const editor = (() => {
                             includeChildren: true,
                             showOnlyCurrent: false,
                         }),
-                        SlashCommand,
-                        // Custom AI elements
-                        AIBulletList,
-                        AIOrderedList,
-                        AIListItem,
-                        AITaskList,
-                        AITaskItem,
-                        // Standard non-AI elements
-                        StandardBulletList,
-                        StandardOrderedList,
-                        StandardListItem,
                         StandardTaskList,
                         StandardTaskItem,
+                        SlashCommand,
+                        // Custom Components
                         CodeSnippet
                     ],
                 });

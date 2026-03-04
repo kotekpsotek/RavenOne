@@ -7,7 +7,6 @@
     import WallpaperSelectionModal from "$lib/modals/WallpaperSelectionModal.svelte";
     import IconValue from "$lib/IconValue.svelte";
     import { get } from "svelte/store";
-    import { playableDocumentsWithPoints } from "$lib/stores/playMode";
 
     let { isExpanded = false }: { isExpanded?: boolean } = $props();
 
@@ -38,6 +37,7 @@
             type: "file",
             id: crypto.randomUUID(),
             name,
+            lists: [],
             createdAt: new Date(),
             content: '',
             createdByAuthorId: 'current-user'
@@ -403,7 +403,7 @@
             $selectedFile = undefined;
         }
 
-        playableDocumentsWithPoints.unsetFullDocumentPlaying(target);
+        // playableDocumentsWithPoints.unsetFullDocumentPlaying(target);
         deleteTarget = null;
     }
 

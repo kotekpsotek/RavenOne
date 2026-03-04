@@ -9,6 +9,7 @@
     import { UI } from "@ravenlens/frontend";
     import AddWorkspace from "./screens/AddWorkspace.svelte";
     import NoSelectedFile from "./screens/NoSelectedFile.svelte";
+    import ListTray from "./ListTray.svelte";
 
     function onSelectWorkspace(workspace: Workspace.Workspace.WorkspaceUserEntryLoaded) {
         return (ev?: Event) => {
@@ -32,7 +33,7 @@
 </script>
 
 
-<div class="relative w-full h-full min-h-0 overflow-y-auto">
+<div class="relative w-full h-full min-h-0 overflow-hidden">
     <!-- TODO: Refresh when subscription changes -->
     {#if $isWorkspaceSelectionOpen}
         <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -68,6 +69,7 @@
         {#if $editor}
             <div class="editor-container">
                 <EditorContent editor={$editor} class="tiptap-editor" />
+                <ListTray/>
             </div>
         {/if}
     {:else}

@@ -10,30 +10,6 @@ export type ElementInsertionItem = {
 
 export const menuElements: ElementInsertionItem[] = [
     {
-        name: "AI Bullet list",
-        icon: "material-symbols:auto-awesome",
-        aliases: ["ai", "ai ul", "ai list", "smart bullet"],
-        command: (editor, range) => {
-            editor.chain().focus().deleteRange(range).toggleBulletList().run();
-        }
-    },
-    {
-        name: "AI Ordered list",
-        icon: "material-symbols:format-list-numbered-rounded",
-        aliases: ["ai", "ai ol", "ai numbered", "smart ordered"],
-        command: (editor, range) => {
-            editor.chain().focus().deleteRange(range).toggleOrderedList().run();
-        }
-    },
-    {
-        name: "AI Checkbox list",
-        icon: "material-symbols:checklist-rounded",
-        aliases: ["ai", "ai checklist", "ai task", "smart checkbox"],
-        command: (editor, range) => {
-            editor.chain().focus().deleteRange(range).toggleTaskList().run();
-        }
-    },
-    {
         name: "Bullet list",
         icon: "material-symbols:format-list-bulleted-rounded",
         aliases: ["ul", "list", "standard bullet", "normal bullet"],
@@ -51,7 +27,7 @@ export const menuElements: ElementInsertionItem[] = [
     },
     {
         name: "Checkbox list",
-        icon: "material-symbols:check-box-outline-blank-rounded",
+        icon: "material-symbols:check-box-outline",
         aliases: ["todo", "checklist", "task list", "standard checkbox", "normal checkbox"],
         command: (editor, range) => {
             editor.chain().focus().deleteRange(range).toggleList("standardTaskList", "standardTaskItem").run();

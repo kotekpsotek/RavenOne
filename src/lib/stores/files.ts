@@ -2,11 +2,31 @@ import type { PlayMode } from "$lib/editorComponents/types/AIList";
 import type { AI } from "@ravenlens/shared";
 import { writable } from "svelte/store";
 
+export type ListItemKind = 'ordered' | 'unordered' | 'task';
+
+export type EditableListItem = {
+    id: string;
+    text: string;
+    depth: number;
+    checked?: boolean;
+};
+
+export interface SpawnedList {
+    id: string;
+    kind: ListItemKind;
+    name: string;
+    icon: string;
+    items: EditableListItem[];
+};
+
 export interface File {
     type: "file";
     id: string;
     name: string;
     createdAt: Date;
+    /** It's the list with point items */
+    lists: SpawnedList[];
+    /** It's the editor content */
     content: string;
     createdByAuthorId: string;
     icon?: string;
@@ -19,7 +39,37 @@ export interface File {
 export const entriesList = writable<File[]>([]);
 
 // File
-export const selectedFile = writable<File | undefined>(undefined);
+export const selectedFile = (() => {
+    const store = writable<File | undefined>(undefined);
+
+    return {
+        ...store,
+        updateFileListItems(spawnedListId: string, items: EditableListItem[]): Promise<boolean> {
+            return new Promise<boolean>(res => {
+                store.update(file => {
+                    if (!file) {
+                        res(false);
+                        return file;
+                    }
+                    
+                    const listIndex = file.lists.findIndex(list => list.id === spawnedListId);
+                    if (listIndex < 0) {
+                        res(false)
+                        return file;
+                    }
+                    
+                    // Update list items
+                    const list = file.lists[listIndex];
+                    list.items = items;                    
+                    res(true);
+
+                    // Return updated
+                    return file;
+                })
+            })
+        }
+    };
+})();
 
 export type BrowserToolsUnion = "Web search";
 export const availableTools = ["Web search"] as BrowserToolsUnion[];

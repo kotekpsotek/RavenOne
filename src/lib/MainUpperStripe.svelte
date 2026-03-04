@@ -9,15 +9,15 @@
     import { mcpConfigurationStore, selectedMcpServers } from "./stores/mcpConfig";
     import { alertState } from "./utils/alert";
     import type { ContextSpecificationPayload, PlayMode } from "./editorComponents/types/AIList";
-    import { DocumentPlayablePoints, play, PointAnswerUpdation, type PlayConfig } from "./playMode";
     import { editor } from "./stores/editor";
-    import { playableDocumentsWithPoints } from "./stores/playMode";
     import { get } from "svelte/store";
     import McpSelectionModal from "./modals/McpSelectionModal.svelte";
     import { UI } from "@ravenlens/frontend";
     import ContextSelectionModal from "./modals/ContextSelectionModal.svelte";
     import PlayModeDropdownContent from "./components/PlayModeDropdownContent.svelte";
     import { appendPointAIAnswer } from "./utils/appendPointAIAnswer";
+    import { playableDocumentsAndListsWithPoints } from "./stores/playModeStore";
+    import { isFilePlayable } from "./listItems/utils";
 
     type DropdownName = "model-settings" | "mcp-tools" | "play-settings" | "share";
 
@@ -269,7 +269,7 @@
             return;
         }
         
-        const config: PlayConfig = {
+        /* const config: PlayConfig = {
             document: {
                 ...seletedFileLocal,
                 // Get the freshest content of file from editor
@@ -281,9 +281,10 @@
             tools: $selectedTools,
             mcpServers: useMcpServers ? $selectedMcpServers : [],
             contextSpec: get(contextSpecification)
-        };
+        }; */
 
-        const isAlreadyPlaying = playableDocumentsWithPoints.isDocumentPlaying(seletedFileLocal);
+        // TODO: 
+        /* const isAlreadyPlaying = playableDocumentsWithPoints.isDocumentPlaying(seletedFileLocal);
         if (isAlreadyPlaying) {
             $alertState = {
                 alert: {
@@ -294,50 +295,16 @@
                 timeoutMs: 6_500
             }
             return;
-        }
+        } */
 
         if (!$editor) {
             console.error("Cannot play because editor is undefined");
             return;
         }
 
-        // Setups playing mode for this document and plays each compilant point
-        const setupState = playableDocumentsWithPoints.setFullDocumentPlaying(
-            seletedFileLocal,
-            $editor,
-            async (pointId, documentLocal) => {
-                await play(
-                    // Answers
-                    async (aiAnswer) => {
-                        // Cannot save the answer for different document that for what was playing
-                        if (!$selectedFile || $selectedFile.id !== documentLocal.id) {
-                            return;
-                        }
+        // TODO: Setups playing mode for this document and plays each compilant point
 
-                        // Dispatched new point 
-                        new PointAnswerUpdation(pointId, aiAnswer).dispatch();
-
-                        //
-                        await appendPointAIAnswer(get(editor), pointId, aiAnswer);
-                    }, 
-                    // Config
-                    {
-                        ...config,
-                        itemId: pointId
-                    }
-                );
-
-                playableDocumentsWithPoints.unsetPointPlaying(
-                    pointId,
-                    seletedFileLocal,
-                    undefined,
-                    false,
-                    { includeChildPoints: false }
-                );
-            }
-        );
-
-        if (!setupState) {
+        /* if (!setupState) {
             $alertState = {
                 alert: {
                     type: "info",
@@ -358,7 +325,7 @@
                 timeoutMs: 6_500
             }
             return;
-        }
+        } */
     }
 
     function onStopPlaying() {
@@ -366,7 +333,8 @@
             return;
         }
         
-        playableDocumentsWithPoints.unsetFullDocumentPlaying($selectedFile);
+        // TODO:
+        // playableDocumentsWithPoints.unsetFullDocumentPlaying($selectedFile);
     }
 </script>
 
@@ -493,8 +461,8 @@
                 </button>
 
                 <div class="join">
-                    {#key $playableDocumentsWithPoints}
-                        {#if playableDocumentsWithPoints.isDocumentPlaying($selectedFile)}
+                    {#key $playableDocumentsAndListsWithPoints}
+                        {#if playableDocumentsAndListsWithPoints.isDocumentPlaying($selectedFile)}
                             <button 
                                 class="btn btn-sm join-item btn-neutral" 
                                 onclick={onStopPlaying}
@@ -504,7 +472,7 @@
                                 <span>Stop Playing</span>
                             </button>
                         {:else}
-                            {@const isPlayingDisabled = !$editor || !DocumentPlayablePoints.hasDocumentSomePlayableList($editor)}
+                            {@const isPlayingDisabled = !isFilePlayable($selectedFile)}
 
                             <div
                                 class="inline-block"

@@ -13,11 +13,14 @@
 <NodeViewWrapper
     as="li"
     class="custom-standard-task-item"
-    style="list-style-type: none; display: flex; align-items: center; justify-content: flex-start; gap: 0.5rem;"
+    style="list-style-type: none; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; column-gap: 0.5rem;"
     data-type="standardTaskItem"
     data-checked={node.attrs.checked}
 >
-    <label class="cursor-pointer h-full flex items-center justify-center" style="display: flex; align-items: center; flex: 0 0 auto;">
+    <label
+        class="cursor-pointer flex items-start justify-center"
+        style="display: flex; align-items: flex-start; justify-content: center; grid-column: 1; padding-top: 0.15rem;"
+    >
         <input
             type="checkbox"
             class="checkbox checkbox-sm checkbox-primary"
@@ -26,7 +29,7 @@
         />
     </label>
 
-    <div style="flex: 1 1 0%; min-width: 0; display: flex; align-items: center;">
-        <NodeViewContent as="div" style="min-height: 1.5rem; width: 100%;" />
+    <div style="grid-column: 2; min-width: 0;">
+        <NodeViewContent as="div" style="min-height: 1.5rem; width: 100%; display: block;" />
     </div>
 </NodeViewWrapper>

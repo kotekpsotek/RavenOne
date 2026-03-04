@@ -1,12 +1,11 @@
 @reference "../app.css";
 
 .editor-container {
-    @apply flex-1 p-6 sm:p-10 bg-base-100 overflow-y-auto;
-    height: 100%;
+    @apply flex h-full min-h-0 flex-col overflow-hidden bg-base-100 px-6 pt-6 pb-0 sm:p-10 sm:pb-0;
 }
 
 .tiptap-editor {
-    @apply prose max-w-none transition-all duration-300 outline-none;
+    @apply flex-1 min-h-0 overflow-y-auto prose max-w-none transition-all duration-300 outline-none;
 }
 
 .tiptap {
@@ -110,9 +109,11 @@
 .tiptap-editor .tiptap li[data-type="standardTaskItem"],
 .tiptap-editor .tiptap .custom-standard-task-item {
     list-style: none !important;
-    display: flex !important;
-    align-items: center !important;
+    display: grid !important;
+    align-items: flex-start !important;
     gap: 0.5rem !important;
+    margin-top: 0.25rem !important;
+    margin-bottom: 0.25rem !important;
 }
 
 .tiptap-editor .tiptap li[data-type="taskItem"] > div,
@@ -150,6 +151,11 @@
 
 .tiptap-editor .tiptap .custom-standard-task-item > div > [data-node-view-content] > p {
     margin: 0 !important;
+}
+
+.tiptap-editor .tiptap .custom-standard-task-item > div > [data-node-view-content] > ul,
+.tiptap-editor .tiptap .custom-standard-task-item > div > [data-node-view-content] > ol {
+    margin-top: 0.35rem !important;
 }
 
 .tiptap-editor .tiptap ul[data-type="standardTaskList"] > li::marker,
