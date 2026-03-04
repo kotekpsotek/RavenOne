@@ -20,7 +20,8 @@
         selectedItemModel = $bindable($selectedModel),
         availableItemTools = $bindable($selectedTools),
         selectedItemMcpServers = $bindable($selectedMcpServers),
-        selectedItemPlayMode = $bindable($playMode)
+        selectedItemPlayMode = $bindable($playMode),
+        playDisabledReason
     }: {
         visible?: boolean;
         itemId: string;
@@ -41,7 +42,8 @@
         selectedItemModel: AI.RavenLensAvaiableAIModel | undefined;
         availableItemTools: string[],
         selectedItemMcpServers: string[],
-        selectedItemPlayMode: PlayMode
+        selectedItemPlayMode: PlayMode,
+        playDisabledReason: string
     } = $props();
 
     const POINT_CONTEXT_STORAGE_KEY_PREFIX = 'ravenone:point-context:';
@@ -232,13 +234,12 @@
     {:else}
         <div
             class="h-full w-fit flex items-center justify-center"
-            title="Cannot play item since it's no content"
+            title={playDisabledReason || "Click right-mouse to check the possible modes"}
         >
             <button
                 type="button"
                 class="play-point btn btn-ghost btn-xs min-h-0 h-6 w-6 p-0 text-base-content/70 hover:text-base-content"
                 aria-label="Run action"
-                title="Click right-mouse to check the possible modes"
                 disabled={!isPointPlayable}
                 onclick={onPlayClick}
                 oncontextmenu={onOpenPointPlayModeModal}

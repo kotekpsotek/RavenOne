@@ -6,7 +6,6 @@
     import OrderedListItem from '$lib/listItems/OrderedListItem.svelte';
     import UnorderedListItem from '$lib/listItems/UnorderedListItem.svelte';
     import TaskListItem from '$lib/listItems/TaskListItem.svelte';
-    import EditableListItems from './listItems/EditableListItems.svelte';
     import { createListId } from './listItems/utils';
 
     const PANEL_HEIGHT_STORAGE_PREFIX = 'list-tray-height';

@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onDestroy, tick } from 'svelte';
+    import { tick } from 'svelte';
     import { UI } from '@ravenlens/frontend';
     import { clickedListItemId, hoveredListItemId, mouseOutTimeout } from '$lib/stores/hoveredListItem';
     import AITaskOpenButton from '$lib/listItems/AITaskOpenButton.svelte';
@@ -264,8 +264,13 @@
             sf!.lists[listIndex].items = nextItems;
             
             return sf;
-        })
+        });
+
+        // Remove item playing
+        playableDocumentsAndListsWithPoints.stopPlayingPoint($selectedFile!, spawnedList.id, itemId)
+            .catch(err => console.error(`Cannot stop point: ${err}`));
         
+        //
         closeRemoveModal();
 
         if (nextItems.length === 0) {
@@ -338,11 +343,21 @@
 
         if (event.key === 'Backspace') {
             const textarea = event.currentTarget as HTMLTextAreaElement;
-            const isEmpty = textarea.value.length === 0;
             const isCaretAtStart = textarea.selectionStart === 0 && textarea.selectionEnd === 0;
 
-            if (isEmpty && isCaretAtStart) {
+            if (isCaretAtStart) {
                 event.preventDefault();
+
+                const itemIndex = findItemIndex(items, itemId);
+                if (itemIndex < 0) {
+                    return;
+                }
+
+                if (items[itemIndex].depth > 0) {
+                    changeIndent(itemId, -1);
+                    return;
+                }
+
                 requestRemoveItem(itemId);
                 return;
             }
@@ -353,12 +368,31 @@
             changeIndent(itemId, event.shiftKey ? -1 : 1);
         }
     }
+
+    function getDisabledReason(isSomeChildPlaying: boolean, isPointParentPlaying: boolean, isPointPlayableState: boolean) {
+        if (isSomeChildPlaying) {
+            return "Cannot play because some subchildren is playing";
+        }
+
+        if (!isPointPlayableState) {
+            return "Cannot play because point is empty: hasn't got subpoints nor text content";
+        }
+
+        if (isPointParentPlaying) {
+            return "Cannot play point since its parent is playing. Wait till it finish or stop it now";
+        }
+
+        return "";
+    }
 </script>
 
 <div class="space-y-1">
     {#key $playableDocumentsAndListsWithPoints}
         {#each items as item, itemIndex (item.id)}
             {@const isPointPlaying = playableDocumentsAndListsWithPoints.isPointPlaying($selectedFile, spawnedList.id, item.id)}
+            {@const isPointPlayableState = isPointPlayable(items, item.id)}
+            {@const isSomeChildPlaying = playableDocumentsAndListsWithPoints.isPointSomeChildPlaying($selectedFile, spawnedList.id, item.id)}
+            {@const isPointParentPlaying = playableDocumentsAndListsWithPoints.isPointParentPlaying($selectedFile, spawnedList.id, item.id)}
         
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div
@@ -374,7 +408,8 @@
                         visible={$hoveredListItemId === item.id || $clickedListItemId === item.id}
                         itemId={item.id}
                         {isPointPlaying}
-                        isPointPlayable={isPointPlayable(items, item.id)}
+                        isPointPlayable={isPointPlayableState && !isSomeChildPlaying && !isPointParentPlaying}
+                        playDisabledReason={getDisabledReason(isSomeChildPlaying, isPointParentPlaying, isPointPlayableState)}
                         onPlay={(pointId) => startPlayingItem(pointId)}
                         onStop={(pointId) => stopPlayingItem(pointId)}
                         onClearContent={() => requestRemoveItem(item.id)}

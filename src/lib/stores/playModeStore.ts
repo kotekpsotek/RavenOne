@@ -66,11 +66,121 @@ export const playableDocumentsAndListsWithPoints = (() => {
 
             return point ? true : false;
         },
+        isPointParentPlaying(selectedDocumentLocal: File | undefined, listId: string, pointId: string) {
+            if (!selectedDocumentLocal) {
+                return false;
+            }
+
+            const fileList = selectedDocumentLocal.lists.find(list => list.id === listId);
+            if (!fileList?.items.length) {
+                return false;
+            }
+
+            const pointIndex = fileList.items.findIndex(item => item.id === pointId);
+            if (pointIndex < 0) {
+                return false;
+            }
+
+            const ancestorPointIds = new Set<string>();
+            let currentDepth = fileList.items[pointIndex].depth;
+
+            for (let index = pointIndex - 1; index >= 0; index -= 1) {
+                if (currentDepth <= 0) {
+                    break;
+                }
+
+                const currentPoint = fileList.items[index];
+                if (currentPoint.depth < currentDepth) {
+                    ancestorPointIds.add(currentPoint.id);
+                    currentDepth = currentPoint.depth;
+                }
+            }
+
+            if (ancestorPointIds.size === 0) {
+                return false;
+            }
+
+            const storeStateCurrent = get(playableStore);
+            return storeStateCurrent
+                .filter(state => state.document.id === selectedDocumentLocal.id)
+                .some(state => {
+                    return state.lists
+                        .filter(playableList => playableList.list.id === listId)
+                        .some(playableList => {
+                            return playableList.list.items.some(item => ancestorPointIds.has(item.id));
+                        });
+                });
+        },
+        isPointSomeChildPlaying(selectedDocumentLocal: File | undefined, listId: string, pointId: string) {
+            if (!selectedDocumentLocal) {
+                return false;
+            }
+
+            const fileList = selectedDocumentLocal.lists.find(list => list.id === listId);
+            if (!fileList?.items.length) {
+                return false;
+            }
+
+            const parentPointIndex = fileList.items.findIndex(item => item.id === pointId);
+            if (parentPointIndex < 0) {
+                return false;
+            }
+
+            const parentDepth = fileList.items[parentPointIndex].depth;
+            const childPointIds = new Set<string>();
+
+            for (let index = parentPointIndex + 1; index < fileList.items.length; index += 1) {
+                const currentPoint = fileList.items[index];
+
+                if (currentPoint.depth <= parentDepth) {
+                    break;
+                }
+
+                childPointIds.add(currentPoint.id);
+            }
+
+            if (childPointIds.size === 0) {
+                return false;
+            }
+
+            const storeStateCurrent = get(playableStore);
+            return storeStateCurrent
+                .filter(state => state.document.id === selectedDocumentLocal.id)
+                .some(state => {
+                    return state.lists
+                        .filter(playableList => playableList.list.id === listId)
+                        .some(playableList => {
+                            return playableList.list.items.some(item => childPointIds.has(item.id));
+                        });
+                });
+        },
+        /** Launches point playing and its subpoints */
         async playPoint(selectedDocumentLocal: File, listId: string, point: EditableListItem, config: PlayableList["config"]) {
             const fileList = selectedDocumentLocal?.lists.find(list => list.id === listId);
 
             if (!fileList?.items.length) {
                 return false;
+            }
+
+            const currentPlayStartTimestamp = Date.now();
+
+            const isPointPlayingInCurrentRun = (pointId: string) => {
+                const storeStateCurrent = get(playableStore);
+                const documentState = storeStateCurrent.find(document => {
+                    return document.document.id === selectedDocumentLocal.id && document.startAtTimestamp === currentPlayStartTimestamp;
+                });
+                if (!documentState) {
+                    return false;
+                }
+
+                const listState = documentState.lists.find(playableList => {
+                    return playableList.list.id === listId && playableList.list.startedAtTimestamp === currentPlayStartTimestamp;
+                });
+                if (!listState) {
+                    return false;
+                }
+
+                return listState.list.items.some(item => item.id === pointId);
             }
 
             // Play lists according to type of list and specified config
@@ -83,10 +193,16 @@ export const playableDocumentsAndListsWithPoints = (() => {
              * 
              * * 
              */
-            const backendPlayPoint = async (point: EditableListItem) => {
+            const backendPlayPoint = async (point: EditableListItem): Promise<true | "don-not-allow-to-play-childs"> => {
+                if (!isPointPlayingInCurrentRun(point.id)) {
+                    return "don-not-allow-to-play-childs";
+                }
+
                 const update: (updator: (item: PlayableListItem, list: PlayableSpawnedList) => void) => Updater<PlayableDocumentsWithListsAndPoints[]> = (updator) => store => {
                     //
-                    const documentIndex = store.findIndex(store => store.document.id === selectedDocumentLocal.id);
+                    const documentIndex = store.findIndex(store => {
+                        return store.document.id === selectedDocumentLocal.id && store.startAtTimestamp === currentPlayStartTimestamp;
+                    });
                     if (documentIndex < 0) {
                         return store;
                     }
@@ -95,7 +211,9 @@ export const playableDocumentsAndListsWithPoints = (() => {
                     const document = store[documentIndex];
 
                     //
-                    const listIndex = document.lists.flatMap(list => list.list).findIndex(list => list.id === listId);
+                    const listIndex = document.lists.findIndex(playableList => {
+                        return playableList.list.id === listId && playableList.list.startedAtTimestamp === currentPlayStartTimestamp;
+                    });
                     if (listIndex < 0) {
                         return store;
                     }
@@ -128,6 +246,10 @@ export const playableDocumentsAndListsWithPoints = (() => {
                 // FIXME: Make real backend request
                 await new Promise<void>(res => setTimeout(res, 5_000));
 
+                if (!isPointPlayingInCurrentRun(point.id)) {
+                    return "don-not-allow-to-play-childs";
+                }
+
                 // Remove point from playable points since it's finished -> emit event to schedule removal for next 30 sec because we need to show state of finish
                 playableStore.update(update((upd, list) => {
                     // Update finish time
@@ -143,6 +265,10 @@ export const playableDocumentsAndListsWithPoints = (() => {
                     }))
 
                 }));
+
+                if (!isPointPlayingInCurrentRun(point.id)) {
+                    return "don-not-allow-to-play-childs";
+                }
                 
                 // Add answer to spawned list from file
                 selectedFile.update(sf => {
@@ -188,6 +314,8 @@ export const playableDocumentsAndListsWithPoints = (() => {
 
                     return sf;
                 })
+
+                return true;
             }
             const checkPointStateUpdate = (point: EditableListItem, isChecked: boolean) => {
                 point.checked = isChecked;
@@ -258,9 +386,6 @@ export const playableDocumentsAndListsWithPoints = (() => {
                 return true;
             };
             
-            const currentPlayStartTimestamp = Date.now();
-
-            
             // 0.5. Set all points as playing but without actual play state - to make them marked as playing
             const findSubpointsAndNestedWithPoint = (point: EditableListItem) => {
                 const subitemsOfPoint = findItemDirectSubitems(fileList.items, point);
@@ -309,13 +434,13 @@ export const playableDocumentsAndListsWithPoints = (() => {
             // 1st play parent
             const result = await backendPlayPoint(point);
 
-            // If this is checklist point mark it as checked
-            checkPointStateUpdate(point, true);
-
             //
             if (result === "don-not-allow-to-play-childs") {
                 return false;
             }
+
+            // If this is checklist point mark it as checked
+            checkPointStateUpdate(point, true);
 
             // 2nd play childs from same depth according to type 
             const resultChilds = await findChildsFromHigherDepthAndPlay(point);
@@ -351,8 +476,106 @@ export const playableDocumentsAndListsWithPoints = (() => {
             //
             return resultChilds;
         },
+        /** Stop point playing and its subpoints */
         async stopPlayingPoint(selectedDocumentLocal: File, listId: string, pointId: string) {
-            // TODO: Has to stop playing
+            const fileList = selectedDocumentLocal?.lists.find(list => list.id === listId);
+            const pointsToStop = new Set<string>([pointId]);
+
+            const findSubpointsAndNestedWithPoint = (items: EditableListItem[], point: EditableListItem) => {
+                const directSubitems = findItemDirectSubitems(items, point);
+
+                for (const subitem of directSubitems) {
+                    pointsToStop.add(subitem.id);
+                    findSubpointsAndNestedWithPoint(items, subitem);
+                }
+            }
+
+            if (fileList?.items.length) {
+                const initialPoint = fileList.items.find(item => item.id === pointId);
+
+                if (initialPoint) {
+                    findSubpointsAndNestedWithPoint(fileList.items, initialPoint);
+                }
+            }
+
+            const storeStateCurrent = get(playableStore);
+            for (const documentState of storeStateCurrent) {
+                if (documentState.document.id !== selectedDocumentLocal.id) {
+                    continue;
+                }
+
+                for (const playableList of documentState.lists) {
+                    if (playableList.list.id !== listId) {
+                        continue;
+                    }
+
+                    const initialPoint = playableList.list.items.find(item => item.id === pointId);
+                    if (!initialPoint) {
+                        continue;
+                    }
+
+                    findSubpointsAndNestedWithPoint(playableList.list.items, initialPoint);
+                }
+            }
+
+            let hasChanges = false;
+            playableStore.update(store => {
+                const updatedStore = store
+                    .map(documentState => {
+                        if (documentState.document.id !== selectedDocumentLocal.id) {
+                            return documentState;
+                        }
+
+                        let hasDocumentChanges = false;
+                        const updatedLists = documentState.lists
+                            .map(playableList => {
+                                if (playableList.list.id !== listId) {
+                                    return playableList;
+                                }
+
+                                const updatedItems = playableList.list.items.filter(item => !pointsToStop.has(item.id));
+                                if (updatedItems.length !== playableList.list.items.length) {
+                                    hasDocumentChanges = true;
+                                }
+
+                                return {
+                                    ...playableList,
+                                    list: {
+                                        ...playableList.list,
+                                        items: updatedItems,
+                                    }
+                                };
+                            })
+                            .filter(playableList => {
+                                const shouldKeepList = playableList.list.items.length > 0;
+                                if (!shouldKeepList) {
+                                    hasDocumentChanges = true;
+                                }
+
+                                return shouldKeepList;
+                            });
+
+                        if (updatedLists.length === 0) {
+                            hasChanges = true;
+                            return null;
+                        }
+
+                        if (!hasDocumentChanges) {
+                            return documentState;
+                        }
+
+                        hasChanges = true;
+                        return {
+                            ...documentState,
+                            lists: updatedLists,
+                        };
+                    })
+                    .filter((documentState): documentState is PlayableDocumentsWithListsAndPoints => documentState !== null);
+
+                return hasChanges ? updatedStore : store;
+            });
+
+            return hasChanges;
         }
     }
 })();
