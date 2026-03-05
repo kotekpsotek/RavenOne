@@ -465,6 +465,7 @@
             {#if item.answers}
                 <AIAnswersList
                     aiAnswers={item.answers}
+                    itemId={item.id}
                 />
             {/if}
         </div>

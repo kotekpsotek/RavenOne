@@ -3,6 +3,7 @@
     import { UI } from "@ravenlens/frontend";
     import AIAnswerRichContent from "../../editorComponents/ui/mod/AIAnswerRichContent.svelte";
     import { getPlayModeLabel, type AIPoint } from "$lib/editorComponents/types/AIList";
+    import { selectedFile } from "$lib/stores/files";
     import { hoveredListItemId } from "$lib/stores/hoveredListItem";
 
     let { aiAnswers, itemId = "" }: { aiAnswers: AIPoint["aiAnswers"]; itemId?: string } = $props();
@@ -11,6 +12,7 @@
     let isAnswersListOpen = $state(true);
     let zoomedIndex = $state<number | null>(null);
     let infoIndex = $state<number | null>(null);
+    let removeAnswerIndex = $state<number | null>(null);
 
     function toggleAnswersList() {
         isAnswersListOpen = !isAnswersListOpen;
@@ -43,6 +45,95 @@
 
     function closeInfo() {
         infoIndex = null;
+    }
+
+    function openRemoveAnswer(index: number) {
+        removeAnswerIndex = index;
+    }
+
+    function closeRemoveAnswer() {
+        removeAnswerIndex = null;
+    }
+
+    function shiftIndexAfterRemoval(currentIndex: number | null, removedIndex: number) {
+        if (currentIndex === null) {
+            return null;
+        }
+
+        if (currentIndex === removedIndex) {
+            return null;
+        }
+
+        if (currentIndex > removedIndex) {
+            return currentIndex - 1;
+        }
+
+        return currentIndex;
+    }
+
+    function removeAnswerFromItem() {
+        if (!itemId || removeAnswerIndex === null) {
+            closeRemoveAnswer();
+            return;
+        }
+
+        const removedIndex = removeAnswerIndex;
+
+        selectedFile.update((file) => {
+            if (!file) {
+                return file;
+            }
+
+            let hasUpdatedItem = false;
+            const updatedLists = file.lists.map((list) => {
+                let hasUpdatedList = false;
+                const updatedItems = list.items.map((item) => {
+                    if (item.id !== itemId) {
+                        return item;
+                    }
+
+                    const answers = item.answers ?? [];
+                    if (removedIndex < 0 || removedIndex >= answers.length) {
+                        return item;
+                    }
+
+                    const nextAnswers = answers.filter((_, index) => index !== removedIndex);
+                    hasUpdatedList = true;
+
+                    return {
+                        ...item,
+                        answers: nextAnswers.length > 0 ? nextAnswers : undefined
+                    };
+                });
+
+                if (!hasUpdatedList) {
+                    return list;
+                }
+
+                hasUpdatedItem = true;
+                return {
+                    ...list,
+                    items: updatedItems
+                };
+            });
+
+            if (!hasUpdatedItem) {
+                return file;
+            }
+
+            return {
+                ...file,
+                lists: updatedLists
+            };
+        });
+
+        openAnswerIndices = openAnswerIndices
+            .filter((index) => index !== removedIndex)
+            .map((index) => (index > removedIndex ? index - 1 : index));
+
+        zoomedIndex = shiftIndexAfterRemoval(zoomedIndex, removedIndex);
+        infoIndex = shiftIndexAfterRemoval(infoIndex, removedIndex);
+        closeRemoveAnswer();
     }
 
     function formatDate(timestamp: number) {
@@ -108,6 +199,7 @@
 
     const zoomedAnswer = $derived(zoomedIndex === null ? null : aiAnswers[zoomedIndex] ?? null);
     const infoAnswer = $derived(infoIndex === null ? null : aiAnswers[infoIndex] ?? null);
+    const removeAnswer = $derived(removeAnswerIndex === null ? null : aiAnswers[removeAnswerIndex] ?? null);
 
     function onMouseEnter(ev: Event) {
         ev.stopPropagation();
@@ -188,17 +280,17 @@
                                     <Icon icon="material-symbols:zoom-in-map-rounded" width="14" height="14" />
                                 </button>
 
-                                <button
-                                    type="button"
-                                    class="text-right"
-                                    onclick={() => toggleAnswer(index)}
-                                >
+                                <div class="text-right">
+                                    <button
+                                        type="button"
+                                        class="text-right"
+                                        onclick={() => toggleAnswer(index)}
+                                    >
                                     <p class="text-sm font-semibold opacity-80">{formatDate(answer.endDateTimestamp)}</p>
-                                    <!-- svelte-ignore a11y_no_static_element_interactions -->
+                                    </button>
+
                                     <div class="flex items-center justify-end gap-2 mt-1">
-                                        <!-- svelte-ignore a11y_click_events_have_key_events -->
-                                        <!-- svelte-ignore a11y_no_static_element_interactions -->
-                                        <div class="badge badge-outline badge-xs" onclick={ev => ev.stopPropagation()}>
+                                        <div class="badge badge-outline badge-xs">
                                             <span title={getProviderName(answer.model.provider)}>
                                                 <Icon
                                                     icon={getProviderIcon(answer.model.provider)}
@@ -210,20 +302,33 @@
                                             </span>
                                         </div>
 
+                                        <button
+                                            type="button"
+                                            class="btn btn-error btn-xs h-5 gap-1"
+                                            title="Delete answer"
+                                            aria-label="Delete answer"
+                                            onclick={() => openRemoveAnswer(index)}
+                                        >
+                                            <Icon icon="mdi:trash-can-outline" width="14" height="14" />
+                                        </button>
+                                        
                                         <!-- Info Modal for Answer -->
-                                        <!-- svelte-ignore a11y_click_events_have_key_events -->
-                                        <div 
+                                        <button
+                                            type="button"
                                             class="btn btn-xs h-4 btn-neutral"
-                                            onclick={ev => {
-                                                ev.stopPropagation();
-                                                openInfo(index);
-                                            }}
+                                            title="Answer details"
+                                            aria-label="Open answer details"
+                                            onclick={() => openInfo(index)}
                                         >
                                             <Icon icon="material-symbols:info-i-rounded"/>
-                                        </div>
-                                        
-                                        <div
+                                        </button>
+
+                                        <button
+                                            type="button"
                                             class="btn btn-xs h-5"
+                                            title={isExpanded(index) ? "Collapse answer" : "Expand answer"}
+                                            aria-label={isExpanded(index) ? "Collapse answer" : "Expand answer"}
+                                            onclick={() => toggleAnswer(index)}
                                         >
                                             <Icon
                                                 icon={isExpanded(index) ? "mdi:chevron-up" : "mdi:chevron-down"}
@@ -231,9 +336,9 @@
                                                 height="18"
                                                 class="opacity-90 shrink-0"
                                             />
-                                        </div>
+                                        </button>
                                     </div>
-                                </button>
+                                </div>
                             </div>
                         </div>
 
@@ -279,6 +384,62 @@
 
                     <div class="max-h-[60vh] overflow-auto rounded border border-base-300 bg-base-100 px-4 py-3 text-sm leading-6 whitespace-pre-wrap break-words">
                         <AIAnswerRichContent content={zoomedAnswer.answerTipTapHTML} />
+                    </div>
+                </div>
+            </UI.Modals.ModalWrapper>
+        </div>
+    </div>
+{/if}
+
+{#if removeAnswer}
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="fixed inset-0 z-[95] bg-black/40" onclick={closeRemoveAnswer}>
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="flex items-center justify-center p-4" onclick={(event) => event.stopPropagation()}>
+            <UI.Modals.ModalWrapper
+                name="Remove AI answer"
+                open={true}
+                closeOnBackdrop={true}
+                size="xl"
+                on:close={closeRemoveAnswer}
+            >
+                <UI.Modals.ModalWrapperHeading
+                    headingName="Remove AI answer"
+                    on:close={closeRemoveAnswer}
+                />
+
+                <div class="space-y-4">
+                    <p class="text-sm text-base-content/80">
+                        Do you want to remove answer?
+                        This action cannot be undone.
+                    </p>
+
+                    <div class="relative rounded border border-base-300 bg-base-100 px-3 py-2 text-sm">
+                        <span class="uppercase font-semibold bg-base-100 text-xs text-gray-500 absolute top-[-0.5rem]">Answer</span>
+                        <div class="w-full h-fit">
+                            <AIAnswerRichContent content={removeAnswer.answerTipTapHTML} />
+                        </div>
+                    </div>
+
+                    <div class="flex items-center justify-end gap-2">
+                        <button
+                            type="button"
+                            class="btn btn-ghost btn-sm"
+                            onclick={closeRemoveAnswer}
+                        >
+                            Cancel
+                        </button>
+
+                        <button
+                            type="button"
+                            class="btn btn-error btn-sm gap-2"
+                            onclick={removeAnswerFromItem}
+                        >
+                            <Icon icon="mdi:trash-can-outline" width="16" height="16" />
+                            <span>Remove answer</span>
+                        </button>
                     </div>
                 </div>
             </UI.Modals.ModalWrapper>

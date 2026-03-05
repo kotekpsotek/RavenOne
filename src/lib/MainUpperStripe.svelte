@@ -369,7 +369,7 @@
                     <div class="dropdown-content p-3 shadow bg-base-200 rounded-box z-[20] w-80 space-y-3">
                         <div>
                             <p class="text-xs uppercase tracking-wide opacity-70 mb-1">Tools</p>
-                            <div class="space-y-1">
+                            <div class="flex flex-wrap gap-2">
                                 {#each availableTools as tool (tool)}
                                     <label class="label cursor-pointer justify-start gap-2">
                                         <input
