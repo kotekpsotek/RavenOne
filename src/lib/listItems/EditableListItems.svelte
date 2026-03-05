@@ -399,10 +399,12 @@
         <div
             class="flex w-full min-w-0 items-center py-0.5"
             style={`padding-left: ${item.depth * INDENT_SIZE}px`}
-            onmouseenter={() => handleItemMouseEnter(item.id)}
-            onmouseleave={handleItemMouseLeave}
         >
-            <AITaskOpenButton itemId={item.id} />
+            <AITaskOpenButton 
+                itemId={item.id}
+                onmouseenter={() => handleItemMouseEnter(item.id)}
+                onmouseleave={handleItemMouseLeave}
+            />
 
             <div class="relative flex w-full min-w-0 items-center gap-2">
                 <AIListItemHoverActions
