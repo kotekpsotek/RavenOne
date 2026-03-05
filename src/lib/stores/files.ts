@@ -1,4 +1,4 @@
-import type { AIAnswer, PlayMode } from "$lib/editorComponents/types/AIList";
+import type { AIAnswer, ContextSpecificationPayload, PlayMode } from "$lib/editorComponents/types/AIList";
 import type { AI } from "@ravenlens/shared";
 import { writable } from "svelte/store";
 
@@ -11,6 +11,10 @@ export type EditableListItem = {
     checked?: boolean;
     /** Present only when answers were provided */
     answers?: AIAnswer[];
+    /** Playmode for this specific point */
+    playMode?: PlayMode;
+    /** Context for this specific point */
+    context?: ContextSpecificationPayload;
 };
 
 export interface SpawnedList {

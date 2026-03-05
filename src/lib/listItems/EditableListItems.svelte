@@ -7,10 +7,10 @@
     import { playMode, selectedFile, selectedModel, selectedTools, type EditableListItem, type ListItemKind, type SpawnedList } from '$lib/stores/files';
     import { createListItemId, findItemIndex, findSubtreeEndIndex, isPointPlayable } from './utils';
     import { playableDocumentsAndListsWithPoints } from '$lib/stores/playModeStore';
-    import { AI } from '@ravenlens/shared';
     import type { PlayMode } from '$lib/editorComponents/types/AIList';
     import { selectedMcpServers } from '$lib/stores/mcpConfig';
     import AITaskPlayingState from './mods/AITaskPlayingState.svelte';
+    import { contextSpecification } from '$lib/stores/contextSpec';
 
     let {
         kind,
@@ -21,11 +21,6 @@
         spawnedList: SpawnedList
         onEmptyList?: () => void;
     } = $props();
-
-    let selectedItemModel = $state<AI.RavenLensAvaiableAIModel | undefined>($selectedModel);
-    let availableItemTools = $state($selectedTools);
-    let selectedItemMcpServers = $state($selectedMcpServers);
-    let selectedItemPlayMode = $state<PlayMode>($playMode);
 
     const INDENT_SIZE = 24;
     const ITEM_ID_ATTR = 'data-list-item-id';
@@ -416,10 +411,11 @@
                     onPlay={(pointId) => startPlayingItem(pointId)}
                     onStop={(pointId) => stopPlayingItem(pointId)}
                     onClearContent={() => requestRemoveItem(item.id)}
-                    bind:selectedItemModel
-                    bind:availableItemTools
-                    bind:selectedItemMcpServers
-                    bind:selectedItemPlayMode
+                    selectedItemModel={$selectedModel}
+                    availableItemTools={$selectedTools}
+                    selectedItemMcpServers={$selectedMcpServers}
+                    selectedItemContext={item.context ?? $contextSpecification}
+                    selectedItemPlayMode={item.playMode ?? $playMode}
                 />
 
                 {#if kind === 'ordered'}

@@ -17,10 +17,11 @@
         onPlay,
         onStop,
         onClearContent,
-        selectedItemModel = $bindable($selectedModel),
-        availableItemTools = $bindable($selectedTools),
-        selectedItemMcpServers = $bindable($selectedMcpServers),
-        selectedItemPlayMode = $bindable($playMode),
+        selectedItemModel,
+        availableItemTools,
+        selectedItemMcpServers,
+        selectedItemPlayMode,
+        selectedItemContext,
         playDisabledReason
     }: {
         visible?: boolean;
@@ -43,6 +44,7 @@
         availableItemTools: string[],
         selectedItemMcpServers: string[],
         selectedItemPlayMode: PlayMode,
+        selectedItemContext: ContextSpecificationPayload,
         playDisabledReason: string
     } = $props();
 
@@ -53,11 +55,6 @@
     let pointPlayModeDropdownPosition = $state<{ x: number; y: number } | null>(null);
     let isPointActionsMenuOpen = $state(false);
     let pointActionsDropdownPosition = $state<{ x: number; y: number } | null>(null);
-    let pointContextSpecDraft = $state<ContextSpecificationPayload>({
-        desktopFiles: [],
-        editorFiles: [],
-        networkUrls: []
-    });
 
     function getPointContextStorageKey(currentItemId: string) {
         return `${POINT_CONTEXT_STORAGE_KEY_PREFIX}${currentItemId}`;
@@ -112,17 +109,59 @@
         event.preventDefault();
         event.stopPropagation();
 
-        pointContextSpecDraft = getEffectivePointContextPayload();
         isPointContextModalOpen = true;
     }
 
     function onSavePointContext(payload: ContextSpecificationPayload) {
-        pointContextSpecDraft = cloneContextPayload(payload);
+        const pointContext = cloneContextPayload(payload);
 
         if (browser) {
-            localStorage.setItem(getPointContextStorageKey(itemId), JSON.stringify(pointContextSpecDraft));
+            localStorage.setItem(getPointContextStorageKey(itemId), JSON.stringify(pointContext));
         }
 
+        selectedFile.update(file => {
+            if (!file) {
+                return file;
+            }
+
+            let hasUpdatedPoint = false;
+            const updatedLists = file.lists.map(list => {
+                let hasPointInList = false;
+
+                const updatedItems = list.items.map(item => {
+                    if (item.id !== itemId) {
+                        return item;
+                    }
+
+                    hasPointInList = true;
+                    return {
+                        ...item,
+                        context: pointContext
+                    };
+                });
+
+                if (!hasPointInList) {
+                    return list;
+                }
+
+                hasUpdatedPoint = true;
+                return {
+                    ...list,
+                    items: updatedItems
+                };
+            });
+
+            if (!hasUpdatedPoint) {
+                return file;
+            }
+
+            return {
+                ...file,
+                lists: updatedLists
+            };
+        });
+
+        selectedItemContext = pointContext;
         isPointContextModalOpen = false;
     }
 
@@ -139,6 +178,48 @@
     }
 
     function onSavePointPlayMode(mode: PlayMode) {
+        selectedFile.update(file => {
+            if (!file) {
+                return file;
+            }
+
+            let hasUpdatedPoint = false;
+            const updatedLists = file.lists.map(list => {
+                let hasPointInList = false;
+
+                const updatedItems = list.items.map(item => {
+                    if (item.id !== itemId) {
+                        return item;
+                    }
+
+                    hasPointInList = true;
+                    return {
+                        ...item,
+                        playMode: mode
+                    };
+                });
+
+                if (!hasPointInList) {
+                    return list;
+                }
+
+                hasUpdatedPoint = true;
+                return {
+                    ...list,
+                    items: updatedItems
+                };
+            });
+
+            if (!hasUpdatedPoint) {
+                return file;
+            }
+
+            return {
+                ...file,
+                lists: updatedLists
+            };
+        });
+
         selectedItemPlayMode = mode;
         closePointPlayModeDropdown();
     }
@@ -283,7 +364,7 @@
 {#if isPointContextModalOpen}
     <ContextSelectionModal
         bind:open={isPointContextModalOpen}
-        contextPayload={pointContextSpecDraft}
+        contextPayload={selectedItemContext}
         onSave={onSavePointContext}
         infoMessage="You can specify the independent context only for this point"
     />
