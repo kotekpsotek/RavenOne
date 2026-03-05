@@ -390,7 +390,7 @@
     {#each items as item, itemIndex (item.id)}
         {@const playableStoreState = $playableDocumentsAndListsWithPoints}
         {@const isPointPlaying = playableStoreState && playableDocumentsAndListsWithPoints.isPointPlaying($selectedFile, spawnedList.id, item.id)}
-        {@const isPointPlayableState = isPointPlayable(items, item.id)}
+        {@const isPointPlayableState = isPointPlayable(items, item.id, $playMode)}
         {@const isSomeChildPlaying = playableStoreState && playableDocumentsAndListsWithPoints.isPointSomeChildPlaying($selectedFile, spawnedList.id, item.id)}
         {@const isPointParentPlaying = playableStoreState && playableDocumentsAndListsWithPoints.isPointParentPlaying($selectedFile, spawnedList.id, item.id)}
     

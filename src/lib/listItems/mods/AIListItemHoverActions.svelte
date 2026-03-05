@@ -334,7 +334,7 @@
         type="button"
         class="btn btn-ghost btn-xs min-h-0 h-6 w-6 p-0 text-base-content/70 hover:text-base-content"
         aria-label="Selection modes"
-        title="Show possible modes"
+        title="Show possible modes. Modes will be applied only for playing this point individually. Additionally and all level subpoints of this point will be play with this selected mode"
         disabled={isPointPlaying}
         onclick={onOpenPointPlayModeModal}
     >

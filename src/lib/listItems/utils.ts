@@ -1,4 +1,5 @@
-import { selectedFile, type EditableListItem, type File } from "$lib/stores/files";
+import type { PlayMode } from "$lib/editorComponents/types/AIList";
+import { playMode, selectedFile, type EditableListItem, type File } from "$lib/stores/files";
 import { playableDocumentsAndListsWithPoints } from "$lib/stores/playModeStore";
 import { get } from "svelte/store";
 import { v4 as uuid } from "uuid";
@@ -51,6 +52,44 @@ export function findItemDirectSubitems(items: EditableListItem[], item: Editable
     return foundSubItems;
 }
 
+function hasNonEmptyTextContent(item: EditableListItem) {
+    return item.text.trim().length > 0;
+}
+
+/** Returns all descendant points for the item at index (does not include the item itself). */
+export function getAllSubpointChildrenByItemIndex(items: EditableListItem[], itemIndex: number) {
+    if (itemIndex < 0 || itemIndex >= items.length) {
+        return [];
+    }
+
+    const subtreeEndIndex = findSubtreeEndIndex(items, itemIndex);
+    return items.slice(itemIndex + 1, subtreeEndIndex);
+}
+
+function getPointAndAllSubpointChildren(items: EditableListItem[], itemId: string) {
+    const itemIndex = findItemIndex(items, itemId);
+    if (itemIndex < 0) {
+        return [];
+    }
+
+    return [
+        items[itemIndex],
+        ...getAllSubpointChildrenByItemIndex(items, itemIndex)
+    ];
+}
+
+function isPointRunnableForMode(point: EditableListItem, selectedPlayMode: PlayMode) {
+    if (!hasNonEmptyTextContent(point)) {
+        return false;
+    }
+
+    if (selectedPlayMode === "run-all") {
+        return true;
+    }
+
+    return !point.answers?.length;
+}
+
 /**
  * Checks:
  * 1. Has file some list
@@ -58,30 +97,28 @@ export function findItemDirectSubitems(items: EditableListItem[], item: Editable
  * 3. Has some point with text
  * 4. Is not this point already playing
  */
-export function isFilePlayable(file: File) {
+export function isFilePlayable(file: File, selectedPlayMode: PlayMode) {
     return file.lists?.some(list => {
-        const itemCheck = list.items.some(item => item.text.trim().length > 0 && !playableDocumentsAndListsWithPoints.isPointPlaying(file, list.id, item.id));
+        const itemCheck = list.items.some(item => {
+            if (playableDocumentsAndListsWithPoints.isPointPlaying(file, list.id, item.id)) {
+                return false;
+            }
+
+            const subtreePoints = getPointAndAllSubpointChildren(list.items, item.id);
+            return subtreePoints.some(point => isPointRunnableForMode(point, selectedPlayMode));
+        });
         
         return list.items.length > 0 && itemCheck;
     });
 }
 
-function getNonEmptyChildItemsCount(items: EditableListItem[], itemId: string) {
-    const itemIndex = findItemIndex(items, itemId);
-    if (itemIndex === -1) {
-        return 0;
+export function isPointPlayable(items: EditableListItem[], itemId: string, selectedPlayMode: PlayMode = get(playMode)) {
+    const subtreePoints = getPointAndAllSubpointChildren(items, itemId);
+    if (!subtreePoints.length) {
+        return false;
     }
 
-    const subtreeEndIndex = findSubtreeEndIndex(items, itemIndex);
-    return items
-        .slice(itemIndex + 1, subtreeEndIndex)
-        .filter((item) => item.text.trim().length > 0).length;
-}
-
-export function isPointPlayable(items: EditableListItem[], itemId: string) {
-    const itemIndex = findItemIndex(items, itemId);
-
-    return getNonEmptyChildItemsCount(items, itemId) > 0 || items[itemIndex].text.trim().length > 0;
+    return subtreePoints.some(point => isPointRunnableForMode(point, selectedPlayMode));
 }
 
 export function isPointSuccessorOfPoint(itemId: string, pointId: string, listId: string) {

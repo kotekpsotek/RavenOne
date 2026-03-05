@@ -434,7 +434,7 @@
                                 <span>Stop Playing</span>
                             </button>
                         {:else}
-                            {@const isFilePlayableLocal = isFilePlayable($selectedFile)}
+                            {@const isFilePlayableLocal = isFilePlayable($selectedFile, $playMode)}
                             {@const isSomePointPlaying = playableDocumentsAndListsWithPoints.isSomePointPlayingInSomeList($selectedFile)}
                             {@const isPlayingDisabled = !isFilePlayableLocal || isSomePointPlaying}
 
