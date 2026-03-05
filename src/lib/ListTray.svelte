@@ -1,5 +1,6 @@
 <script lang="ts">
     import { onMount } from 'svelte';
+    import { UI } from '@ravenlens/frontend';
     import { selectedFile, type EditableListItem, type ListItemKind } from '$lib/stores/files';
     import Icon from '@iconify/svelte';
     import type { ElementInsertionItem } from './editorComponents/ui/ElementsListForMenus';
@@ -16,6 +17,7 @@
     let trayHeight = $state(PANEL_DEFAULT_HEIGHT);
     let isResizing = $state(false);
     let isResizeHandleHovered = $state(false);
+    let isListTrayModalOpen = $state(false);
 
     let startClientY = 0;
     let startPanelHeight = 0;
@@ -102,6 +104,14 @@
 
     function removeSpawnedList(spawnedListId: string) {
         $selectedFile!.lists = $selectedFile!.lists.filter((spawnedList) => spawnedList.id !== spawnedListId);
+    }
+
+    function openListTrayModal() {
+        isListTrayModalOpen = true;
+    }
+
+    function closeListTrayModal() {
+        isListTrayModalOpen = false;
     }
 
     function getStorageKey(fileId: string) {
@@ -208,6 +218,29 @@
 
 <svelte:window onresize={onWindowResize} />
 
+{#snippet listItemsContent()}
+    <div class="list-items space-y-2">
+        {#each $selectedFile!.lists as spawnedList (spawnedList.id)}
+            {#if spawnedList.kind === 'ordered'}
+                <OrderedListItem
+                    onEmptyList={() => removeSpawnedList(spawnedList.id)}
+                    {spawnedList}
+                />
+            {:else if spawnedList.kind === 'unordered'}
+                <UnorderedListItem
+                    onEmptyList={() => removeSpawnedList(spawnedList.id)}
+                    {spawnedList}
+                />
+            {:else}
+                <TaskListItem
+                    onEmptyList={() => removeSpawnedList(spawnedList.id)}
+                    {spawnedList}
+                />
+            {/if}
+        {/each}
+    </div>
+{/snippet}
+
 <div
     class="list-tray relative mt-5 overflow-hidden border-t border-base-300 bg-base-100 {isResizing ? '' : 'transition-[height] duration-200'}"
     style={`height: ${trayHeight}px`}
@@ -229,7 +262,7 @@
     <!-- Items Height -->
     <div class="h-full overflow-y-auto px-4 py-4">
         <!--  -->
-        <div class="upper-stripe">
+        <div class="upper-stripe flex justify-between items-center">
             <details class="dropdown">
                 <summary 
                     class="btn btn-xs btn-ghost m-1"
@@ -253,28 +286,47 @@
                     {/each}
                 </ul>
             </details>
+
+            <button
+                type="button"
+                class="show-modal btn btn-xs"
+                title="Open list tray in modal"
+                onclick={openListTrayModal}
+            >
+                <Icon icon="material-symbols:fullscreen"/>
+            </button>
         </div>
 
         <!-- List with items from list -->
-        <div class="list-items space-y-2">
-            {#each $selectedFile!.lists as spawnedList (spawnedList.id)}
-                {#if spawnedList.kind === 'ordered'}
-                    <OrderedListItem 
-                        onEmptyList={() => removeSpawnedList(spawnedList.id)}
-                        {spawnedList}
-                    />
-                {:else if spawnedList.kind === 'unordered'}
-                    <UnorderedListItem 
-                        onEmptyList={() => removeSpawnedList(spawnedList.id)}
-                        {spawnedList}
-                    />
-                {:else}
-                    <TaskListItem
-                        onEmptyList={() => removeSpawnedList(spawnedList.id)}
-                        {spawnedList}
-                    />
-                {/if}
-            {/each}
-        </div>
+        {#if !isListTrayModalOpen}
+            {@render listItemsContent()}
+        {/if}
     </div>
 </div>
+
+{#if isListTrayModalOpen}
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="w-full fixed inset-0 z-[80] bg-black/40" onclick={closeListTrayModal}>
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="w-full flex min-h-full items-center justify-center p-4" onclick={(event) => event.stopPropagation()}>
+            <UI.Modals.ModalWrapper
+                name="List tray"
+                open={true}
+                closeOnBackdrop={true}
+                size={{ custom: "max-w-3/4" }}
+                on:close={closeListTrayModal}
+            >
+                <UI.Modals.ModalWrapperHeading
+                    headingName="List tray"
+                    on:close={closeListTrayModal}
+                />
+
+                <div class="max-h-[70vh] overflow-y-auto pr-1">
+                    {@render listItemsContent()}
+                </div>
+            </UI.Modals.ModalWrapper>
+        </div>
+    </div>
+{/if}
