@@ -1,15 +1,20 @@
 <script lang="ts">
     import Icon from "@iconify/svelte";
     import { UI } from "@ravenlens/frontend";
-    import AIAnswerRichContent from "./AIAnswerRichContent.svelte";
+    import AIAnswerRichContent from "../../editorComponents/ui/mod/AIAnswerRichContent.svelte";
     import { getPlayModeLabel, type AIPoint } from "$lib/editorComponents/types/AIList";
     import { hoveredListItemId } from "$lib/stores/hoveredListItem";
 
     let { aiAnswers, itemId = "" }: { aiAnswers: AIPoint["aiAnswers"]; itemId?: string } = $props();
 
     let openAnswerIndices = $state<number[]>([]);
+    let isAnswersListOpen = $state(true);
     let zoomedIndex = $state<number | null>(null);
     let infoIndex = $state<number | null>(null);
+
+    function toggleAnswersList() {
+        isAnswersListOpen = !isAnswersListOpen;
+    }
 
     function isExpanded(index: number) {
         return openAnswerIndices.includes(index);
@@ -118,103 +123,125 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <section 
-    class="space-y-2 pt-5"
+    class="space-y-2 px-10 pt-5"
     data-ai-answers-root="true"
     data-list-item-id={itemId}
     contenteditable="false"
     onmouseenter={onMouseEnter}
     onmouseleave={onMouseLeave}
 >
-    <p class="text-sm font-semibold opacity-90">AI Answers</p>
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <div
+        class="flex w-full items-center justify-between text-left"
+        onclick={toggleAnswersList}
+        aria-expanded={isAnswersListOpen}
+    >
+        <span class="text-sm font-semibold opacity-90">
+            AI Answers
+            <span class="ml-1 text-xs font-normal opacity-70">({aiAnswers.length})</span>
+        </span>
 
-    <div class="rounded-2xl border border-base-300 bg-base-100 overflow-hidden">
-        {#if aiAnswers.length === 0}
-            <p class="px-4 py-3 text-xs opacity-70">No AI answers available.</p>
-        {:else}
-            {#each aiAnswers as answer, index (answer.startDateTimestamp + index)}
-                <div class="border-b border-base-300 last:border-b-0">
-                    <div class="flex items-start justify-between gap-3 px-4 py-3">
-                        <button
-                            type="button"
-                            class="text-left min-w-0 flex-1"
-                            onclick={() => toggleAnswer(index)}
-                        >
-                            {#if isExpanded(index)}
-                                <div class="text-sm leading-6 whitespace-pre-wrap break-words">
-                                    <AIAnswerRichContent content={answer.answerTipTapHTML} />
-                                </div>
-                            {:else}
-                                <div class="relative max-h-20 overflow-hidden text-sm leading-6 whitespace-pre-wrap break-words">
-                                    <AIAnswerRichContent content={answer.answerTipTapHTML} />
-                                    <div class="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-base-100 to-transparent"></div>
-                                </div>
-                            {/if}
-                        </button>
+        <button
+            class="btn btn-xs btn-ghost"
+        >
+            <Icon
+                icon={isAnswersListOpen ? "mdi:chevron-up" : "mdi:chevron-down"}
+                width="18"
+                height="18"
+                class="opacity-90 shrink-0"
+            />
+        </button>
+    </div>
 
-                        <div class="flex items-center gap-2 shrink-0">
+    {#if isAnswersListOpen}
+        <div class="rounded-2xl border border-base-300 bg-base-100 overflow-hidden">
+            {#if aiAnswers.length === 0}
+                <p class="px-4 py-3 text-xs opacity-70">No AI answers available.</p>
+            {:else}
+                {#each aiAnswers as answer, index (answer.startDateTimestamp + index)}
+                    <div class="border-b border-base-300 last:border-b-0">
+                        <div class="flex items-start justify-between gap-3 px-4 py-3">
                             <button
                                 type="button"
-                                class="btn btn-ghost btn-xs"
-                                title="Zoom answer"
-                                aria-label="Zoom answer"
-                                onclick={() => openZoom(index)}
-                            >
-                                <Icon icon="material-symbols:zoom-in-map-rounded" width="14" height="14" />
-                            </button>
-
-                            <button
-                                type="button"
-                                class="text-right"
                                 onclick={() => toggleAnswer(index)}
                             >
-                                <p class="text-sm font-semibold opacity-80">{formatDate(answer.endDateTimestamp)}</p>
-                                <!-- svelte-ignore a11y_no_static_element_interactions -->
-                                <div class="flex items-center justify-end gap-2 mt-1">
-                                    <!-- svelte-ignore a11y_click_events_have_key_events -->
-                                    <!-- svelte-ignore a11y_no_static_element_interactions -->
-                                    <div class="badge badge-outline badge-xs" onclick={ev => ev.stopPropagation()}>
-                                        <span title={getProviderName(answer.model.provider)}>
-                                            <Icon
-                                                icon={getProviderIcon(answer.model.provider)}
-                                                class="w-3 h-3"
-                                            />
-                                        </span>
-                                        <span>
-                                            {answer.model.name}
-                                        </span>
+                                {#if isExpanded(index)}
+                                    <div class="text-sm leading-6 whitespace-pre-wrap break-words">
+                                        <AIAnswerRichContent content={answer.answerTipTapHTML} />
                                     </div>
-
-                                    <!-- Info Modal for Answer -->
-                                    <!-- svelte-ignore a11y_click_events_have_key_events -->
-                                    <div 
-                                        class="btn btn-xs h-4 btn-neutral"
-                                        onclick={ev => {
-                                            ev.stopPropagation();
-                                            openInfo(index);
-                                        }}
-                                    >
-                                        <Icon icon="material-symbols:info-i-rounded"/>
+                                {:else}
+                                    <div class="relative max-h-20 overflow-hidden text-sm leading-6 whitespace-pre-wrap break-words">
+                                        <AIAnswerRichContent content={answer.answerTipTapHTML} />
+                                        <div class="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-base-100 to-transparent"></div>
                                     </div>
-                                    
-                                    <div
-                                        class="btn btn-xs btn-ghost"
-                                    >
-                                        <Icon
-                                            icon={isExpanded(index) ? "mdi:chevron-up" : "mdi:chevron-down"}
-                                            width="18"
-                                            height="18"
-                                            class="opacity-90 shrink-0"
-                                        />
-                                    </div>
-                                </div>
+                                {/if}
                             </button>
-                        </div>
-                    </div>
 
-                </div>
-            {/each}
-        {/if}
-    </div>
+                            <div class="flex items-center gap-2 shrink-0">
+                                <button
+                                    type="button"
+                                    class="btn btn-ghost btn-xs"
+                                    title="Zoom answer"
+                                    aria-label="Zoom answer"
+                                    onclick={() => openZoom(index)}
+                                >
+                                    <Icon icon="material-symbols:zoom-in-map-rounded" width="14" height="14" />
+                                </button>
+
+                                <button
+                                    type="button"
+                                    class="text-right"
+                                    onclick={() => toggleAnswer(index)}
+                                >
+                                    <p class="text-sm font-semibold opacity-80">{formatDate(answer.endDateTimestamp)}</p>
+                                    <!-- svelte-ignore a11y_no_static_element_interactions -->
+                                    <div class="flex items-center justify-end gap-2 mt-1">
+                                        <!-- svelte-ignore a11y_click_events_have_key_events -->
+                                        <!-- svelte-ignore a11y_no_static_element_interactions -->
+                                        <div class="badge badge-outline badge-xs" onclick={ev => ev.stopPropagation()}>
+                                            <span title={getProviderName(answer.model.provider)}>
+                                                <Icon
+                                                    icon={getProviderIcon(answer.model.provider)}
+                                                    class="w-3 h-3"
+                                                />
+                                            </span>
+                                            <span>
+                                                {answer.model.name}
+                                            </span>
+                                        </div>
+
+                                        <!-- Info Modal for Answer -->
+                                        <!-- svelte-ignore a11y_click_events_have_key_events -->
+                                        <div 
+                                            class="btn btn-xs h-4 btn-neutral"
+                                            onclick={ev => {
+                                                ev.stopPropagation();
+                                                openInfo(index);
+                                            }}
+                                        >
+                                            <Icon icon="material-symbols:info-i-rounded"/>
+                                        </div>
+                                        
+                                        <div
+                                            class="btn btn-xs h-5"
+                                        >
+                                            <Icon
+                                                icon={isExpanded(index) ? "mdi:chevron-up" : "mdi:chevron-down"}
+                                                width="18"
+                                                height="18"
+                                                class="opacity-90 shrink-0"
+                                            />
+                                        </div>
+                                    </div>
+                                </button>
+                            </div>
+                        </div>
+
+                    </div>
+                {/each}
+            {/if}
+        </div>
+    {/if}
 </section>
 
 {#if zoomedAnswer}
