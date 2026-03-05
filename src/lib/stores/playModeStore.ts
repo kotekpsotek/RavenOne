@@ -19,6 +19,8 @@ interface PlayableSpawnedList extends Omit<SpawnedList, "items"> {
 
 export interface PlayableList {
     list: PlayableSpawnedList;
+    /** Points that belong to this run scope (used by UI planned/omitted badges). */
+    scopePointIds: string[];
     config: {
         model: AI.RavenLensAvaiableAIModel;
         tools: BrowserToolsUnion[];
@@ -116,6 +118,8 @@ interface StopPointEvent {
 
 interface PlayPointOptions {
     waitForSubtreeCompletion?: boolean;
+    /** Optional UI scope override. Defaults to the played point subtree. */
+    scopePointIds?: string[];
 }
 
 export class StopPlayEvent {
@@ -235,7 +239,12 @@ export const playableDocumentsAndListsWithPoints = (() => {
             return false;
         }
 
-        // In "run-not-runned" mode, run unresolved leaf-like points and omit parent containers.
+        // In "run-not-runned" mode, run unresolved points with own text even if they have children.
+        // Keep omitting pure container points (no own text) so only meaningful content is scheduled.
+        if (hasPointTextContent(point)) {
+            return true;
+        }
+
         return !hasPlayableDescendants(items, point);
     };
 
@@ -254,6 +263,32 @@ export const playableDocumentsAndListsWithPoints = (() => {
         }
 
         return childPoints;
+    };
+
+    const collectPointSubtreeIds = (items: EditableListItem[], pointId: string) => {
+        const pointIndex = items.findIndex(item => item.id === pointId);
+        if (pointIndex < 0) {
+            return [];
+        }
+
+        const rootPoint = items[pointIndex];
+        const subtreePointIds = [rootPoint.id];
+        for (let index = pointIndex + 1; index < items.length; index += 1) {
+            const currentPoint = items[index];
+            if (currentPoint.depth <= rootPoint.depth) {
+                break;
+            }
+
+            subtreePointIds.push(currentPoint.id);
+        }
+
+        return subtreePointIds;
+    };
+
+    const getRunScopePointIds = (playableList: PlayableList) => {
+        return playableList.scopePointIds?.length
+            ? playableList.scopePointIds
+            : playableList.list.items.map(item => item.id);
     };
 
     return {
@@ -303,6 +338,18 @@ export const playableDocumentsAndListsWithPoints = (() => {
 
             return isPointPlayableByContent(fileList.items, pointId);
         },
+        isPointInCurrentPlayScope(selectedDocumentLocal: File | undefined, listId: string, pointId: string) {
+            if (!selectedDocumentLocal) {
+                return false;
+            }
+
+            const storeStateCurrent = get(playableStore);
+            return storeStateCurrent
+                .filter(state => state.document.id === selectedDocumentLocal.id)
+                .flatMap(state => state.lists)
+                .filter(playableList => playableList.list.id === listId)
+                .some(playableList => getRunScopePointIds(playableList).includes(pointId));
+        },
         isPointMatchingCurrentPlayMode(selectedDocumentLocal: File | undefined, listId: string, pointId: string) {
             if (!selectedDocumentLocal) {
                 return false;
@@ -319,16 +366,17 @@ export const playableDocumentsAndListsWithPoints = (() => {
             }
 
             const storeStateCurrent = get(playableStore);
-            const activeListRuns = storeStateCurrent
+            const activeScopedListRuns = storeStateCurrent
                 .filter(state => state.document.id === selectedDocumentLocal.id)
                 .flatMap(state => state.lists)
-                .filter(playableList => playableList.list.id === listId);
+                .filter(playableList => playableList.list.id === listId)
+                .filter(playableList => getRunScopePointIds(playableList).includes(pointId));
 
-            if (!activeListRuns.length) {
+            if (!activeScopedListRuns.length) {
                 return isPointPlayableByContent(fileList.items, pointId);
             }
 
-            return activeListRuns.some(playableList => {
+            return activeScopedListRuns.some(playableList => {
                 return shouldSchedulePointByPlayMode(
                     fileList.items,
                     point,
@@ -537,10 +585,13 @@ export const playableDocumentsAndListsWithPoints = (() => {
                     continue;
                 }
 
+                const listScopePointIds = list.items.map(item => item.id);
+
                 if (list.kind === "ordered") {
                     for (const rootPoint of rootPoints) {
                         const result = await playRootPoint(list.id, rootPoint, {
-                            waitForSubtreeCompletion: false
+                            waitForSubtreeCompletion: false,
+                            scopePointIds: listScopePointIds
                         });
 
                         if (!isCurrentDocumentRun(selectedDocumentLocal.id, playDocumentRunVersion)) {
@@ -556,7 +607,9 @@ export const playableDocumentsAndListsWithPoints = (() => {
                 }
 
                 const results = await Promise.all(
-                    rootPoints.map(rootPoint => playRootPoint(list.id, rootPoint))
+                    rootPoints.map(rootPoint => playRootPoint(list.id, rootPoint, {
+                        scopePointIds: listScopePointIds
+                    }))
                 );
 
                 if (!isCurrentDocumentRun(selectedDocumentLocal.id, playDocumentRunVersion)) {
@@ -603,6 +656,12 @@ export const playableDocumentsAndListsWithPoints = (() => {
             }
 
             const pointsForSchedulingIds = new Set(pointsForScheduling.map(item => item.id));
+            const runScopePointIds = options?.scopePointIds?.length
+                ? Array.from(new Set(options.scopePointIds))
+                : collectPointSubtreeIds(fileList.items, point.id);
+            if (runScopePointIds.length === 0) {
+                return false;
+            }
 
             const isPointPlayingInCurrentRun = (pointId: string) => {
                 const storeStateCurrent = get(playableStore);
@@ -923,7 +982,8 @@ export const playableDocumentsAndListsWithPoints = (() => {
                                     tools: config.tools,
                                     selectedItemMcpServers: config.selectedItemMcpServers,
                                     selectedItemPlayMode: config.selectedItemPlayMode
-                                }
+                                },
+                                scopePointIds: runScopePointIds
                             }
                         ],
                         startAtTimestamp: currentPlayStartTimestamp

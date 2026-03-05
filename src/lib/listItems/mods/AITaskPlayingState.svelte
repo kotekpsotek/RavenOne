@@ -42,10 +42,26 @@
         return playableDocumentsAndListsWithPoints.isPointMatchingCurrentPlayMode($selectedFile, spawnedList.id, itemId);
     });
 
+    const isPointInCurrentPlayScope = $derived.by(() => {
+        $playableDocumentsAndListsWithPoints;
+
+        if (!$selectedFile) {
+            return false;
+        }
+
+        return playableDocumentsAndListsWithPoints.isPointInCurrentPlayScope($selectedFile, spawnedList.id, itemId);
+    });
+
     const isPointOmitted = $derived.by(() => {
         $playableDocumentsAndListsWithPoints;
 
-        if (!$selectedFile || isPointActivellyPlaying || wasPlaying || !isSomePointPlayingInCurrentList) {
+        if (
+            !$selectedFile ||
+            isPointActivellyPlaying ||
+            wasPlaying ||
+            !isSomePointPlayingInCurrentList ||
+            !isPointInCurrentPlayScope
+        ) {
             return false;
         }
 
@@ -55,7 +71,7 @@
     const isPointPlanned = $derived.by(() => {
         $playableDocumentsAndListsWithPoints;
 
-        if (!$selectedFile || isPointActivellyPlaying || wasPlaying || isPointOmitted) {
+        if (!$selectedFile || isPointActivellyPlaying || wasPlaying || isPointOmitted || !isPointInCurrentPlayScope) {
             return false;
         }
 

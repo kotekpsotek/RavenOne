@@ -50,6 +50,9 @@
     ];
 
     const selectedFileId = $derived($selectedFile?.id ?? '');
+    const hasItemsInLists = $derived(
+        $selectedFile?.lists.some(list => list.items.length > 0) ?? false
+    );
 
     function createId() {
         if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
@@ -291,6 +294,7 @@
                 type="button"
                 class="show-modal btn btn-xs"
                 title="Open list tray in modal"
+                disabled={!hasItemsInLists}
                 onclick={openListTrayModal}
             >
                 <Icon icon="material-symbols:fullscreen"/>
