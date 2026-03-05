@@ -22,22 +22,34 @@
         return typeof isActivellyPlaying === "boolean" ? isActivellyPlaying : false;
     });
 
-    const isPointOmitted = $derived.by(() => {
+    const isSomePointPlayingInCurrentList = $derived.by(() => {
         $playableDocumentsAndListsWithPoints;
 
-        if (!$selectedFile || isPointActivellyPlaying || wasPlaying) {
+        if (!$selectedFile) {
             return false;
-        }
-
-        if (playableDocumentsAndListsWithPoints.isPointPlayable($selectedFile, spawnedList.id, itemId)) {
-            return false;
-        }
-
-        if (playableDocumentsAndListsWithPoints.isPointParentPlaying($selectedFile, spawnedList.id, itemId)) {
-            return true;
         }
 
         return playableDocumentsAndListsWithPoints.isSomePointPlayingInThisList($selectedFile, spawnedList.id);
+    });
+
+    const isPointMatchingCurrentPlayMode = $derived.by(() => {
+        $playableDocumentsAndListsWithPoints;
+
+        if (!$selectedFile) {
+            return false;
+        }
+
+        return playableDocumentsAndListsWithPoints.isPointMatchingCurrentPlayMode($selectedFile, spawnedList.id, itemId);
+    });
+
+    const isPointOmitted = $derived.by(() => {
+        $playableDocumentsAndListsWithPoints;
+
+        if (!$selectedFile || isPointActivellyPlaying || wasPlaying || !isSomePointPlayingInCurrentList) {
+            return false;
+        }
+
+        return !isPointMatchingCurrentPlayMode;
     });
 
     const isPointPlanned = $derived.by(() => {
@@ -47,7 +59,7 @@
             return false;
         }
 
-        if (!playableDocumentsAndListsWithPoints.isPointPlayable($selectedFile, spawnedList.id, itemId)) {
+        if (!isPointMatchingCurrentPlayMode) {
             return false;
         }
 
@@ -59,7 +71,7 @@
             return false;
         }
 
-        return playableDocumentsAndListsWithPoints.isSomePointPlayingInThisList($selectedFile, spawnedList.id);
+        return isSomePointPlayingInCurrentList;
     });
 
     function useTimeCounter(element: HTMLDivElement) {
@@ -218,7 +230,7 @@
         </div>
     </div>
 {:else if isPointOmitted}
-    <div class="tooltip tooltip-left" data-tip="This point is omitted because it has no text and no non-empty child points.">
+    <div class="tooltip tooltip-left" data-tip="This point is omitted because it does not match the current play mode or has no playable content.">
         <div
             class="badge badge-xs badge-outline opacity-70"
         >

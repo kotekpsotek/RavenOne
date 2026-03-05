@@ -196,6 +196,66 @@ export const playableDocumentsAndListsWithPoints = (() => {
         return false;
     };
 
+    const isRunNonRunnedMode = (playMode: string) => {
+        return playMode === "run-non-runned" || playMode === "run-not-runned";
+    };
+
+    const hasPointAnswers = (point: EditableListItem) => {
+        return (point.answers?.length ?? 0) > 0;
+    };
+
+    const hasPlayableDescendants = (items: EditableListItem[], point: EditableListItem) => {
+        const directSubItems = findItemDirectSubitems(items, point);
+
+        for (const directSubItem of directSubItems) {
+            if (!isPointPlayableByContent(items, directSubItem.id)) {
+                continue;
+            }
+
+            return true;
+        }
+
+        return false;
+    };
+
+    const shouldSchedulePointByPlayMode = (
+        items: EditableListItem[],
+        point: EditableListItem,
+        selectedItemPlayMode: string
+    ) => {
+        if (!isPointPlayableByContent(items, point.id)) {
+            return false;
+        }
+
+        if (!isRunNonRunnedMode(selectedItemPlayMode)) {
+            return true;
+        }
+
+        if (hasPointAnswers(point)) {
+            return false;
+        }
+
+        // In "run-not-runned" mode, run unresolved leaf-like points and omit parent containers.
+        return !hasPlayableDescendants(items, point);
+    };
+
+    const collectSchedulableSubtreePoints = (
+        items: EditableListItem[],
+        point: EditableListItem,
+        selectedItemPlayMode: string
+    ): EditableListItem[] => {
+        const directSubItems = findItemDirectSubitems(items, point);
+        const childPoints = directSubItems.flatMap(subPoint => {
+            return collectSchedulableSubtreePoints(items, subPoint, selectedItemPlayMode);
+        });
+
+        if (shouldSchedulePointByPlayMode(items, point, selectedItemPlayMode)) {
+            return [point, ...childPoints];
+        }
+
+        return childPoints;
+    };
+
     return {
         ...playableStore,
         isDocumentPlaying(selectedDocumentLocal: File | undefined) {
@@ -242,6 +302,39 @@ export const playableDocumentsAndListsWithPoints = (() => {
             }
 
             return isPointPlayableByContent(fileList.items, pointId);
+        },
+        isPointMatchingCurrentPlayMode(selectedDocumentLocal: File | undefined, listId: string, pointId: string) {
+            if (!selectedDocumentLocal) {
+                return false;
+            }
+
+            const fileList = selectedDocumentLocal.lists.find(list => list.id === listId);
+            if (!fileList?.items.length) {
+                return false;
+            }
+
+            const point = fileList.items.find(item => item.id === pointId);
+            if (!point) {
+                return false;
+            }
+
+            const storeStateCurrent = get(playableStore);
+            const activeListRuns = storeStateCurrent
+                .filter(state => state.document.id === selectedDocumentLocal.id)
+                .flatMap(state => state.lists)
+                .filter(playableList => playableList.list.id === listId);
+
+            if (!activeListRuns.length) {
+                return isPointPlayableByContent(fileList.items, pointId);
+            }
+
+            return activeListRuns.some(playableList => {
+                return shouldSchedulePointByPlayMode(
+                    fileList.items,
+                    point,
+                    playableList.config.selectedItemPlayMode
+                );
+            });
         },
         isPointPlaying(selectedDocumentLocal: File | undefined, listId: string, pointId: string) {
             if (!selectedDocumentLocal) {
@@ -398,6 +491,15 @@ export const playableDocumentsAndListsWithPoints = (() => {
                     return false;
                 }
 
+                const rootSchedulablePoints = collectSchedulableSubtreePoints(
+                    sourceList.items,
+                    rootPoint,
+                    config.selectedItemPlayMode
+                );
+                if (!rootSchedulablePoints.length) {
+                    return false;
+                }
+
                 const result = await playableDocumentsAndListsWithPoints.playPoint(
                     selectedDocumentLocal,
                     listId,
@@ -489,6 +591,18 @@ export const playableDocumentsAndListsWithPoints = (() => {
 
             const currentPlayStartTimestamp = createPlayStartTimestamp();
             let wasRunFinalized = false;
+            let hasAnyPointStartedInRun = false;
+
+            const pointsForScheduling = collectSchedulableSubtreePoints(
+                fileList.items,
+                point,
+                config.selectedItemPlayMode
+            );
+            if (pointsForScheduling.length === 0) {
+                return false;
+            }
+
+            const pointsForSchedulingIds = new Set(pointsForScheduling.map(item => item.id));
 
             const isPointPlayingInCurrentRun = (pointId: string) => {
                 const storeStateCurrent = get(playableStore);
@@ -520,6 +634,10 @@ export const playableDocumentsAndListsWithPoints = (() => {
              * * 
              */
             const backendPlayPoint = async (point: EditableListItem): Promise<true | "don-not-allow-to-play-childs"> => {
+                if (!pointsForSchedulingIds.has(point.id)) {
+                    return "don-not-allow-to-play-childs";
+                }
+
                 if (!isPointPlayingInCurrentRun(point.id)) {
                     return "don-not-allow-to-play-childs";
                 }
@@ -558,11 +676,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
                     return store;
                 }
 
-                // Ignore runned points
-                if (config.selectedItemPlayMode === "run-non-runned" && point.answers?.length) {
-                    alert("Cannot run not-runned-points");
-                    return "don-not-allow-to-play-childs";
-                }
+                hasAnyPointStartedInRun = true;
                 
                 // Set item as playing
                 playableStore.update(update(upd => {
@@ -579,7 +693,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
                 });
                 
                 // FIXME: Make real backend request
-                await new Promise<void>(res => setTimeout(res, 500));
+                await new Promise<void>(res => setTimeout(res, 5000));
 
                 if (!isPointPlayingInCurrentRun(point.id)) {
                     return "don-not-allow-to-play-childs";
@@ -721,6 +835,19 @@ export const playableDocumentsAndListsWithPoints = (() => {
                         .filter(documentState => documentState.lists.length > 0);
                 });
             };
+            const playPointIfSchedulable = async (point: EditableListItem) => {
+                if (!pointsForSchedulingIds.has(point.id)) {
+                    return true;
+                }
+
+                const result = await backendPlayPoint(point);
+                if (result === "don-not-allow-to-play-childs") {
+                    return false;
+                }
+
+                checkPointStateUpdate(point, true);
+                return true;
+            };
             const findChildsFromHigherDepthAndPlay = async (point: EditableListItem): Promise<boolean> => {
                 const directSubItems = findItemDirectSubitems(fileList.items, point);
                 if (!directSubItems.length) {
@@ -736,12 +863,11 @@ export const playableDocumentsAndListsWithPoints = (() => {
                         }
 
                         // Keep ordered siblings sequential, but let each subtree continue in background.
-                        const result = await backendPlayPoint(directSubitem);
-                        if (result === "don-not-allow-to-play-childs") {
+                        const result = await playPointIfSchedulable(directSubitem);
+                        if (!result) {
                             return false;
                         }
 
-                        checkPointStateUpdate(directSubitem, true);
                         nestedTasks.push(findChildsFromHigherDepthAndPlay(directSubitem));
                     }
 
@@ -756,14 +882,11 @@ export const playableDocumentsAndListsWithPoints = (() => {
                         continue;
                     }
 
-                    const result = backendPlayPoint(directSubitem).then(result => {
-                        if (result === "don-not-allow-to-play-childs") {
+                    const result = playPointIfSchedulable(directSubitem).then(result => {
+                        if (!result) {
                             return false;
                         }
-                        
-                        // Mark as checked the checkpoint
-                        checkPointStateUpdate(directSubitem, true);
-                        
+
                         // 
                         return findChildsFromHigherDepthAndPlay(directSubitem);
                     });
@@ -774,36 +897,12 @@ export const playableDocumentsAndListsWithPoints = (() => {
                 const asyncResults = await Promise.all(asyncPlayTasks);
                 return asyncResults.every(result => result);
             };
-            
-            // 0.5. Set all points as playing but without actual play state - to make them marked as playing
-            const findSubpointsAndNestedWithPoint = (point: EditableListItem) => {
-                const subitemsOfPoint = findItemDirectSubitems(fileList.items, point);
-                let result: EditableListItem[] = [...subitemsOfPoint];
-                
-                for (const subpoint of subitemsOfPoint) {
-                    const subpoints = findSubpointsAndNestedWithPoint(subpoint);
-                    result = [
-                        ...result,
-                        ...subpoints
-                    ];
-                }
 
-                return result;
-            }
             const toPlayableItem = (item: EditableListItem): PlayableListItem => ({
                 ...item,
                 startedAtTimestamp: undefined,
                 finishedAtTimestamp: undefined
             });
-
-            const pointsForScheduling = [
-                point,
-                ...findSubpointsAndNestedWithPoint(point)
-            ].filter(subpoint => isPointPlayableByContent(fileList.items, subpoint.id));
-
-            if (pointsForScheduling.length === 0) {
-                return false;
-            }
 
             playableStore.update(store => {
                 return [
@@ -831,30 +930,37 @@ export const playableDocumentsAndListsWithPoints = (() => {
                     }
                 ];
             });
-            
-            // 1st play parent
-            const result = await backendPlayPoint(point);
 
-            //
-            if (result === "don-not-allow-to-play-childs") {
-                finalizeCurrentRun();
-                return false;
+            if (!waitForSubtreeCompletion) {
+                const pointPlayResult = await playPointIfSchedulable(point);
+                if (!pointPlayResult) {
+                    finalizeCurrentRun();
+                    return false;
+                }
+
+                const childPlayTask = findChildsFromHigherDepthAndPlay(point)
+                    .finally(() => {
+                        finalizeCurrentRun();
+                    });
+
+                void childPlayTask;
+                return pointsForSchedulingIds.size > 0;
             }
 
-            // If this is checklist point mark it as checked
-            checkPointStateUpdate(point, true);
+            const pointAndChildPlayTask = (async () => {
+                const pointPlayResult = await playPointIfSchedulable(point);
+                if (!pointPlayResult) {
+                    return false;
+                }
 
-            const childPlayTask = findChildsFromHigherDepthAndPlay(point)
+                return findChildsFromHigherDepthAndPlay(point);
+            })()
                 .finally(() => {
                     finalizeCurrentRun();
                 });
 
-            if (!waitForSubtreeCompletion) {
-                void childPlayTask;
-                return true;
-            }
-
-            return childPlayTask;
+            await pointAndChildPlayTask;
+            return hasAnyPointStartedInRun;
         },
         /** Stop point playing and its subpoints */
         async stopPlayingPoint(selectedDocumentLocal: File, listId: string, pointId: string) {

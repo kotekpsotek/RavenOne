@@ -435,6 +435,8 @@
                                 type="checkbox"
                                 class="checkbox checkbox-sm checkbox-primary"
                                 checked={item.checked}
+                                title="Checkbox is manually interactive. Checkbox is going be checked out when finished"
+                                onclick={e => e.preventDefault()}
                                 onchange={(event) => toggleChecked(item.id, (event.currentTarget as HTMLInputElement).checked)}
                             />
                         </label>
