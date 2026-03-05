@@ -167,6 +167,35 @@ export const playableDocumentsAndListsWithPoints = (() => {
         return kind !== "ordered" && kind !== "unordered";
     };
 
+    const hasPointTextContent = (point: EditableListItem) => {
+        return point.text.trim().length > 0;
+    };
+
+    const isPointPlayableByContent = (items: EditableListItem[], pointId: string) => {
+        const pointIndex = items.findIndex(item => item.id === pointId);
+        if (pointIndex < 0) {
+            return false;
+        }
+
+        if (hasPointTextContent(items[pointIndex])) {
+            return true;
+        }
+
+        const pointDepth = items[pointIndex].depth;
+        for (let index = pointIndex + 1; index < items.length; index += 1) {
+            const currentPoint = items[index];
+            if (currentPoint.depth <= pointDepth) {
+                break;
+            }
+
+            if (hasPointTextContent(currentPoint)) {
+                return true;
+            }
+        }
+
+        return false;
+    };
+
     return {
         ...playableStore,
         isDocumentPlaying(selectedDocumentLocal: File | undefined) {
@@ -201,6 +230,18 @@ export const playableDocumentsAndListsWithPoints = (() => {
                         .filter(playableList => playableList.list.id === listId)
                         .some(playableList => playableList.list.items.length > 0);
                 });
+        },
+        isPointPlayable(selectedDocumentLocal: File | undefined, listId: string, pointId: string) {
+            if (!selectedDocumentLocal) {
+                return false;
+            }
+
+            const fileList = selectedDocumentLocal.lists.find(list => list.id === listId);
+            if (!fileList?.items.length) {
+                return false;
+            }
+
+            return isPointPlayableByContent(fileList.items, pointId);
         },
         isPointPlaying(selectedDocumentLocal: File | undefined, listId: string, pointId: string) {
             if (!selectedDocumentLocal) {
@@ -352,6 +393,11 @@ export const playableDocumentsAndListsWithPoints = (() => {
                     return false;
                 }
 
+                const sourceList = selectedDocumentLocal.lists.find(list => list.id === listId);
+                if (!sourceList?.items.length || !isPointPlayableByContent(sourceList.items, rootPoint.id)) {
+                    return false;
+                }
+
                 const result = await playableDocumentsAndListsWithPoints.playPoint(
                     selectedDocumentLocal,
                     listId,
@@ -434,6 +480,10 @@ export const playableDocumentsAndListsWithPoints = (() => {
             const waitForSubtreeCompletion = options?.waitForSubtreeCompletion ?? true;
 
             if (!fileList?.items.length) {
+                return false;
+            }
+
+            if (!isPointPlayableByContent(fileList.items, point.id)) {
                 return false;
             }
 
@@ -681,6 +731,10 @@ export const playableDocumentsAndListsWithPoints = (() => {
                     const nestedTasks: Promise<boolean>[] = [];
 
                     for (const directSubitem of directSubItems) {
+                        if (!isPointPlayableByContent(fileList.items, directSubitem.id)) {
+                            continue;
+                        }
+
                         // Keep ordered siblings sequential, but let each subtree continue in background.
                         const result = await backendPlayPoint(directSubitem);
                         if (result === "don-not-allow-to-play-childs") {
@@ -698,6 +752,10 @@ export const playableDocumentsAndListsWithPoints = (() => {
                 const asyncPlayTasks: Promise<boolean>[] = [];
 
                 for (const directSubitem of directSubItems) {
+                    if (!isPointPlayableByContent(fileList.items, directSubitem.id)) {
+                        continue;
+                    }
+
                     const result = backendPlayPoint(directSubitem).then(result => {
                         if (result === "don-not-allow-to-play-childs") {
                             return false;
@@ -737,6 +795,16 @@ export const playableDocumentsAndListsWithPoints = (() => {
                 startedAtTimestamp: undefined,
                 finishedAtTimestamp: undefined
             });
+
+            const pointsForScheduling = [
+                point,
+                ...findSubpointsAndNestedWithPoint(point)
+            ].filter(subpoint => isPointPlayableByContent(fileList.items, subpoint.id));
+
+            if (pointsForScheduling.length === 0) {
+                return false;
+            }
+
             playableStore.update(store => {
                 return [
                     ...store,
@@ -748,10 +816,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
                                 ...fileList,
                                 list: {
                                     ...fileList,
-                                    items: [
-                                        toPlayableItem(point),
-                                        ...findSubpointsAndNestedWithPoint(point).map(toPlayableItem)
-                                    ],
+                                    items: pointsForScheduling.map(toPlayableItem),
                                     startedAtTimestamp: currentPlayStartTimestamp
                                 },
                                 config: {

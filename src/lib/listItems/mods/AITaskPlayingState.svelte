@@ -22,10 +22,32 @@
         return typeof isActivellyPlaying === "boolean" ? isActivellyPlaying : false;
     });
 
-    const isPointPlanned = $derived.by(() => {
+    const isPointOmitted = $derived.by(() => {
         $playableDocumentsAndListsWithPoints;
 
         if (!$selectedFile || isPointActivellyPlaying || wasPlaying) {
+            return false;
+        }
+
+        if (playableDocumentsAndListsWithPoints.isPointPlayable($selectedFile, spawnedList.id, itemId)) {
+            return false;
+        }
+
+        if (playableDocumentsAndListsWithPoints.isPointParentPlaying($selectedFile, spawnedList.id, itemId)) {
+            return true;
+        }
+
+        return playableDocumentsAndListsWithPoints.isSomePointPlayingInThisList($selectedFile, spawnedList.id);
+    });
+
+    const isPointPlanned = $derived.by(() => {
+        $playableDocumentsAndListsWithPoints;
+
+        if (!$selectedFile || isPointActivellyPlaying || wasPlaying || isPointOmitted) {
+            return false;
+        }
+
+        if (!playableDocumentsAndListsWithPoints.isPointPlayable($selectedFile, spawnedList.id, itemId)) {
             return false;
         }
 
@@ -193,6 +215,14 @@
     <div class="tooltip tooltip-left" data-tip="This point is stoped">
         <div class="timer cursor-pointer shrink-0 w-8 flex justify-center items-start pt-1">
             <Icon icon="material-symbols:close-small-outline-rounded" class="text-base text-error" />
+        </div>
+    </div>
+{:else if isPointOmitted}
+    <div class="tooltip tooltip-left" data-tip="This point is omitted because it has no text and no non-empty child points.">
+        <div
+            class="badge badge-xs badge-outline opacity-70"
+        >
+            omitted
         </div>
     </div>
 {:else if isPointPlanned}
