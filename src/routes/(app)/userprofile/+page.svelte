@@ -366,6 +366,12 @@
         deleteVerificationError = undefined;
         await sendDeleteCode();
     }
+
+    /** Logout */
+    async function onLogout() {
+        JWTAuth.deleteToken();
+        await goto("/auth/login")
+    }
 </script>
 
 {#if profileSaveBadge}
@@ -471,6 +477,7 @@
                     {onBuySubscription}
                     {onCancelSubscription}
                     {onDeleteAccount}
+                    {onLogout}
                     onChangePassword={async (newPasswordForm) => {
                         profileSaveBadge = {
                             kind: "saving",
