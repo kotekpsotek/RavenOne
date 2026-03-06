@@ -127,7 +127,7 @@
         resetDeleteCodeDigits();
     }
 
-    async function ensureAuthenticatedTokenForDeletion(): Promise<string | undefined> {
+    async function ensureAuthenticatedToken(): Promise<string | undefined> {
         const token = JWTAuth.getToken();
         if (!token) {
             await goto("/auth/login");
@@ -148,7 +148,7 @@
         deleteVerificationError = undefined;
         deleteFlowStage = "sending-code";
 
-        const token = await ensureAuthenticatedTokenForDeletion();
+        const token = await ensureAuthenticatedToken();
         if (!token) {
             deleteFlowStage = "idle";
             return;
@@ -206,7 +206,7 @@
         deleteVerificationError = undefined;
         deleteFlowStage = "verifying-code";
 
-        const token = await ensureAuthenticatedTokenForDeletion();
+        const token = await ensureAuthenticatedToken();
         if (!token) {
             deleteFlowStage = "idle";
             return;
@@ -301,13 +301,63 @@
     });
 
     /** Reidrects to webpage where are subscription */
-    function onBuySubscription() {
-        
+    async function onBuySubscription() {
+        await goto("/subscription")
     }
 
-    /** Reidrects to subscription canceltation page */
-    function onCancelSubscription() {
+    /** Cancels current subscription at the end of the billing period */
+    async function onCancelSubscription() {
+        profileSaveBadge = {
+            kind: "saving",
+            message: "Canceling subscription..."
+        };
+        clearHideBadgeTimeout();
 
+        const token = await ensureAuthenticatedToken();
+        if (!token) {
+            profileSaveBadge = undefined;
+            return;
+        }
+
+        try {
+            const cancelResponse = await fetchAuthenticated(
+                "/subscription",
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        action: "cancel"
+                    })
+                },
+                token
+            );
+
+            if (cancelResponse.status === 401) {
+                JWTAuth.deleteToken();
+                await goto("/auth/login");
+                return;
+            }
+
+            if (!cancelResponse.ok) {
+                throw new Error(await toErrorMessageFromResponse(cancelResponse));
+            }
+
+            profileSaveBadge = {
+                kind: "success",
+                message: "Subscription will be canceled at the end of the current billing period."
+            };
+            scheduleBadgeHide(6000);
+
+            await goto("/subscription?cancellation=scheduled");
+        } catch (err) {
+            profileSaveBadge = {
+                kind: "error",
+                message: `Could not cancel subscription: ${toErrorMessage(err)}`
+            };
+            scheduleBadgeHide(7000);
+        }
     }
 
     /** Starts two-step account deletion */
@@ -421,6 +471,69 @@
                     {onBuySubscription}
                     {onCancelSubscription}
                     {onDeleteAccount}
+                    onChangePassword={async (newPasswordForm) => {
+                        profileSaveBadge = {
+                            kind: "saving",
+                            message: "Changing password..."
+                        };
+                        clearHideBadgeTimeout();
+
+                        const token = await ensureAuthenticatedToken();
+                        if (!token) {
+                            profileSaveBadge = undefined;
+                            return false;
+                        }
+
+                        try {
+                            const changePasswordResponse = await fetchAuthenticated(
+                                `${$page.url.pathname.replace(/\/$/, "")}/password-change`,
+                                {
+                                    method: "POST",
+                                    headers: {
+                                        "Content-Type": "application/json"
+                                    },
+                                    body: JSON.stringify(newPasswordForm)
+                                },
+                                token
+                            );
+
+                            if (changePasswordResponse.status === 401) {
+                                JWTAuth.deleteToken();
+                                await goto("/auth/login");
+                                return false;
+                            }
+
+                            if (!changePasswordResponse.ok) {
+                                throw new Error(await toErrorMessageFromResponse(changePasswordResponse));
+                            }
+
+                            const responseBody = (await changePasswordResponse.json()) as {
+                                status?: boolean;
+                                message?: string;
+                                error?: string;
+                            };
+
+                            if (!responseBody.status) {
+                                throw new Error(responseBody.error ?? "Failed to change password");
+                            }
+
+                            profileSaveBadge = {
+                                kind: "success",
+                                message: responseBody.message ?? "Password changed successfully."
+                            };
+                            scheduleBadgeHide(5000);
+
+                            return true;
+                        } catch (err) {
+                            profileSaveBadge = {
+                                kind: "error",
+                                message: `Could not change password: ${toErrorMessage(err)}`
+                            };
+                            scheduleBadgeHide(7000);
+
+                            return false;
+                        }
+                    }}
                     onProfileChange={async (name, image) => {
                         profileSaveBadge = {
                             kind: "saving",

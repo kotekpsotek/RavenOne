@@ -342,6 +342,57 @@ async function handleCheckoutIntent(
 	);
 }
 
+async function handleCancelIntent(event: Parameters<RequestHandler>[0]) {
+	const user = await getAuthenticatedUser(event.request, event.cookies);
+	if (!user) {
+		return json({ status: false, error: "Unauthorized" }, { status: 401 });
+	}
+
+	const subscriptionCustomerModel = getSubscriptionCustomerModel();
+	const customer = await subscriptionCustomerModel.findOne({ userId: user.id });
+	const stripeSubscriptionId =
+		typeof customer?.stripeSubscriptionId === "string" ? customer.stripeSubscriptionId.trim() : "";
+
+	if (!stripeSubscriptionId) {
+		return json({ status: false, error: "No active subscription" }, { status: 400 });
+	}
+
+	const stripe = getStripeClient();
+	const updatedSubscription = await stripe.subscriptions.update(stripeSubscriptionId, {
+		cancel_at_period_end: true
+	});
+
+	const summary = getSubscriptionSummary(updatedSubscription);
+	const stripeCustomerId =
+		getStripeCustomerId(updatedSubscription.customer) ??
+		(typeof customer?.stripeCustomerId === "string" ? customer.stripeCustomerId : undefined);
+
+	await upsertSubscriptionFromUser(
+		user,
+		{
+			...(stripeCustomerId ? { stripeCustomerId } : {}),
+			...summary
+		},
+		{ upsert: true }
+	);
+
+	if (stripeCustomerId) {
+		await updateSubscriptionByCustomerId(stripeCustomerId, summary, { upsert: false });
+	}
+
+	return json(
+		{
+			status: true,
+			message: "Subscription cancellation scheduled",
+			subscription: {
+				...summary,
+				stripeCustomerId
+			}
+		},
+		{ status: 200 }
+	);
+}
+
 async function handleWebhookEvent(stripeEvent: Stripe.Event) {
 	const stripe = getStripeClient();
 
@@ -530,6 +581,10 @@ export const POST: RequestHandler = async (event) => {
 
 		if (requestBody.action === "checkout") {
 			return handleCheckoutIntent(event, requestBody);
+		}
+
+		if (requestBody.action === "cancel") {
+			return handleCancelIntent(event);
 		}
 
 		return json({ status: false, error: "Unsupported action" }, { status: 400 });

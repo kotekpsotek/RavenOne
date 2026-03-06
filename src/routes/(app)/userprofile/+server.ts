@@ -7,6 +7,7 @@ import { DB_Models } from "@ravenlens/backend";
 import { Storage } from "@google-cloud/storage";
 import { json } from "@sveltejs/kit";
 import jwt from "jsonwebtoken";
+import { Resend } from "resend";
 import type { RequestHandler } from "./$types";
 
 const MAX_PROFILE_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
@@ -192,40 +193,24 @@ async function sendDeleteCodeEmail(targetEmail: string, code: string): Promise<v
         throw new Error("RESEND_FROM_EMAIL is not configured");
     }
 
-    const response = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-            Authorization: `Bearer ${resendApiKey}`,
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-            from: resendFromEmail,
-            to: [targetEmail],
-            subject: "Your RavenOne account deletion verification code",
-            html: `
-                <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #0f172a;">
-                    <h2 style="margin: 0 0 12px;">Confirm account deletion</h2>
-                    <p style="margin: 0 0 12px;">Use this 6-digit code to confirm account deletion:</p>
-                    <p style="font-size: 26px; font-weight: 700; letter-spacing: 6px; margin: 0 0 12px;">${code}</p>
-                    <p style="margin: 0; color: #475569;">This code expires in 10 minutes. If you did not request this action, ignore this email.</p>
-                </div>
-            `,
-            text: `Confirm account deletion with this code: ${code}. This code expires in 10 minutes.`
-        })
+    const resend = new Resend(resendApiKey);
+    const { error } = await resend.emails.send({
+        from: resendFromEmail,
+        to: [targetEmail],
+        subject: "Your RavenOne account deletion verification code",
+        html: `
+            <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #0f172a;">
+                <h2 style="margin: 0 0 12px;">Confirm account deletion</h2>
+                <p style="margin: 0 0 12px;">Use this 6-digit code to confirm account deletion:</p>
+                <p style="font-size: 26px; font-weight: 700; letter-spacing: 6px; margin: 0 0 12px;">${code}</p>
+                <p style="margin: 0; color: #475569;">This code expires in 10 minutes. If you did not request this action, ignore this email.</p>
+            </div>
+        `,
+        text: `Confirm account deletion with this code: ${code}. This code expires in 10 minutes.`
     });
 
-    if (!response.ok) {
-        let detail = "Failed to send verification email";
-        try {
-            const responseBody = (await response.json()) as { message?: string };
-            if (responseBody.message) {
-                detail = responseBody.message;
-            }
-        } catch {
-            // Ignore JSON parsing issues and keep generic detail.
-        }
-
-        throw new Error(detail);
+    if (error) {
+        throw new Error(error.message || "Failed to send verification email");
     }
 }
 
