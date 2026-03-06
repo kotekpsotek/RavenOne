@@ -17,6 +17,7 @@
     import PlayModeDropdownContent from "./components/PlayModeDropdownContent.svelte";
     import { playableDocumentsAndListsWithPoints } from "./stores/playModeStore";
     import { isFilePlayable } from "./listItems/utils";
+    import SaveFile from "./components/SaveFile.svelte";
 
     type DropdownName = "model-settings" | "mcp-tools" | "play-settings" | "share";
 
@@ -308,7 +309,7 @@
         class="border-b border-base-300 bg-base-100 flex items-center justify-between px-4 py-2 transition-colors"
     >
         <div class="right-side flex items-center gap-2">
-            
+            <SaveFile/>
         </div>
 
         <div 

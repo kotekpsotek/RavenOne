@@ -1,6 +1,8 @@
+import { browser } from "$app/environment";
 import type { AIAnswer, ContextSpecificationPayload, PlayMode } from "$lib/editorComponents/types/AIList";
+import { fetchAuthenticated } from "$lib/utils/fetch";
 import type { AI } from "@ravenlens/shared";
-import { writable } from "svelte/store";
+import { get, writable } from "svelte/store";
 
 export type ListItemKind = 'ordered' | 'unordered' | 'task';
 
@@ -43,36 +45,214 @@ export interface File {
 
 // Entries
 export const entriesList = writable<File[]>([]);
+/** Access saving state -> 'true' when file is actually saving, 'false' when is not */
+export const isFileSaving = writable<boolean>(true);
 
 // File
 export const selectedFile = (() => {
-    const store = writable<File | undefined>(undefined);
+    type FileType = File | undefined;
+    type UnsavedFile = { file: NonNullable<File>; date: number };
+    type SaveFilesOptions = { keepalive?: boolean };
 
+    const store = writable<FileType>(undefined);
+    const constructUnsavedFile = (file: File, dateTimestamp: number): UnsavedFile => {
+        return {
+            file: file,
+            date: dateTimestamp
+        }
+    }
+
+    const constructOldAndNewUnsavedFiles = (oldUnit?: FileType, newUnit?: FileType) => {
+        return ([
+            // Old file
+            oldUnit ? 
+                constructUnsavedFile(oldUnit, Date.now())
+            :
+                undefined,
+            // New file is younger in date to be always threated as the newest version if multiple instances of same file occur in database
+            newUnit ? 
+                constructUnsavedFile(newUnit, Date.now() + 1)
+            : 
+                undefined
+        ].filter(v => v !== undefined)) as UnsavedFile[]
+    }
+
+    const dedupeUnsavedFiles = (files: UnsavedFile[]): UnsavedFile[] => {
+        const newestFiles = new Map<string, UnsavedFile>();
+
+        for (const candidate of files) {
+            const newestCandidate = newestFiles.get(candidate.file.id);
+
+            if (!newestCandidate || newestCandidate.date < candidate.date) {
+                newestFiles.set(candidate.file.id, candidate);
+            }
+        }
+
+        return [...newestFiles.values()];
+    }
+
+    const unsavedFiles = (() => {
+        // Waiting list
+        const all = writable<UnsavedFile[]>([]);
+        
+        /**
+         * Save file by send to backend and after success remove from 'Waiting List' or console.error when file cannot be saved
+         * @param file - list with files will be send to save on backend
+         * @returns - status of operation
+        */
+        async function saveFiles(files: UnsavedFile[], options: SaveFilesOptions = {}): Promise<boolean> {
+            const filesToSave = dedupeUnsavedFiles(files);
+
+            if (!filesToSave.length) {
+                return true;
+            }
+
+            isFileSaving.set(true);
+
+            try {
+                const backendCall = await fetchAuthenticated(
+                    `/api/files/save`,
+                    {
+                        method: "POST",
+                        keepalive: options.keepalive,
+                        body: JSON.stringify({
+                            files: filesToSave
+                        })
+                    }
+                );
+
+                if (backendCall.status === 200) {
+                    const savedFileIds = (await backendCall.json()) as string[]
+
+                    // Remove saved files
+                    all.update(waitListFiles => {
+                        return waitListFiles.filter(waitListUnit => !savedFileIds.includes(waitListUnit.file.id));
+                    })
+
+                    return true;
+                }
+
+                console.error(`Cannot save files because of: ${backendCall.status}`);
+            } catch (error) {
+                console.error("Cannot save files because of:", error);
+            }
+
+            finally {
+                // Reset saving state
+                isFileSaving.set(false);
+            }
+
+            // Status
+            return false;
+        }
+
+        async function flushPendingFiles(options: SaveFilesOptions = {}, currentFile?: FileType): Promise<boolean> {
+            const filesToSave = dedupeUnsavedFiles([
+                ...get(all),
+                ...(currentFile ? [constructUnsavedFile(currentFile, Date.now())] : [])
+            ]);
+
+            return saveFiles(filesToSave, options);
+        }
+
+        return {
+            ...all,
+            // Add files to waiting list
+            addNew(files: UnsavedFile[]) {
+                if (!files.length) {
+                    return;
+                }
+
+                all.update(storeFiles => [...storeFiles, ...files]);
+            },
+            // Manaually save the file
+            saveFiles,
+            flushPendingFiles,
+        }
+    })();
+    
+    if (browser) {
+        window.addEventListener("pagehide", () => {
+            void unsavedFiles.flushPendingFiles({ keepalive: true }, get(store));
+        });
+
+        // Interval loop to save all files and erase old
+        setInterval(async () => {
+            await unsavedFiles.flushPendingFiles();
+        }, 30_000); // 30s
+    }
+    
     return {
         ...store,
-        updateFileListItems(spawnedListId: string, items: EditableListItem[]): Promise<boolean> {
-            return new Promise<boolean>(res => {
-                store.update(file => {
-                    if (!file) {
-                        res(false);
-                        return file;
-                    }
-                    
-                    const listIndex = file.lists.findIndex(list => list.id === spawnedListId);
-                    if (listIndex < 0) {
-                        res(false)
-                        return file;
-                    }
-                    
-                    // Update list items
-                    const list = file.lists[listIndex];
-                    list.items = items;                    
-                    res(true);
+        /** Use this function to construct file ready to be passed to 'saveFiles' function */
+        constructUnsavedFile,
+        /** Use this to save file manually */
+        saveFiles: unsavedFiles.saveFiles,
+        /** Set file */
+        set(file: FileType) {
+            // Setup old file and new to save
+            /// Prepare store
+            const priorFile = get(store);
+            const filesToSave = constructOldAndNewUnsavedFiles(priorFile, file);
 
-                    // Return updated
+            /// Schedules files to be saved
+            unsavedFiles.addNew(filesToSave);
+
+            // Setup new file version 
+            store.set(file);
+        },
+        update(updater: (file: FileType) => FileType) {
+            const priorFile = get(store);
+            
+            store.update(updater);
+
+            const afterFile = get(store);
+
+            //
+            const filesToSave = constructOldAndNewUnsavedFiles(priorFile, afterFile);
+
+            /// Schedules files to be saved
+            unsavedFiles.addNew(filesToSave);
+        },
+        updateFileListItems(spawnedListId: string, items: EditableListItem[]): Promise<boolean> {
+            const priorFile = get(store);
+            let wasUpdated = false;
+
+            store.update(file => {
+                if (!file) {
                     return file;
-                })
-            })
+                }
+                
+                const listIndex = file.lists.findIndex(list => list.id === spawnedListId);
+                if (listIndex < 0) {
+                    return file;
+                }
+
+                wasUpdated = true;
+
+                return {
+                    ...file,
+                    lists: file.lists.map((list, index) => {
+                        if (index !== listIndex) {
+                            return list;
+                        }
+
+                        return {
+                            ...list,
+                            items
+                        };
+                    })
+                };
+            });
+
+            if (!wasUpdated) {
+                return Promise.resolve(false);
+            }
+
+            const afterFile = get(store);
+            unsavedFiles.addNew(constructOldAndNewUnsavedFiles(priorFile, afterFile));
+
+            return Promise.resolve(true);
         },
     };
 })();
