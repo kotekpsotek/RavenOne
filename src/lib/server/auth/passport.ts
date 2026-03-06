@@ -31,6 +31,95 @@ export function isOAuthProviderConfigured(provider: OAuthProvider): boolean {
 	return configuredProviders.has(provider);
 }
 
+type GitHubEmailCandidate = {
+	email?: string;
+	value?: string;
+	primary?: boolean;
+	verified?: boolean;
+};
+
+function normalizeEmailAddress(value: unknown): string | undefined {
+	if (typeof value !== 'string') {
+		return undefined;
+	}
+
+	const normalized = value.trim().toLowerCase();
+	if (!normalized || !normalized.includes('@')) {
+		return undefined;
+	}
+
+	return normalized;
+}
+
+function pickGithubEmail(candidates: GitHubEmailCandidate[]): string | undefined {
+	const normalizedCandidates = candidates
+		.map((candidate) => ({
+			email: normalizeEmailAddress(candidate.email ?? candidate.value),
+			primary: candidate.primary === true,
+			verified: candidate.verified === true
+		}))
+		.filter((candidate): candidate is { email: string; primary: boolean; verified: boolean } => Boolean(candidate.email));
+
+	if (!normalizedCandidates.length) {
+		return undefined;
+	}
+
+	const primaryVerified = normalizedCandidates.find((candidate) => candidate.primary && candidate.verified);
+	if (primaryVerified) return primaryVerified.email;
+
+	const verified = normalizedCandidates.find((candidate) => candidate.verified);
+	if (verified) return verified.email;
+
+	const primary = normalizedCandidates.find((candidate) => candidate.primary);
+	if (primary) return primary.email;
+
+	return normalizedCandidates[0].email;
+}
+
+async function resolveGithubEmail(accessToken: string, profile: any): Promise<string | undefined> {
+	const profileEmail = pickGithubEmail(Array.isArray(profile?.emails) ? profile.emails : []);
+	if (profileEmail) {
+		return profileEmail;
+	}
+
+	try {
+		const response = await fetch('https://api.github.com/user/emails', {
+			method: 'GET',
+			headers: {
+				Authorization: `Bearer ${accessToken}`,
+				Accept: 'application/vnd.github+json',
+				'X-GitHub-Api-Version': '2022-11-28',
+				'User-Agent': 'RavenOne'
+			}
+		});
+
+		if (!response.ok) {
+			return undefined;
+		}
+
+		const responseBody = (await response.json()) as GitHubEmailCandidate[];
+		if (!Array.isArray(responseBody)) {
+			return undefined;
+		}
+
+		return pickGithubEmail(responseBody);
+	} catch {
+		return undefined;
+	}
+}
+
+function shouldSyncGithubEmail(user: any, githubEmail: string | undefined): githubEmail is string {
+	if (!githubEmail) {
+		return false;
+	}
+
+	if (!normalizeEmailAddress(user?.email)) {
+		return true;
+	}
+
+	return String(user?.mainAccountType ?? '').toLowerCase() === 'github';
+}
+
 function registerGoogleStrategy() {
 	if (configuredProviders.has('google')) return;
 	if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) return;
@@ -126,13 +215,21 @@ function registerGithubStrategy() {
 				clientID: env.GITHUB_CLIENT_ID,
 				clientSecret: env.GITHUB_CLIENT_SECRET,
 				callbackURL: env.GITHUB_CALLBACK_URL || '/auth/github/callback',
-				passReqToCallback: true
+				passReqToCallback: true,
 			},
 			async (req: StrategyRequest, accessToken: string, _refreshToken: string, profile: any, done: any) => {
 				try {
+					const githubUserId = Number.parseInt(String(profile.id), 10);
+					if (Number.isNaN(githubUserId)) {
+						return done(null, false, { message: 'Could not identify GitHub account' });
+					}
+
+					const githubUserName = profile.username || profile.displayName || 'GitHub User';
+					const githubEmail = await resolveGithubEmail(accessToken, profile);
+
 					if (req.jwtUser) {
 						const existingOtherUser = await DB_Models.UserAccount.profileModel.findOne({
-							'githubAccountProperties.githubUserId': parseInt(profile.id, 10)
+							'githubAccountProperties.githubUserId': githubUserId
 						});
 						if (existingOtherUser && (existingOtherUser as any).id !== req.jwtUser.userId) {
 							return done(null, false, { message: 'This GitHub account is already linked to another user' });
@@ -142,42 +239,56 @@ function registerGithubStrategy() {
 						if (user) {
 							const linkedAccounts = ((user as any).toObject().linkedAccounts ?? []) as string[];
 							const isAlreadyLinked = linkedAccounts.some((account) => account.toLowerCase() === 'github');
+							const setPayload: Record<string, unknown> = {
+								githubAccountProperties: {
+									githubUserId,
+									githubUserName,
+									githubAccessToken: accessToken
+								}
+							};
+
+							if (shouldSyncGithubEmail(user, githubEmail)) {
+								setPayload.email = githubEmail;
+							}
 
 							if (!isAlreadyLinked) {
 								await DB_Models.UserAccount.profileModel.updateOne(
 									{ id: (user as any).id },
 									{
 										$push: { linkedAccounts: 'Github' as AccountType },
-										$set: {
-											githubAccountProperties: {
-												githubUserId: parseInt(profile.id, 10),
-												githubUserName: profile.username,
-												githubAccessToken: accessToken
-											}
-										}
+										$set: setPayload
 									}
 								);
 								const updatedUser = await DB_Models.UserAccount.profileModel.findOne({ id: (user as any).id });
 								return done(null, updatedUser);
 							}
 
-							return done(null, user);
+							await DB_Models.UserAccount.profileModel.updateOne(
+								{ id: (user as any).id },
+								{
+									$set: setPayload
+								}
+							);
+							const refreshedUser = await DB_Models.UserAccount.profileModel.findOne({ id: (user as any).id });
+
+							return done(null, refreshedUser ?? user);
 						}
 					}
 
 					let user = await DB_Models.UserAccount.profileModel.findOne({
-						'githubAccountProperties.githubUserId': parseInt(profile.id, 10)
+						'githubAccountProperties.githubUserId': githubUserId
 					});
 
 					if (!user) {
 						const newProfile: Profile = {
 							id: randomUUID(),
-							name: profile.displayName || profile.username || 'GitHub User',
+							name: profile.displayName || githubUserName,
+							email: githubEmail,
 							profileImgURL: profile.photos?.[0]?.value || '',
 							mainAccountType: 'Github' as AccountType,
 							githubAccountProperties: {
-								githubUserId: parseInt(profile.id, 10),
-								githubUserName: profile.username,
+								githubUserId,
+								githubUserName,
 								githubAccessToken: accessToken
 							},
 							linkedAccounts: ['Github' as AccountType],
@@ -185,6 +296,29 @@ function registerGithubStrategy() {
 						};
 
 						user = await DB_Models.UserAccount.profileModel.create(newProfile as any);
+					} else {
+						const setPayload: Record<string, unknown> = {
+							githubAccountProperties: {
+								githubUserId,
+								githubUserName,
+								githubAccessToken: accessToken
+							}
+						};
+
+						if (shouldSyncGithubEmail(user, githubEmail)) {
+							setPayload.email = githubEmail;
+						}
+
+						await DB_Models.UserAccount.profileModel.updateOne(
+							{ id: (user as any).id },
+							{
+								$set: setPayload
+							}
+						);
+						const refreshedUser = await DB_Models.UserAccount.profileModel.findOne({ id: (user as any).id });
+						if (refreshedUser) {
+							user = refreshedUser;
+						}
 					}
 
 					return done(null, user);
