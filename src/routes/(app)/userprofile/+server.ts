@@ -83,51 +83,14 @@ async function ensureAuthenticatedViaRoute(request: Request, fetchFn: typeof fet
 }
 
 function getStorageClient(): Storage {
-    const inlineCredentials =
-        env.GCP_STORAGE_CREDENTIALS_JSON?.trim() || env.GOOGLE_CLOUD_CREDENTIALS_JSON?.trim();
-
-    if (inlineCredentials) {
-        const parsed = JSON.parse(inlineCredentials) as {
-            project_id?: string;
-            client_email?: string;
-            private_key?: string;
-        };
-
-        const projectId =
-            parsed.project_id || env.GCP_STORAGE_PROJECT_ID?.trim() || env.GOOGLE_CLOUD_PROJECT?.trim();
-
-        if (!parsed.client_email || !parsed.private_key) {
-            return new Storage({ projectId });
-        }
-
-        return new Storage({
-            projectId,
-            credentials: {
-                client_email: parsed.client_email,
-                private_key: normalizePrivateKey(parsed.private_key)
-            }
-        });
+    const keyFilename = env.GCP_CREDENTIALS_KEY?.trim();
+    if (!keyFilename) {
+        throw new Error("GCP_CREDENTIALS_KEY is not configured");
     }
 
-    const projectId = env.GCP_STORAGE_PROJECT_ID?.trim() || env.GOOGLE_CLOUD_PROJECT?.trim();
-    const clientEmail = env.GCP_STORAGE_CLIENT_EMAIL?.trim();
-    const privateKey = env.GCP_STORAGE_PRIVATE_KEY?.trim();
-
-    if (clientEmail && privateKey) {
-        return new Storage({
-            projectId,
-            credentials: {
-                client_email: clientEmail,
-                private_key: normalizePrivateKey(privateKey)
-            }
-        });
-    }
-
-    if (projectId) {
-        return new Storage({ projectId });
-    }
-
-    return new Storage();
+    return new Storage({
+        keyFilename
+    });
 }
 
 function getImageExtension(imageFile: File): string {

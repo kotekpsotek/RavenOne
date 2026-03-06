@@ -35,6 +35,9 @@ export const load: LayoutLoad = async ({ url }) => {
         if (userDownloaded.data) {
             userProfile.set(userDownloaded.data.user);
         }
-        else return error(500, "Cannot load your profile");   
+        else {
+            JWTAuth.deleteToken();
+            return error(500, "Cannot load your profile");
+        }
     }
 }

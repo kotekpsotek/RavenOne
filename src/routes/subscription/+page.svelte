@@ -1,5 +1,7 @@
 <script lang="ts">
 	import Icon from "@iconify/svelte";
+	import { goto } from "$app/navigation";
+	import { fetchAuthenticated } from "$lib/utils/fetch";
 	import { onMount } from "svelte";
 	import { setThemeMode, syncThemeMode, theme, type Themes } from "$lib/stores/theme";
 
@@ -8,6 +10,9 @@
 
 	type SubscriptionPlan = {
 		name: string;
+		kind: "individual" | "company";
+		stripePlanId?: "starter" | "growth" | "enterprise";
+		contactPath?: string;
 		badge: string;
 		badgeTone: BadgeTone;
 		price: string;
@@ -24,6 +29,8 @@
 	const plans: SubscriptionPlan[] = [
 		{
 			name: "Starter Plan",
+			kind: "individual",
+			stripePlanId: "starter",
 			badge: "FREE",
 			badgeTone: "warm",
 			price: "$10.00",
@@ -41,6 +48,8 @@
 		},
 		{
 			name: "Growth Plan",
+			kind: "individual",
+			stripePlanId: "growth",
 			badge: "PRO",
 			badgeTone: "warm",
 			price: "$79.00",
@@ -58,6 +67,8 @@
 		},
 		{
 			name: "Enterprise Plan",
+			kind: "company",
+			contactPath: "/help-materials",
 			badge: "ADVANCE",
 			badgeTone: "green",
 			price: "Custom",
@@ -74,7 +85,11 @@
 		}
 	];
 
+	type StripeCheckoutPlan = NonNullable<SubscriptionPlan["stripePlanId"]>;
+
 	let hasMounted = $state(false);
+	let checkoutPlanInProgress = $state<StripeCheckoutPlan | null>(null);
+	let checkoutError = $state<string | null>(null);
 
 	const currentTheme = $derived(hasMounted ? $theme : "light");
 	const isDarkMode = $derived(currentTheme === "dark");
@@ -91,6 +106,77 @@
 
 		setThemeMode(nextTheme);
 	}
+
+	function toErrorMessage(error: unknown): string {
+		if (error instanceof Error) {
+			return error.message;
+		}
+
+		if (typeof error === "string") {
+			return error;
+		}
+
+		try {
+			return JSON.stringify(error);
+		} catch {
+			return String(error);
+		}
+	}
+
+	async function onSelectPlan(plan: SubscriptionPlan) {
+		if (plan.current || checkoutPlanInProgress) {
+			return;
+		}
+
+		if (!plan.stripePlanId) {
+			if (plan.contactPath) {
+				window.location.assign(plan.contactPath);
+			}
+			return;
+		}
+
+		checkoutError = null;
+		checkoutPlanInProgress = plan.stripePlanId;
+
+		try {
+			const response = await fetchAuthenticated(
+				"/subscription",
+				{
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json"
+					},
+					body: JSON.stringify({
+						action: "checkout",
+						planId: plan.stripePlanId,
+						kind: plan.kind
+					})
+				}
+			);
+
+			if (response.status === 401) {
+				await goto("/auth/login");
+				return;
+			}
+
+			const responseBody = (await response.json()) as {
+				status?: boolean;
+				error?: string;
+				url?: string;
+			};
+
+			if (!response.ok || !responseBody.url) {
+				throw new Error(responseBody.error ?? "Unable to start Stripe checkout");
+			}
+
+			window.location.assign(responseBody.url);
+		} catch (error) {
+			checkoutError = toErrorMessage(error);
+		} finally {
+			checkoutPlanInProgress = null;
+		}
+	}
+
 </script>
 
 <svelte:head>
@@ -163,10 +249,24 @@
 			</div>
 		</header>
 
+		{#if checkoutError}
+			<p
+				class={`mb-4 rounded-xl border px-4 py-3 text-sm font-medium ${
+					isDarkMode
+						? "border-red-400/45 bg-red-500/15 text-red-100"
+						: "border-red-300/70 bg-red-50 text-red-700"
+				}`}
+			>
+				{checkoutError}
+			</p>
+		{/if}
+
 		<div class="grid grid-cols-3 gap-[1.35rem] max-[960px]:grid-cols-1">
 			{#each plans as plan (plan.name)}
 				<article
-					class={`relative flex min-h-full flex-col gap-[1.45rem] overflow-hidden rounded-[28px] border p-[1.6rem] transition duration-200 before:pointer-events-none cursor-pointer before:absolute before:inset-3 before:content-[''] after:pointer-events-none after:absolute after:bottom-[75%] after:left-[-12%] after:w-48 after:aspect-square after:rounded-full after:blur-[36px] after:content-[''] max-[640px]:p-5 hover:scale-[1.05] ${
+					class={`relative flex min-h-full flex-col gap-[1.45rem] overflow-hidden rounded-[28px] border p-[1.6rem] transition duration-200 before:pointer-events-none before:absolute before:inset-3 before:content-[''] after:pointer-events-none after:absolute after:bottom-[75%] after:left-[-12%] after:w-48 after:aspect-square after:rounded-full after:blur-[36px] after:content-[''] max-[640px]:p-5 ${
+						plan.current ? "opacity-95" : "hover:scale-[1.03]"
+					} ${
 						plan.featured
 							? isDarkMode
 								? "min-[961px]:-translate-y-[0.35rem] border-[rgba(103,144,255,0.3)] bg-[linear-gradient(160deg,#1f315c_0%,#050b16_100%)] shadow-[0_32px_84px_rgba(2,6,23,0.52)] before:border-white/[0.08] after:bg-[rgba(59,130,246,0.24)] after:opacity-100"
@@ -210,6 +310,7 @@
 
 					<button
 						type="button"
+						onclick={() => onSelectPlan(plan)}
 						class={`relative z-10 w-full rounded-[16px] border p-3 text-[0.98rem] font-semibold transition duration-200 hover:-translate-y-px focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[rgba(96,165,250,0.9)] disabled:cursor-default disabled:hover:translate-y-0 ${
 							plan.actionTone === "muted"
 								? isDarkMode
@@ -223,9 +324,13 @@
 										? "border-[rgba(148,163,184,0.16)] bg-[rgba(148,163,184,0.14)] text-[#f8fafc]"
 										: "border-[rgba(31,41,55,0.9)] bg-[#1f2937] text-[#f8fafc]"
 						}`}
-						disabled={plan.current}
+						disabled={plan.current || checkoutPlanInProgress !== null}
 					>
-						{plan.callToAction}
+						{#if checkoutPlanInProgress === plan.stripePlanId}
+							Redirecting...
+						{:else}
+							{plan.callToAction}
+						{/if}
 					</button>
 
 					<ul
