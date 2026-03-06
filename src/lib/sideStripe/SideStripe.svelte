@@ -3,7 +3,7 @@
     import { onMount } from 'svelte';
     import { userProfile as user } from "../stores/user";
     import { UI } from "@ravenlens/frontend"
-    import { theme } from "../stores/theme";
+    import { syncThemeMode, theme, toggleThemeMode } from "../stores/theme";
     import { goto } from "$app/navigation";
     import ExpansionPanel from "./ExpansionPanel.svelte";
     import { isWorkspaceSelectionOpen, selectedWorkspace } from "$lib/stores/workspace";
@@ -23,20 +23,7 @@
     let startPanelWidth = 0;
 
     onMount(() => {
-        const storedTheme = localStorage.getItem('theme') as 'dark' | 'light';
-        if (storedTheme) {
-            $theme = storedTheme;
-        } else {
-            const hasdarkAttr = document.documentElement.getAttribute('data-theme') === 'black';
-            $theme = hasdarkAttr ? 'dark' : 'light';
-        }
-
-        const expectedDaisyTheme = $theme === 'dark' ? 'black' : 'light';
-        const hasExpectedTheme = document.documentElement.getAttribute('data-theme') === expectedDaisyTheme;
-        const hasExpectedDarkClass = document.documentElement.classList.contains('dark') === ($theme === 'dark');
-        if (!hasExpectedTheme || !hasExpectedDarkClass) {
-            applyTheme();
-        }
+        syncThemeMode();
 
         const storedPanelWidth = Number(localStorage.getItem(PANEL_WIDTH_STORAGE_KEY));
         if (Number.isFinite(storedPanelWidth) && storedPanelWidth > 0) {
@@ -57,21 +44,7 @@
     }
 
     function toggleTheme() {
-        $theme = $theme === 'dark' ? 'light' : 'dark';
-        applyTheme();
-    }
-
-    function applyTheme() {
-        // Set the primary theme attribute used by DaisyUI
-        const daisyTheme = $theme === 'dark' ? 'black' : 'light';
-        document.documentElement.setAttribute('data-theme', daisyTheme);
-        localStorage.setItem('theme', $theme);
-        
-        if ($theme === 'dark') {
-            document.documentElement.classList.add('dark');
-        } else {
-            document.documentElement.classList.remove('dark');
-        }
+        toggleThemeMode($theme);
     }
 
     function onSearch() {
@@ -258,9 +231,9 @@
                             class="avatar placeholder group cursor-pointer transition-all hover:scale-105 active:scale-95"
                             onclick={onUserProfile}
                         >
-                            <div class="w-10 rounded-xl bg-neutral text-neutral-content ring-primary/30 ring-offset-base-200 transition-all group-hover:ring group-hover:ring-offset-2">
-                                <img src="{$user.profileImgURL}" alt="{$user.name}" />
-                            </div>
+                            <UI.Common.AvatarComponent.ProfileAvatar
+                                user={$user}
+                            />
                         </button>
                     </div>
                 {/if}
@@ -289,9 +262,8 @@
 </aside>
 
 <style>
-    @reference "../../app.css";
-
     .isSelected {
-        @apply scale-115 bg-primary/40;
+        transform: scale(1.15);
+        background-color: rgba(33, 83, 235, 0.4);
     }
 </style>
