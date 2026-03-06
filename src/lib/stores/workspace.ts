@@ -1,6 +1,6 @@
 import { get, writable } from "svelte/store";
 import { Workspace } from "@ravenlens/shared";
-import { user } from "./user";
+import { userProfile as user } from "./user";
 import type { ComponentProps } from "svelte";
 import type { UI } from "@ravenlens/frontend";
 import { browser } from "$app/environment";

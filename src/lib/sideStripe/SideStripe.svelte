@@ -1,14 +1,13 @@
 <script lang="ts">
     import Icon from "@iconify/svelte";
     import { onMount } from 'svelte';
-    import { user } from "../stores/user";
+    import { userProfile as user } from "../stores/user";
     import { UI } from "@ravenlens/frontend"
     import { theme } from "../stores/theme";
     import { goto } from "$app/navigation";
     import ExpansionPanel from "./ExpansionPanel.svelte";
     import { isWorkspaceSelectionOpen, selectedWorkspace } from "$lib/stores/workspace";
     import { isSearchModalOpen } from "$lib/stores/files";
-    import { page } from "$app/stores";
 
     let isExpanded = $state(false);
     const PANEL_WIDTH_STORAGE_KEY = 'expansion-panel-width';

@@ -8,14 +8,6 @@ export interface User {
     profileImgURL: string;
 }
 
-/** This is downloaded convinient version - light for database operations and network bandwith */
-export const user = writable<User | undefined>({
-    id: 'current-user',
-    name: 'Vioz Isildur',
-    email: 'admin@viozisildur.com',
-    profileImgURL: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?q=80&w=1974&auto=format&fit=crop'
-});
-
 /** This is downloaded full user profile */
 export const userProfile = (() => {
     const { ...all } = writable<Profile | undefined>(undefined);

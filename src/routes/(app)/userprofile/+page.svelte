@@ -3,7 +3,7 @@
     import { theme } from "$lib/stores/theme";
     import { UI } from "@ravenlens/frontend";
     import type { Profile, ProfilePageLoadData } from "@ravenlens/shared";
-    import { PageWrapper } from "../../../../../packages/frontend/dist/ui/common";
+    import { PageWrapper } from "../../../../../../packages/frontend/dist/ui/common";
 
     export let data: ProfilePageLoadData;
 

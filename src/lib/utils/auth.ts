@@ -1,4 +1,4 @@
-import { PUBLIC_AUTH_ENDPOINT, PUBLIC_SUBSCRIPTIONS_ENDPOINT } from "$env/static/public";
+import { PUBLIC_AUTH_ENDPOINT } from "$env/static/public";
 import { alertState } from './alert';
 import type { AccountType, Profile, SubscriptionResponseCustomer } from "@ravenlens/shared";
 import { fetchAuthenticated } from "./fetch";
@@ -8,7 +8,7 @@ import { goto } from "$app/navigation";
 /** Call to authentication route */
 export function onAuthenticateWith(provider: "github" | "google" | "linkedin", mode: "signin" | "signup") {
     return async () => {
-        const uri = `${PUBLIC_AUTH_ENDPOINT}/auth/${provider}`;
+        const uri = `/auth/${provider}`;
         window.location.href = uri;
     }
 }
@@ -17,12 +17,26 @@ export class JWTAuth {
     static setToken(token: string) {
         localStorage.setItem('jwt', token);
         if (browser) {
-            document.cookie = `jwt=${token}; Path=/; SameSite=Strict; Max-Age=${60 * 60 * 24 * 7}`;
+            document.cookie = `jwt=${encodeURIComponent(token)}; Path=/; SameSite=Strict; Max-Age=${60 * 60 * 24 * 7}`;
         }
     }
 
     static getToken() {
-        return localStorage.getItem('jwt');
+        if (!browser) return null;
+
+        const tokenFromStorage = localStorage.getItem('jwt');
+        if (tokenFromStorage) return tokenFromStorage;
+
+        const tokenFromCookie = document.cookie
+            .split('; ')
+            .find((row) => row.startsWith('jwt='))
+            ?.slice(4);
+
+        if (!tokenFromCookie) return null;
+
+        const decodedToken = decodeURIComponent(tokenFromCookie);
+        localStorage.setItem('jwt', decodedToken);
+        return decodedToken;
     }
 
     static deleteToken() {
