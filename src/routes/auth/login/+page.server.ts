@@ -1,40 +1,16 @@
 import { dev } from '$app/environment';
-import { PUBLIC_AUTH_ENDPOINT } from '$env/static/public';
+import { generateToken } from '$lib/server/auth/jwt';
+import { DB_Models } from '@ravenlens/backend';
+import bcrypt from 'bcryptjs';
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions } from './$types';
+import type { Profile } from '@ravenlens/shared';
 
 const JWT_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
-
-type AuthErrorBody = {
-	error?: string;
-	message?: string;
-};
-
-type AuthSuccessBody = {
-	token?: string;
-};
-
-async function readErrorMessage(response: Response): Promise<string> {
-	try {
-		const body = (await response.json()) as AuthErrorBody;
-		if (body.error) return body.error;
-		if (body.message) return body.message;
-	} catch {
-		// Fall back to plain text when the response body is not JSON.
-	}
-
-	try {
-		const textBody = await response.text();
-		if (textBody) return textBody;
-	} catch {
-		// Ignore and return a generic auth error message.
-	}
-
-	return 'Authentication failed. Please try again.';
-}
+const EMAIL_MAIN_ACCOUNT_TYPES = ['Email', 'email'];
 
 export const actions: Actions = {
-	default: async ({ request, fetch, cookies }) => {
+	default: async ({ request, cookies }) => {
 		const formData = await request.formData();
 		const email = String(formData.get('email') ?? '').trim();
 		const password = String(formData.get('password') ?? '');
@@ -46,60 +22,41 @@ export const actions: Actions = {
 			});
 		}
 
-		if (!PUBLIC_AUTH_ENDPOINT) {
+		let token: string;
+		try {
+			const user = (await DB_Models.UserAccount.profileModel.findOne({
+				email,
+				mainAccountType: { $in: EMAIL_MAIN_ACCOUNT_TYPES }
+			})) as Profile | null;
+
+			if (!user?.password || !user.id || !user.name) {
+				return fail(401, {
+					error: 'Invalid email or password',
+					values: { email }
+				});
+			}
+
+			const isPasswordValid = await bcrypt.compare(password, user.password);
+			if (!isPasswordValid) {
+				return fail(401, {
+					error: 'Invalid email or password',
+					values: { email }
+				});
+			}
+
+			token = generateToken({
+				userId: user.id,
+				email: user.email,
+				name: user.name
+			});
+		} catch {
 			return fail(500, {
-				error: 'Authentication service endpoint is not configured',
+				error: 'Authentication failed',
 				values: { email }
 			});
 		}
 
-		let response: Response;
-		try {
-			response = await fetch(`${PUBLIC_AUTH_ENDPOINT}/auth/login`, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json'
-				},
-				body: JSON.stringify({
-					email,
-					password
-				})
-			});
-		} catch {
-			return fail(503, {
-				error: 'Authentication service is unavailable. Please try again later.',
-				values: { email }
-			});
-		}
-
-		if (!response.ok) {
-			const errorMessage = await readErrorMessage(response);
-			const status = response.status >= 400 && response.status < 600 ? response.status : 400;
-
-			return fail(status, {
-				error: errorMessage,
-				values: { email }
-			});
-		}
-
-		let responseBody: AuthSuccessBody;
-		try {
-			responseBody = (await response.json()) as AuthSuccessBody;
-		} catch {
-			return fail(502, {
-				error: 'Authentication service returned an invalid response',
-				values: { email }
-			});
-		}
-
-		if (!responseBody.token) {
-			return fail(502, {
-				error: 'Authentication token is missing from response',
-				values: { email }
-			});
-		}
-
-		cookies.set('jwt', responseBody.token, {
+		cookies.set('jwt', token, {
 			path: '/',
 			httpOnly: false,
 			sameSite: 'strict',

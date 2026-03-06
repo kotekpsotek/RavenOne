@@ -1,9 +1,10 @@
-import { PUBLIC_AUTH_ENDPOINT } from "$env/static/public";
 import { alertState } from './alert';
 import type { AccountType, Profile, SubscriptionResponseCustomer } from "@ravenlens/shared";
 import { fetchAuthenticated } from "./fetch";
 import { browser } from "$app/environment";
 import { goto } from "$app/navigation";
+
+const LOCAL_AUTH_API_BASE = '/auth';
 
 /** Call to authentication route */
 export function onAuthenticateWith(provider: "github" | "google" | "linkedin", mode: "signin" | "signup") {
@@ -15,17 +16,14 @@ export function onAuthenticateWith(provider: "github" | "google" | "linkedin", m
 
 export class JWTAuth {
     static setToken(token: string) {
-        localStorage.setItem('jwt', token);
-        if (browser) {
-            document.cookie = `jwt=${encodeURIComponent(token)}; Path=/; SameSite=Strict; Max-Age=${60 * 60 * 24 * 7}`;
-        }
+        if (!browser) return;
+
+        const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+        document.cookie = `jwt=${encodeURIComponent(token)}; Path=/; SameSite=Strict; Max-Age=${60 * 60 * 24 * 7}${secure}`;
     }
 
     static getToken() {
         if (!browser) return null;
-
-        const tokenFromStorage = localStorage.getItem('jwt');
-        if (tokenFromStorage) return tokenFromStorage;
 
         const tokenFromCookie = document.cookie
             .split('; ')
@@ -34,16 +32,18 @@ export class JWTAuth {
 
         if (!tokenFromCookie) return null;
 
-        const decodedToken = decodeURIComponent(tokenFromCookie);
-        localStorage.setItem('jwt', decodedToken);
-        return decodedToken;
+        try {
+            return decodeURIComponent(tokenFromCookie);
+        } catch {
+            return null;
+        }
     }
 
     static deleteToken() {
-        localStorage.removeItem("jwt");
-        if (browser) {
-            document.cookie = "jwt=; Path=/; Max-Age=0";
-        }
+        if (!browser) return;
+
+        const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+        document.cookie = `jwt=; Path=/; SameSite=Strict; Max-Age=0${secure}`;
     }
 }
 
@@ -64,7 +64,7 @@ export async function isUserAuthenticated(jwt?: string): Promise<boolean> {
         throw("JWT is required to be specified as parameter for server running auth function");
     }
     
-    const response = await fetchAuthenticated(`${PUBLIC_AUTH_ENDPOINT}/auth/is-authenticated`, {
+    const response = await fetchAuthenticated(`${LOCAL_AUTH_API_BASE}/is-authenticated`, {
         method: "GET"
     }, jwt);
 
@@ -77,7 +77,7 @@ export async function downloadCurrentUser(jwt?: string): Promise<{ status: boole
         throw("JWT is required to be specified as parameter for server running auth function");
     }
     
-    const response = await fetchAuthenticated(`${PUBLIC_AUTH_ENDPOINT}/auth/me`, {
+    const response = await fetchAuthenticated(`${LOCAL_AUTH_API_BASE}/me`, {
         method: "GET"
     }, jwt);
 
