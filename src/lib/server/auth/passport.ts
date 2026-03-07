@@ -7,6 +7,7 @@ import { env } from '$env/dynamic/private';
 import { DB_Models } from '@ravenlens/backend';
 import type { AccountType, Profile } from '@ravenlens/shared';
 import type { JWTPayload } from './jwt';
+import { appName } from '$lib/config/app';
 
 export type OAuthProvider = 'google' | 'github' | 'linkedin';
 
@@ -89,7 +90,7 @@ async function resolveGithubEmail(accessToken: string, profile: any): Promise<st
 				Authorization: `Bearer ${accessToken}`,
 				Accept: 'application/vnd.github+json',
 				'X-GitHub-Api-Version': '2022-11-28',
-				'User-Agent': 'RavenLens'
+				'User-Agent': appName
 			}
 		});
 

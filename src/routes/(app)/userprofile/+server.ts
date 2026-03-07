@@ -9,6 +9,7 @@ import { json } from "@sveltejs/kit";
 import jwt from "jsonwebtoken";
 import { Resend } from "resend";
 import type { RequestHandler } from "./$types";
+import { appName } from "$lib/config/app";
 
 const MAX_PROFILE_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
 const DELETE_CODE_LENGTH = 6;
@@ -197,7 +198,7 @@ async function sendDeleteCodeEmail(targetEmail: string, code: string): Promise<v
     const { error } = await resend.emails.send({
         from: resendFromEmail,
         to: [targetEmail],
-        subject: "Your RavenLens account deletion verification code",
+        subject: `Your ${appName} account deletion verification code`,
         html: `
             <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #0f172a;">
                 <h2 style="margin: 0 0 12px;">Confirm account deletion</h2>

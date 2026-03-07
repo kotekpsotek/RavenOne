@@ -5,6 +5,7 @@
   import { onAuthenticateWith } from '$lib/utils/auth';
   import type { SubmitFunction } from '@sveltejs/kit';
   import { onMount } from 'svelte';
+    import { appName } from '$lib/config/app.js';
 
   let { form } = $props();
 
@@ -73,7 +74,7 @@
 
   <section class={[cardBaseClass, daisyTheme === 'black' ? cardDarkClass : cardLightClass]} aria-label="Sign up form">
     <div class="mb-6 flex justify-center">
-      <img src="/ravenlens.svg" alt="RavenLens" class="block h-auto w-full max-w-[14rem]" />
+      <img src="/ravenlens.svg" alt="{appName}" class="block h-auto w-full max-w-[14rem]" />
     </div>
 
     <p class={[

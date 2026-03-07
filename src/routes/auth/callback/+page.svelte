@@ -4,6 +4,7 @@
   import { page } from '$app/stores';
   import { JWTAuth } from '$lib/utils/auth';
   import { onMount } from 'svelte';
+    import { appName } from '$lib/config/app';
 
   let countdown = $state(5);
   let status = $state<'loading' | 'success' | 'error'>('loading');
@@ -78,7 +79,7 @@
 
   <section class={[cardBaseClass, daisyTheme === 'black' ? cardDarkClass : cardLightClass]} aria-label="Authentication callback status">
     <div class="mb-8 flex justify-center">
-      <img src="/ravenlens.svg" alt="RavenLens" class="block h-auto w-full max-w-[14rem]" />
+      <img src="/ravenlens.svg" alt="{appName}" class="block h-auto w-full max-w-[14rem]" />
     </div>
 
     <div class="mb-6 flex justify-center">

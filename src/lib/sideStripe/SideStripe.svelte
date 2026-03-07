@@ -8,6 +8,7 @@
     import ExpansionPanel from "./ExpansionPanel.svelte";
     import { isWorkspaceSelectionOpen, selectedWorkspace } from "$lib/stores/workspace";
     import { isSearchModalOpen } from "$lib/stores/files";
+    import { appName } from "$lib/config/app";
 
     let isExpanded = $state(false);
     const PANEL_WIDTH_STORAGE_KEY = 'expansion-panel-width';
@@ -139,7 +140,7 @@
         <div class="flex w-14 flex-none flex-col items-center py-4 border-r border-base-300">
             <div class="mb-4 flex flex-col items-center gap-6">
                 <!-- Workspace selection -->
-                <div class="tooltip tooltip-right" data-tip="RavenLens">
+                <div class="tooltip tooltip-right" data-tip="{appName}">
                     <button 
                         class="flex h-10 w-10 p-2 items-center justify-center rounded-xl bg-primary/10 transition-all hover:scale-105 hover:bg-primary/20"
                         class:isSelected={$isWorkspaceSelectionOpen}

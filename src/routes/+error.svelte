@@ -2,10 +2,11 @@
   import { page } from '$app/stores';
   import Icon from '@iconify/svelte';
   	import '../app.css'; // Ensure tailwind is loaded
+    import { appName } from '$lib/config/app';
 </script>
 
 <svelte:head>
-  <title>Error - RavenLens</title>
+  <title>Error - {appName}</title>
 </svelte:head>
 
 <div class="w-full h-screen flex items-center justify-center bg-transparent py-12 px-4 sm:px-6 lg:px-8">

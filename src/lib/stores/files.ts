@@ -257,8 +257,8 @@ export const selectedFile = (() => {
     };
 })();
 
-export type BrowserToolsUnion = "Web search" | "Current Document" | "RavenLens Documents";
-export const availableTools = ["Web search", "Current Document", "RavenLens Documents"] as BrowserToolsUnion[];
+export type BrowserToolsUnion = "Web search" | "Current Document" | "RavenOne Documents";
+export const availableTools = ["Web search", "Current Document", "RavenOne Documents"] as BrowserToolsUnion[];
 
 // File config
 export const selectedModel = writable<AI.RavenLensAvaiableAIModel | undefined>(undefined);

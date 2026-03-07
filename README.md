@@ -1,4 +1,4 @@
-# RavenLens - "One Raven knows!" (trade word/s)
+# RavenOne - "One Raven knows!" (trade word/s)
 Editor what thrives your curiosity along productivity
 
 ## What a valulable product would it be?
@@ -17,7 +17,7 @@ Editor what thrives your curiosity along productivity
     - find information to make application
     - Implement the early version of application base on user demands or other documents
 
-## What is RavenLens
+## What is RavenOne
 > Originally One-by-one but as default is parallel
 
 **Short message:** `One list of points. One document of results.`
