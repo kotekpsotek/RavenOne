@@ -245,7 +245,7 @@
         aria-label="Continue with GitHub"
         onclick={onAuthenticateWith('github', AUTH_MODE)}
       >
-        <Icon icon="logos:github-icon" width="1.05rem" height="1.05rem" />
+        <Icon icon="logos:github-icon" width="1.05rem" height="1.05rem" class={daisyTheme === 'black' ? 'invert' : ''} />
       </button>
     </div>
 

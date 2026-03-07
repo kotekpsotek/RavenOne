@@ -46,7 +46,7 @@ export interface File {
 // Entries
 export const entriesList = writable<File[]>([]);
 /** Access saving state -> 'true' when file is actually saving, 'false' when is not */
-export const isFileSaving = writable<boolean>(true);
+export const isFileSaving = writable<boolean>(false);
 
 // File
 export const selectedFile = (() => {

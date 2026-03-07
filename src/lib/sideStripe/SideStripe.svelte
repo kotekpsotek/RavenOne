@@ -139,7 +139,7 @@
         <div class="flex w-14 flex-none flex-col items-center py-4 border-r border-base-300">
             <div class="mb-4 flex flex-col items-center gap-6">
                 <!-- Workspace selection -->
-                <div class="tooltip tooltip-right" data-tip="RavenOne">
+                <div class="tooltip tooltip-right" data-tip="RavenLens">
                     <button 
                         class="flex h-10 w-10 p-2 items-center justify-center rounded-xl bg-primary/10 transition-all hover:scale-105 hover:bg-primary/20"
                         class:isSelected={$isWorkspaceSelectionOpen}
@@ -232,7 +232,8 @@
                             onclick={onUserProfile}
                         >
                             <UI.Common.AvatarComponent.ProfileAvatar
-                                user={$user}
+                                name={$user.name}
+                                profileImgURL={$user.profileImgURL}
                             />
                         </button>
                     </div>

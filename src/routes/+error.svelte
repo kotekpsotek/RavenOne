@@ -5,7 +5,7 @@
 </script>
 
 <svelte:head>
-  <title>Error - RavenOne</title>
+  <title>Error - RavenLens</title>
 </svelte:head>
 
 <div class="w-full h-screen flex items-center justify-center bg-transparent py-12 px-4 sm:px-6 lg:px-8">

@@ -89,7 +89,7 @@ async function resolveGithubEmail(accessToken: string, profile: any): Promise<st
 				Authorization: `Bearer ${accessToken}`,
 				Accept: 'application/vnd.github+json',
 				'X-GitHub-Api-Version': '2022-11-28',
-				'User-Agent': 'RavenOne'
+				'User-Agent': 'RavenLens'
 			}
 		});
 
