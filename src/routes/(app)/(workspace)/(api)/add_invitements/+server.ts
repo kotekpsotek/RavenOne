@@ -17,6 +17,57 @@ type ExistingProfileCandidate = {
     email?: unknown;
 };
 
+type WorkspaceInvitement = Workspace.Workspace.WorkspaceMemberInvitement<Workspace.Workspace.InvitementKind>;
+
+type ExistingWorkspaceMember = {
+    user: {
+        id?: unknown;
+        email?: unknown;
+        githubAccountProperties?: {
+            githubUserId?: unknown;
+        } | null;
+    };
+};
+
+type ExistingWorkspaceIdentity = {
+    invitedEmails: Set<string>;
+    invitedExternalUserIds: Set<string>;
+    memberEmails: Set<string>;
+    memberUserIds: Set<string>;
+    memberGithubIds: Set<string>;
+};
+
+type ExistingProfileRecord = {
+    _id: unknown;
+    id: string;
+    email: string;
+};
+
+type MemberToJoin = {
+    user: unknown;
+    permissions: WorkspacePermission[];
+    joinDate: Date;
+};
+
+type PreparedIncomingInvitements =
+    | {
+        ok: true;
+        invitements: WorkspaceInvitement[];
+    }
+    | {
+        ok: false;
+        response: Response;
+    };
+
+type SplitInvitementsParams = {
+    invitements: WorkspaceInvitement[];
+    existingProfilesByEmail: Map<string, ExistingProfileRecord>;
+    existingMemberIds: Set<string>;
+    ownerUserId: string;
+    existingInvitedEmails: Set<string>;
+    existingInvitedExternalUserIds: Set<string>;
+};
+
 const ALLOWED_WORKSPACE_PERMISSIONS = new Set<WorkspacePermission>(
     Object.keys(Permissions.Workspace.worspacePermissionLeaderBoardAndNames) as WorkspacePermission[]
 );
@@ -66,17 +117,303 @@ function mergePermissions(
     return [...new Set<WorkspacePermission>([...previousPermissions, ...nextPermissions])];
 }
 
-async function sendInvitementEmail(invitedMembers: Workspace.Workspace.WorkspaceMemberInvitement<Workspace.Workspace.InvitementKind>[]) {
+function dedupeWorkspaceInvitements(
+    invitations: WorkspaceInvitement[]
+): WorkspaceInvitement[] {
+    const dedupedInvitations: WorkspaceInvitement[] = [];
+    const seenEmails = new Set<string>();
+    const seenExternalUserIds = new Set<string>();
+
+    for (const invitation of invitations) {
+        const invitationEmail = normalizeEmailAddress(invitation.user.email);
+        const invitationExternalUserId = asNonEmptyString(invitation.user.id);
+        const isDuplicate = Boolean(
+            (invitationEmail && seenEmails.has(invitationEmail))
+            || (invitationExternalUserId && seenExternalUserIds.has(invitationExternalUserId))
+        );
+
+        if (isDuplicate) {
+            continue;
+        }
+
+        if (invitationEmail) {
+            seenEmails.add(invitationEmail);
+        }
+
+        if (invitationExternalUserId) {
+            seenExternalUserIds.add(invitationExternalUserId);
+        }
+
+        dedupedInvitations.push(invitation);
+    }
+
+    return dedupedInvitations;
+}
+
+function getInvitationEmailCandidate(invitement: WorkspaceInvitement): unknown {
+    const fallbackEmailFromName = typeof invitement.user.name === "string" && invitement.user.name.includes("@")
+        ? invitement.user.name
+        : undefined;
+
+    return invitement.user.email ?? fallbackEmailFromName;
+}
+
+function buildExistingWorkspaceIdentity(
+    workspaceInvitementsFromDb: WorkspaceInvitement[],
+    workspaceMembers: ExistingWorkspaceMember[]
+): ExistingWorkspaceIdentity {
+    const invitedEmails = new Set<string>();
+    const invitedExternalUserIds = new Set<string>();
+
+    for (const existingInvitation of workspaceInvitementsFromDb) {
+        const invitationEmail = normalizeEmailAddress(existingInvitation.user.email);
+        const invitationExternalUserId = asNonEmptyString(existingInvitation.user.id);
+
+        if (invitationEmail) {
+            invitedEmails.add(invitationEmail);
+        }
+
+        if (invitationExternalUserId) {
+            invitedExternalUserIds.add(invitationExternalUserId);
+        }
+    }
+
+    const memberEmails = new Set<string>();
+    const memberUserIds = new Set<string>();
+    const memberGithubIds = new Set<string>();
+
+    for (const workspaceMember of workspaceMembers) {
+        const memberEmail = normalizeEmailAddress(workspaceMember.user.email);
+        const memberUserId = asNonEmptyString(workspaceMember.user.id);
+        const memberGithubId = asNonEmptyString(workspaceMember.user.githubAccountProperties?.githubUserId?.toString());
+
+        if (memberEmail) {
+            memberEmails.add(memberEmail);
+        }
+
+        if (memberUserId) {
+            memberUserIds.add(memberUserId);
+        }
+
+        if (memberGithubId) {
+            memberGithubIds.add(memberGithubId);
+        }
+    }
+
+    return {
+        invitedEmails,
+        invitedExternalUserIds,
+        memberEmails,
+        memberUserIds,
+        memberGithubIds
+    };
+}
+
+function prepareIncomingInvitements(
+    requestedInvitements: WorkspaceInvitement[],
+    existingWorkspaceIdentity: ExistingWorkspaceIdentity
+): PreparedIncomingInvitements {
+    const uniqueMembers: WorkspaceInvitement[] = [];
+    const seenRequestEmails = new Set<string>();
+    const seenRequestExternalUserIds = new Set<string>();
+
+    for (const invitementMember of requestedInvitements) {
+        const preEmail = getInvitationEmailCandidate(invitementMember);
+        if (!preEmail) {
+            return {
+                ok: false,
+                response: new Response(JSON.stringify({ message: "Email isn't specified in request payload body" }), {
+                    status: 400
+                })
+            };
+        }
+
+        const email = normalizeEmailAddress(preEmail);
+        if (!email) {
+            continue;
+        }
+
+        const invitedExternalUserId = asNonEmptyString(invitementMember.user.id);
+        const isAlreadyInvitedByEmail = existingWorkspaceIdentity.invitedEmails.has(email);
+        const isAlreadyInvitedByExternalId = Boolean(
+            invitedExternalUserId
+            && existingWorkspaceIdentity.invitedExternalUserIds.has(invitedExternalUserId)
+        );
+        const isAlreadyMemberByEmail = existingWorkspaceIdentity.memberEmails.has(email);
+        const isAlreadyMemberByGithubId = Boolean(
+            invitedExternalUserId
+            && existingWorkspaceIdentity.memberGithubIds.has(invitedExternalUserId)
+        );
+        const isAlreadyMemberByUserId = Boolean(
+            invitedExternalUserId
+            && existingWorkspaceIdentity.memberUserIds.has(invitedExternalUserId)
+        );
+        const isDuplicateInRequest = seenRequestEmails.has(email)
+            || Boolean(invitedExternalUserId && seenRequestExternalUserIds.has(invitedExternalUserId));
+
+        if (
+            isAlreadyInvitedByEmail
+            || isAlreadyInvitedByExternalId
+            || isAlreadyMemberByEmail
+            || isAlreadyMemberByGithubId
+            || isAlreadyMemberByUserId
+            || isDuplicateInRequest
+        ) {
+            continue;
+        }
+
+        seenRequestEmails.add(email);
+        if (invitedExternalUserId) {
+            seenRequestExternalUserIds.add(invitedExternalUserId);
+        }
+
+        if (invitementMember.kind !== "email" && invitementMember.kind !== "github") {
+            continue;
+        }
+
+        uniqueMembers.push({
+            ...invitementMember,
+            user: {
+                ...invitementMember.user,
+                email
+            }
+        });
+    }
+
+    return {
+        ok: true,
+        invitements: uniqueMembers
+    };
+}
+
+function collectInvitedEmails(invitements: WorkspaceInvitement[]): string[] {
+    return [...new Set(
+        invitements
+            .map(member => normalizeEmailAddress(member.user.email))
+            .filter((email): email is string => Boolean(email))
+    )];
+}
+
+async function findExistingProfilesByEmail(invitedEmails: string[]): Promise<Map<string, ExistingProfileRecord>> {
+    const existingProfilesByEmail = new Map<string, ExistingProfileRecord>();
+
+    if (!invitedEmails.length) {
+        return existingProfilesByEmail;
+    }
+
+    const existingProfiles = await DB_Models.UserAccount.profileModel
+        .find({
+            $or: invitedEmails.map(email => ({
+                email: {
+                    $regex: `^${escapeRegExp(email)}$`,
+                    $options: "i"
+                }
+            }))
+        })
+        .select({ _id: 1, id: 1, email: 1 })
+        .lean<ExistingProfileCandidate[]>();
+
+    for (const profile of existingProfiles) {
+        const profileId = asNonEmptyString(profile.id);
+        const profileEmail = normalizeEmailAddress(profile.email);
+        if (!profile._id || !profileId || !profileEmail) {
+            continue;
+        }
+
+        existingProfilesByEmail.set(profileEmail, {
+            _id: profile._id,
+            id: profileId,
+            email: profileEmail
+        });
+    }
+
+    return existingProfilesByEmail;
+}
+
+function splitInvitementsForPersistence({
+    invitements,
+    existingProfilesByEmail,
+    existingMemberIds,
+    ownerUserId,
+    existingInvitedEmails,
+    existingInvitedExternalUserIds
+}: SplitInvitementsParams): {
+    invitationsToPersist: WorkspaceInvitement[];
+    membersToJoin: MemberToJoin[];
+} {
+    const membersToJoinByUserId = new Map<string, MemberToJoin>();
+    const invitationsToPersist: WorkspaceInvitement[] = [];
+    const invitationEmailsQueuedForPersistence = new Set(existingInvitedEmails);
+    const invitationExternalIdsQueuedForPersistence = new Set(existingInvitedExternalUserIds);
+
+    for (const invitedMember of invitements) {
+        const invitedEmail = normalizeEmailAddress(invitedMember.user.email);
+        const invitedExternalUserId = asNonEmptyString(invitedMember.user.id);
+        const existingProfile = invitedEmail ? existingProfilesByEmail.get(invitedEmail) : undefined;
+
+        if (existingProfile) {
+            if (!existingMemberIds.has(existingProfile.id) && ownerUserId !== existingProfile.id) {
+                const existingMemberToJoin = membersToJoinByUserId.get(existingProfile.id);
+                const invitedPermissions = normalizePermissions(invitedMember.withPermissions);
+
+                if (existingMemberToJoin) {
+                    existingMemberToJoin.permissions = mergePermissions(existingMemberToJoin.permissions, invitedPermissions);
+                } else {
+                    membersToJoinByUserId.set(existingProfile.id, {
+                        user: existingProfile._id,
+                        permissions: invitedPermissions,
+                        joinDate: new Date()
+                    });
+                }
+            }
+
+            continue;
+        }
+
+        if (!invitedEmail) {
+            continue;
+        }
+
+        const duplicatesPersistedInvitation = invitationEmailsQueuedForPersistence.has(invitedEmail)
+            || Boolean(
+                invitedExternalUserId
+                && invitationExternalIdsQueuedForPersistence.has(invitedExternalUserId)
+            );
+
+        if (duplicatesPersistedInvitation) {
+            continue;
+        }
+
+        invitationEmailsQueuedForPersistence.add(invitedEmail);
+        if (invitedExternalUserId) {
+            invitationExternalIdsQueuedForPersistence.add(invitedExternalUserId);
+        }
+
+        invitationsToPersist.push({
+            ...invitedMember,
+            id: invitedMember.id || `invitement-${randomUUID()}`,
+            invitedOn: invitedMember.invitedOn || new Date()
+        });
+    }
+
+    return {
+        invitationsToPersist,
+        membersToJoin: [...membersToJoinByUserId.values()]
+    };
+}
+
+async function sendInvitementEmail(invitedMembers: WorkspaceInvitement[]) {
     const resendFromEmail = env.RESEND_FROM_EMAIL?.trim();
     const resend = getResendInstance();
 
     for (const member of invitedMembers) {
-        if (member.kind === "email" && member.user.email) {
+        const preEmail = getInvitationEmailCandidate(member);
+        
+        if (typeof preEmail === "string" && preEmail) {
             const { error } = await resend.emails.send({
                 from: resendFromEmail,
-                to: [member.user.email],
+                to: [preEmail],
                 subject: `You're invited to join ${appName}`,
-                // TODO: Add domain name
                 html: `
                     <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #0f172a;">
                         <h2 style="margin: 0 0 12px;">You were invited to ${appName}</h2>
@@ -96,10 +433,7 @@ async function sendInvitementEmail(invitedMembers: Workspace.Workspace.Workspace
 }
 
 /**
- * 1. Check is user authenticated member (done)
- * 2. Check is user member of workspace with `workspaceId` (done)
- * 3. Check has user adequate permissions in workspace to invite new members (done)
- * 4. Add members to workspace (done)
+ * Workspace member invitements
 */
 export const POST: RequestHandler = async ({ request, url }) => {
     const { workspaceId, workspaceInvitements } = await request.json() as {
@@ -147,164 +481,54 @@ export const POST: RequestHandler = async ({ request, url }) => {
         })
     }
 
-    const workspaceInvitementsFromDb = Array.isArray(userWorkspacesQuota.workspaceInvitements)
+    const workspaceInvitementsFromDb: WorkspaceInvitement[] = Array.isArray(userWorkspacesQuota.workspaceInvitements)
         ? userWorkspacesQuota.workspaceInvitements
         : [];
 
-    // 4. Add members to workspace for these members doesn't already exists in workspace
-    // User can add add freely all permissions since user is permitted to 'manage workspace members'
-    const uniqueMembers: Workspace.Workspace.WorkspaceMemberInvitement<Workspace.Workspace.InvitementKind>[] = [];
-    const seenInvitementKeys = new Set<string>();
+    const existingWorkspaceIdentity = buildExistingWorkspaceIdentity(
+        workspaceInvitementsFromDb,
+        userWorkspacesQuota.workspaceMembers
+    );
 
-    for (const invitementMember of workspaceInvitements) {
-        // 1. use github / linkedin api to fetch user with such id
-        // 2. or: use email and insert in invitements
-        // 3. Base on user id / email check is user already a member and when isn't paste to invitement
+    const preparedIncomingInvitements = prepareIncomingInvitements(
+        workspaceInvitements,
+        existingWorkspaceIdentity
+    );
 
-        /** Email always will be specified for each of invitement method */
-        const email = normalizeEmailAddress(invitementMember.user.email);
-        if (!email) {
-            continue;
-        }
-
-        const invitedExternalUserId = asNonEmptyString(invitementMember.user.id);
-        const invitementDedupeKey = `${invitementMember.kind}|${email}|${invitedExternalUserId ?? ""}`;
-        if (seenInvitementKeys.has(invitementDedupeKey)) {
-            continue;
-        }
-
-        seenInvitementKeys.add(invitementDedupeKey);
-
-        const isAlreadyInvitedByEmail = workspaceInvitementsFromDb.some(
-            inv => normalizeEmailAddress(inv.user.email) === email
-        );
-
-        const isAlreadyMemberByEmail = userWorkspacesQuota.workspaceMembers.some(
-            member => normalizeEmailAddress(member.user.email) === email
-        );
-
-        const part3rdProviderIsWorkspaceInvitementNonRepeated = () => !workspaceInvitementsFromDb.some(inv => {
-            const sameEmail = normalizeEmailAddress(inv.user.email) === email;
-            const sameExternalId = Boolean(invitedExternalUserId && inv.user.id === invitedExternalUserId);
-
-            return sameEmail || sameExternalId;
-        });
-
-        // 2 forms of invitements are avaiable now
-        switch(invitementMember.kind) {
-            case 'email': {
-                if (!isAlreadyMemberByEmail && !isAlreadyInvitedByEmail) {
-                    uniqueMembers.push(invitementMember);
-                }
-
-                break;
-            }
-
-            case 'github': {
-                const isAlreadyMemberByGithubId = Boolean(
-                    invitedExternalUserId
-                    && userWorkspacesQuota.workspaceMembers.some(
-                        member => member.user.githubAccountProperties?.githubUserId?.toString() === invitedExternalUserId
-                    )
-                );
-
-                if (!isAlreadyMemberByEmail && !isAlreadyMemberByGithubId && part3rdProviderIsWorkspaceInvitementNonRepeated()) {
-                    uniqueMembers.push(invitementMember);
-                }
-
-                break;
-            }
-
-            default:
-                break;
-        }
+    if (!preparedIncomingInvitements.ok) {
+        return preparedIncomingInvitements.response;
     }
 
+    const uniqueMembers = preparedIncomingInvitements.invitements;
+
     if (uniqueMembers.length > 0) {
-        // Send email to each invited member
-        await sendInvitementEmail(uniqueMembers);
-
-        const invitedEmails = [...new Set(
-            uniqueMembers
-                .map(member => normalizeEmailAddress(member.user.email))
-                .filter((email): email is string => Boolean(email))
-        )];
-
-        const existingProfilesByEmail = new Map<string, { _id: unknown; id: string; email: string }>();
-        if (invitedEmails.length) {
-            const existingProfiles = await DB_Models.UserAccount.profileModel
-                .find({
-                    $or: invitedEmails.map(email => ({
-                        email: {
-                            $regex: `^${escapeRegExp(email)}$`,
-                            $options: "i"
-                        }
-                    }))
-                })
-                .select({ _id: 1, id: 1, email: 1 })
-                .lean<ExistingProfileCandidate[]>();
-
-            for (const profile of existingProfiles) {
-                const profileId = asNonEmptyString(profile.id);
-                const profileEmail = normalizeEmailAddress(profile.email);
-                if (!profile._id || !profileId || !profileEmail) {
-                    continue;
-                }
-
-                existingProfilesByEmail.set(profileEmail, {
-                    _id: profile._id,
-                    id: profileId,
-                    email: profileEmail
-                });
-            }
-        }
+        const invitedEmails = collectInvitedEmails(uniqueMembers);
+        const existingProfilesByEmail = await findExistingProfilesByEmail(invitedEmails);
 
         const existingMemberIds = new Set(userWorkspacesQuota.workspaceMembers.map(member => member.user.id));
-        const membersToJoinByUserId = new Map<string, {
-            user: unknown;
-            permissions: WorkspacePermission[];
-            joinDate: Date;
-        }>();
-        const invitationsToPersist: Workspace.Workspace.WorkspaceMemberInvitement<Workspace.Workspace.InvitementKind>[] = [];
+        const { invitationsToPersist, membersToJoin } = splitInvitementsForPersistence({
+            invitements: uniqueMembers,
+            existingProfilesByEmail,
+            existingMemberIds,
+            ownerUserId: userWorkspacesQuota.ownerUserId,
+            existingInvitedEmails: existingWorkspaceIdentity.invitedEmails,
+            existingInvitedExternalUserIds: existingWorkspaceIdentity.invitedExternalUserIds
+        });
 
-        for (const invitedMember of uniqueMembers) {
-            const invitedEmail = normalizeEmailAddress(invitedMember.user.email);
-            const existingProfile = invitedEmail ? existingProfilesByEmail.get(invitedEmail) : undefined;
-
-            if (existingProfile) {
-                if (!existingMemberIds.has(existingProfile.id) && userWorkspacesQuota.ownerUserId !== existingProfile.id) {
-                    const existingMemberToJoin = membersToJoinByUserId.get(existingProfile.id);
-                    const invitedPermissions = normalizePermissions(invitedMember.withPermissions);
-
-                    if (existingMemberToJoin) {
-                        existingMemberToJoin.permissions = mergePermissions(existingMemberToJoin.permissions, invitedPermissions);
-                    } else {
-                        membersToJoinByUserId.set(existingProfile.id, {
-                            user: existingProfile._id,
-                            permissions: invitedPermissions,
-                            joinDate: new Date()
-                        });
-                    }
-                }
-
-                continue;
-            }
-
-            invitationsToPersist.push({
-                ...invitedMember,
-                id: invitedMember.id || `invitement-${randomUUID()}`,
-                invitedOn: invitedMember.invitedOn || new Date()
-            });
+        if (invitationsToPersist.length > 0) {
+            // Send email only for invitations that will actually be stored.
+            await sendInvitementEmail(invitationsToPersist);
         }
 
-        const membersToJoin = [...membersToJoinByUserId.values()];
-
         if (invitationsToPersist.length > 0 || membersToJoin.length > 0) {
-            workspaceInvitementsFromDb.push(...invitationsToPersist);
+            const workspaceInvitementsToPersist = dedupeWorkspaceInvitements([
+                ...workspaceInvitementsFromDb,
+                ...invitationsToPersist
+            ]);
 
             const updateOperation: {
                 $set: {
-                    workspaceInvitements: typeof workspaceInvitementsFromDb;
+                    workspaceInvitements: typeof workspaceInvitementsToPersist;
                 };
                 $push?: {
                     workspaceMembers: {
@@ -317,7 +541,7 @@ export const POST: RequestHandler = async ({ request, url }) => {
                 };
             } = {
                 $set: {
-                    workspaceInvitements: workspaceInvitementsFromDb
+                    workspaceInvitements: workspaceInvitementsToPersist
                 }
             };
 
@@ -337,8 +561,10 @@ export const POST: RequestHandler = async ({ request, url }) => {
             );
         }
     }
+    else return new Response(JSON.stringify({ message: "All members are already in workspace!" }), { status: 403 });
 
-    return new Response(JSON.stringify({ message: "Invitements processed successfully", addedCount: uniqueMembers.length }), {
+
+    return new Response(null, {
         status: 200
     });
 }

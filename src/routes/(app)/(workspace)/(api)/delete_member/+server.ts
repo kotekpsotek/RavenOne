@@ -93,12 +93,16 @@ export const DELETE: RequestHandler = async ({ request, url }) => {
         });
     }
 
-    const memberExistsInWorkspace = workspace.workspaceMembers.some(member => member.user.id === userId);
+    const memberExistsInWorkspace = workspace.workspaceMembers.find(member => member.user.id === userId);
     if (!memberExistsInWorkspace) {
         return new Response(JSON.stringify({ message: "Following user is not a member of this workspace" }), {
             status: 404,
             headers: { "content-type": "application/json" }
         });
+    }
+
+    if (memberExistsInWorkspace.permissions.includes("manage_workspace_members") && currentUserId !== memberExistsInWorkspace.user.id) {
+        return new Response(JSON.stringify({ message: "You cannot remove member has same management permission as you" }), { status: 403 });
     }
 
     const updateResult = await DB_Models.Workspace.Workspace.workspaceModel.updateOne(

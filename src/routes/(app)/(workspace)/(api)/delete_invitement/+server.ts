@@ -4,7 +4,7 @@ import { downloadCurrentUser } from "$lib/utils/auth";
 import { DB_Models } from "@ravenlens/backend";
 import type { RequestHandler } from "@sveltejs/kit";
 
-export const DELETE: RequestHandler = async ({ request }) => {
+export const DELETE: RequestHandler = async ({ request, url }) => {
     const { workspaceId, invitementId } = await request.json() as {
         workspaceId: string;
         invitementId: string;
@@ -25,7 +25,7 @@ export const DELETE: RequestHandler = async ({ request }) => {
         })
     }
     
-    const authenticationResponse = await downloadCurrentUser(jwt);
+    const authenticationResponse = await downloadCurrentUser(jwt, url.origin);
     if (!authenticationResponse.status || !authenticationResponse.data) {
         return new Response(JSON.stringify({ message: "You're not authenticated member" }), {
             status: 401
@@ -51,7 +51,7 @@ export const DELETE: RequestHandler = async ({ request }) => {
     }
 
     // Delete invited member
-    if (!thisUserAWorkspaceMember.permissions.includes("manage_workspace_members")) {
+    if (!thisUserAWorkspaceMember.permissions.includes("manage_workspace_members") && userWorkspacesQuota.ownerUserId !== authenticationResponse.data.user.id) {
         return new Response(JSON.stringify({ message: "You've no permission to delete invited member from this workspace" }), {
             status: 401
         })

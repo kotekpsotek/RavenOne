@@ -297,6 +297,7 @@ function resolveCurrentUserPermissions(workspace: WorkspaceDocumentRaw, currentU
 	return [];
 }
 
+/** Download workspace members with suitable form */
 export const POST: RequestHandler = async ({ request, cookies, fetch, url }) => {
 	const authStatusResponse = await ensureAuthenticatedViaRoute(request, fetch);
 	if (!authStatusResponse) {
@@ -329,22 +330,14 @@ export const POST: RequestHandler = async ({ request, cookies, fetch, url }) => 
 		}
 
 		const userProfileObjectId = normalizeObjectId(userProfile._id);
-		const accessFilters: Record<string, unknown>[] = [{ ownerUserId: payload.userId }];
-
-		if (userProfileObjectId) {
-			accessFilters.push({ "workspaceMembers.user": userProfileObjectId });
+		if (!userProfileObjectId) {
+			return json({ status: false, error: "User profile is invalid" }, { status: 500 });
 		}
-
-		if (payload.email) {
-			accessFilters.push({ "workspaceInvitements.user.email": payload.email });
-		}
-
-		accessFilters.push({ "workspaceInvitements.user.id": payload.userId });
 
 		const downloadedWorkspace = await DB_Models.Workspace.Workspace.workspaceModel
 			.findOne({
 				id: workspaceId,
-				$or: accessFilters
+				"workspaceMembers.user": userProfileObjectId
 			})
 			.lean<WorkspaceDocumentRaw>();
 

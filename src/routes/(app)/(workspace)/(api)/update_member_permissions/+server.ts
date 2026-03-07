@@ -111,6 +111,16 @@ export const POST: RequestHandler = async ({ request, url }) => {
         });
     }
 
+    if (memberToUpdate.user.id === workspace.ownerUserId && memberToUpdate.user.id !== authenticationResponse.data.user.id) {
+        return new Response(JSON.stringify({ message: "You cannot update the permission of workspace owner" }), {
+            status: 401,
+            headers: { "content-type": "application/json" }
+        });
+    }
+    else if (memberToUpdate.permissions.includes("manage_workspace_members") && memberToUpdate.user.id !== currentUserId) {
+        return new Response(JSON.stringify({ message: "You cannot manage member permissions has same management permission as you" }), { status: 403 });
+    }
+
     const userProfile = await DB_Models.UserAccount.profileModel
         .findOne({ id: userId })
         .select({ _id: 1 })

@@ -72,14 +72,6 @@ function readImageUrl(image: unknown): string | undefined {
     return asNonEmptyString(image.url);
 }
 
-async function readWorkspaceMembersMutationResponse(response: Response): Promise<WorkspaceMembersMutationResponse | undefined> {
-    try {
-        return await response.json() as WorkspaceMembersMutationResponse;
-    } catch {
-        return undefined;
-    }
-}
-
 function buildWorkspaceMembersError(response: Response, responseBody: WorkspaceMembersMutationResponse | undefined, fallback: string): string {
     return asNonEmptyString(responseBody?.error)
         ?? asNonEmptyString(responseBody?.message)
@@ -251,19 +243,22 @@ export const inviteMemberRequest: ComponentProps<UI.Workspace.Settings.Workspace
         return false;
     }
 
-    const responseBody = await readWorkspaceMembersMutationResponse(response);
     if (!response.ok) {
-        setAlert("error", "Invitation failed", buildWorkspaceMembersError(response, responseBody, "Cannot invite members"));
+        let message: string | undefined = undefined;
+        try {
+            const { message: messageLocal } = await response.json();
+            message = messageLocal;
+        }
+        catch {}
+        
+        setAlert("error", "Invitation failed", message ?? response.status.toString());
         return false;
     }
-
-    const addedCount = typeof responseBody?.addedCount === "number" ? responseBody.addedCount : users.length;
-    if (addedCount <= 0) {
-        setAlert("warning", "No invitations added", "All selected users are already members or already invited.");
-        return false;
-    }
-
-    setAlert("success", "Invitations sent", `Sent ${addedCount} invitation${addedCount === 1 ? "" : "s"}.`);
+    
+    setTimeout(() => {
+        window.location.reload();
+    }, 500);
+    setAlert("success", "Members added", `All members are added`);
     return true;
 }
 
@@ -296,7 +291,7 @@ export const deleteInvitementRequest: ComponentProps<UI.Workspace.Settings.Works
         return false;
     }
 
-    const responseBody = await readWorkspaceMembersMutationResponse(response);
+    const responseBody = await response.json();
     if (!response.ok || responseBody?.ok === false) {
         setAlert("error", "Invitation deletion failed", buildWorkspaceMembersError(response, responseBody, "Cannot delete invitation"));
         return false;
@@ -336,7 +331,7 @@ export const deleteMemberRequest: ComponentProps<UI.Workspace.Settings.Workspace
         return false;
     }
 
-    const responseBody = await readWorkspaceMembersMutationResponse(response);
+    const responseBody = await response.json();
     if (!response.ok || responseBody?.ok === false || responseBody?.deleted === false) {
         setAlert("error", "Member removal failed", buildWorkspaceMembersError(response, responseBody, "Cannot remove member"));
         return false;
@@ -377,7 +372,7 @@ export const updateMemberPermissions: ComponentProps<UI.Workspace.Settings.Works
         return false;
     }
 
-    const responseBody = await readWorkspaceMembersMutationResponse(response);
+    const responseBody = await response.json();
     if (!response.ok || responseBody?.ok === false || responseBody?.updated === false) {
         setAlert("error", "Permission update failed", buildWorkspaceMembersError(response, responseBody, "Cannot update member permissions"));
         return false;
