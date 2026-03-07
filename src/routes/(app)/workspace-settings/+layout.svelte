@@ -25,6 +25,18 @@
         error?: string;
     };
 
+    type SaveWorkspaceResponse = {
+        status?: boolean;
+        saved?: boolean;
+        workspace?: {
+            id?: string;
+            name?: string;
+            imageUrl?: string;
+            ownerUserId?: string;
+        };
+        error?: string;
+    };
+
     type LayoutProps = {
         children?: Snippet;
     };
@@ -61,6 +73,40 @@
             },
             timeoutMs: 5_000
         };
+    }
+
+    function isRecord(value: unknown): value is Record<string, unknown> {
+        return typeof value === "object" && value !== null;
+    }
+
+    function asNonEmptyString(value: unknown): string | undefined {
+        if (typeof value !== "string") {
+            return undefined;
+        }
+
+        const trimmed = value.trim();
+        return trimmed.length ? trimmed : undefined;
+    }
+
+    function readImageFile(image: unknown): File | null {
+        if (!isRecord(image)) {
+            return null;
+        }
+
+        const imageCandidate = image.imageFile;
+        if (!(imageCandidate instanceof File) || imageCandidate.size <= 0) {
+            return null;
+        }
+
+        return imageCandidate;
+    }
+
+    function readImageUrl(image: unknown): string | undefined {
+        if (!isRecord(image)) {
+            return undefined;
+        }
+
+        return asNonEmptyString(image.url);
     }
 
     async function downloadWorkspaceForUser(workspaceId: string) {
@@ -104,6 +150,98 @@
         } finally {
             isWorkspaceLoading = false;
         }
+    }
+
+    const onSaveWorkspaceChanges: ComponentProps<UI.Workspace.Settings.WorkspaceSettingsScreen>["onSaveWorkspaceChanges"] = async (name, image) => {
+        const currentWorkspaceLoaded = workspaceLoaded;
+        if (!currentWorkspaceLoaded?.id) {
+            setAlert("warning", "Workspace save unavailable", "Select workspace before trying to save changes.");
+            return false;
+        }
+
+        const workspaceId = currentWorkspaceLoaded.id;
+
+        const normalizedWorkspaceName = name.trim();
+        if (!normalizedWorkspaceName) {
+            setAlert("warning", "Workspace name required", "Workspace name cannot be empty.");
+            return false;
+        }
+
+        const formData = new FormData();
+        formData.set("workspaceId", workspaceId);
+        formData.set("name", normalizedWorkspaceName);
+
+        const imageFile = readImageFile(image);
+        if (imageFile) {
+            formData.set("image", imageFile);
+        } else {
+            const imageUrl = readImageUrl(image);
+            if (imageUrl) {
+                formData.set("imageUrl", imageUrl);
+            }
+        }
+
+        let response: Response;
+        try {
+            response = await fetchAuthenticated(`/workspace-settings/api?workspaceId=${encodeURIComponent(workspaceId)}`, {
+                method: "POST",
+                body: formData
+            });
+        } catch {
+            setAlert("error", "Workspace save failed", "Cannot reach workspace settings service.");
+            return false;
+        }
+
+        let responseBody: SaveWorkspaceResponse | undefined;
+        try {
+            responseBody = await response.json() as SaveWorkspaceResponse;
+        } catch {
+            responseBody = undefined;
+        }
+
+        if (!response.ok || !responseBody?.status || !responseBody.saved) {
+            const errorMessage = responseBody?.error ?? `Cannot save workspace changes (${response.status})`;
+            setAlert("error", "Workspace save failed", errorMessage);
+            return false;
+        }
+
+        const savedName = asNonEmptyString(responseBody.workspace?.name) ?? normalizedWorkspaceName;
+        const savedImageUrl = asNonEmptyString(responseBody.workspace?.imageUrl)
+            ?? asNonEmptyString(currentWorkspaceLoaded.imageUrl)
+            ?? "";
+
+        workspaceLoaded = {
+            ...currentWorkspaceLoaded,
+            name: savedName,
+            imageUrl: savedImageUrl
+        };
+
+        let savedWorkspaceEntry: Workspace.Workspace.WorkspaceUserEntryLoaded | undefined;
+        avaiableWorkspaces.update(existingWorkspaces => {
+            const updatedWorkspaces = existingWorkspaces.map(workspace => {
+                if (workspace.id !== workspaceId) {
+                    return workspace;
+                }
+
+                const updatedWorkspace = {
+                    ...workspace,
+                    name: savedName,
+                    imageUrl: savedImageUrl
+                };
+
+                savedWorkspaceEntry = updatedWorkspace;
+                return updatedWorkspace;
+            });
+
+            return updatedWorkspaces;
+        });
+
+        if (savedWorkspaceEntry) {
+            selectedWorkspace.set(savedWorkspaceEntry);
+        }
+
+        setAlert("success", "Workspace saved", "Workspace changes were saved successfully.");
+        return true;
     }
 
     const onDeleteWorkspace: ComponentProps<UI.Workspace.Settings.WorkspaceSettingsScreen>["onDeleteWorkspace"] = async () => {
@@ -199,6 +337,7 @@
                     {fetchAuthenticated}
                     {onSetAlertState}
                     {onDeleteWorkspace}
+                    {onSaveWorkspaceChanges}
                 >
                     {@render layoutChildren?.()}
                 </UI.Workspace.Settings.WorkspaceSettingsScreen>
