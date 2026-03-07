@@ -4,6 +4,8 @@
     import { JWTAuth } from "$lib/utils/auth";
     import { fetchAuthenticated } from "$lib/utils/fetch";
     import type {
+        DeleteWorkspaceApiKeyRequest,
+        DeleteWorkspaceApiKeyResponse,
         GetWorkspaceApiKeysResponse,
         SaveWorkspaceApiKeyRequest,
         SaveWorkspaceApiKeyResponse
@@ -44,7 +46,9 @@
             throw new Error("Failed to retrieve API keys");
         }
 
-        const _responseBody = await response.json() as GetWorkspaceApiKeysResponse;
+        const responseBody = await response.json() as GetWorkspaceApiKeysResponse;
+
+        return responseBody.apiKeys;
     }
 
     async function handleRetrieveModels() {
@@ -88,7 +92,27 @@
         await handleRetrieveAPIKeys();
     };
 
-    const handleAPIKeyDeleted = async (_ev: CustomEvent<{ provider: string }>) => {
+    const handleAPIKeyDeleted = async (ev: CustomEvent<{ provider: string }>) => {
+        const workspace = handleGetSelectedWorkspace();
+        const jwt = handleGetJWT();
+        const payload: DeleteWorkspaceApiKeyRequest = {
+            workspaceId: workspace.id,
+            provider: String(ev.detail.provider)
+        };
+
+        const response = await fetchAuthenticated("/workspace-settings/ai-models/api/apiKeys", {
+            method: "DELETE",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(payload)
+        }, jwt);
+
+        if (!response.ok) {
+            throw new Error("Failed to delete API key");
+        }
+
+        const _responseBody = await response.json() as DeleteWorkspaceApiKeyResponse;
         await handleRetrieveAPIKeys();
     };
 
@@ -132,16 +156,21 @@
     };
 </script>
 
-<UI.Workspace.Settings.WorkspaceAIModelsScreen
-    bgColor="bg-base-200"
-    visibility={{
-        evaluationFrequency: false,
-        customModels: true,
-        gEval: false,
-        apiKeysTable: true
-    }}
-    on:apiKeySaved={handleAPIKeySaved}
-    on:apiKeyDeleted={handleAPIKeyDeleted}
-    on:modelSaved={handleModelSaved}
-    on:modelDeleted={handleModelDeleted}
-/>
+{#await handleRetrieveAPIKeys()}
+    Loading api keys..
+{:then apiKeys} 
+    <UI.Workspace.Settings.WorkspaceAIModelsScreen
+        bgColor="bg-base-200"
+        visibility={{
+            evaluationFrequency: false,
+            customModels: false,
+            gEval: false,
+            apiKeysTable: true
+        }}
+        apiKeysList={apiKeys ?? []}
+        on:apiKeySaved={handleAPIKeySaved}
+        on:apiKeyDeleted={handleAPIKeyDeleted}
+        on:modelSaved={handleModelSaved}
+        on:modelDeleted={handleModelDeleted}
+    />
+{/await}

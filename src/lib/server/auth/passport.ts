@@ -7,6 +7,7 @@ import { env } from '$env/dynamic/private';
 import { DB_Models } from '@ravenlens/backend';
 import type { AccountType, Profile } from '@ravenlens/shared';
 import type { JWTPayload } from './jwt';
+import { autoJoinUserToInvitedWorkspaces } from '$lib/server/workspace-invitements';
 import { appName } from '$lib/config/app';
 
 export type OAuthProvider = 'google' | 'github' | 'linkedin';
@@ -193,6 +194,16 @@ function registerGoogleStrategy() {
 						};
 
 						user = await DB_Models.UserAccount.profileModel.create(newProfile as any);
+
+						try {
+							await autoJoinUserToInvitedWorkspaces({
+								userId: user.id,
+								userObjectId: user._id,
+								email: user.email
+							});
+						} catch (invitationReconciliationError) {
+							console.error('[auth] Failed to auto-join invited workspaces after Google signup', invitationReconciliationError);
+						}
 					}
 
 					return done(null, user);
@@ -297,6 +308,16 @@ function registerGithubStrategy() {
 						};
 
 						user = await DB_Models.UserAccount.profileModel.create(newProfile as any);
+
+						try {
+							await autoJoinUserToInvitedWorkspaces({
+								userId: user.id,
+								userObjectId: user._id,
+								email: user.email
+							});
+						} catch (invitationReconciliationError) {
+							console.error('[auth] Failed to auto-join invited workspaces after GitHub signup', invitationReconciliationError);
+						}
 					} else {
 						const setPayload: Record<string, unknown> = {
 							githubAccountProperties: {
@@ -404,6 +425,16 @@ function registerLinkedInStrategy() {
 						};
 
 						user = await DB_Models.UserAccount.profileModel.create(newProfile as any);
+
+						try {
+							await autoJoinUserToInvitedWorkspaces({
+								userId: user.id,
+								userObjectId: user._id,
+								email: user.email
+							});
+						} catch (invitationReconciliationError) {
+							console.error('[auth] Failed to auto-join invited workspaces after LinkedIn signup', invitationReconciliationError);
+						}
 					}
 
 					return done(null, user);

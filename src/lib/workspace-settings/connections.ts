@@ -26,6 +26,16 @@ type SaveWorkspaceResponse = {
     error?: string;
 };
 
+type WorkspaceMembersMutationResponse = {
+    status?: boolean;
+    ok?: boolean;
+    updated?: boolean;
+    deleted?: boolean;
+    addedCount?: number;
+    message?: string;
+    error?: string;
+};
+
 
 // Util functions
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -60,6 +70,20 @@ function readImageUrl(image: unknown): string | undefined {
     }
 
     return asNonEmptyString(image.url);
+}
+
+async function readWorkspaceMembersMutationResponse(response: Response): Promise<WorkspaceMembersMutationResponse | undefined> {
+    try {
+        return await response.json() as WorkspaceMembersMutationResponse;
+    } catch {
+        return undefined;
+    }
+}
+
+function buildWorkspaceMembersError(response: Response, responseBody: WorkspaceMembersMutationResponse | undefined, fallback: string): string {
+    return asNonEmptyString(responseBody?.error)
+        ?? asNonEmptyString(responseBody?.message)
+        ?? `${fallback} (${response.status})`;
 }
 
 
@@ -199,17 +223,166 @@ export const sendSaveWorkspaceChanges: ComponentProps<UI.Workspace.Settings.Work
 }
 
 export const inviteMemberRequest: ComponentProps<UI.Workspace.Settings.WorkspaceMembersSettingScreen>["inviteMemberRequest"] = async (users: Workspace.Workspace.WorkspaceMemberInvitement[]) => {
-    
+    const workspaceId = get(selectedWorkspace)?.id;
+    if (!workspaceId) {
+        setAlert("warning", "Inviting unavailable", "Select workspace before inviting members.");
+        return false;
+    }
+
+    if (!users.length) {
+        setAlert("warning", "No members selected", "Select at least one member to invite.");
+        return false;
+    }
+
+    let response: Response;
+    try {
+        response = await fetchAuthenticated("/add_invitements", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                workspaceId,
+                workspaceInvitements: users
+            })
+        });
+    } catch {
+        setAlert("error", "Invitation failed", "Cannot reach workspace members service.");
+        return false;
+    }
+
+    const responseBody = await readWorkspaceMembersMutationResponse(response);
+    if (!response.ok) {
+        setAlert("error", "Invitation failed", buildWorkspaceMembersError(response, responseBody, "Cannot invite members"));
+        return false;
+    }
+
+    const addedCount = typeof responseBody?.addedCount === "number" ? responseBody.addedCount : users.length;
+    if (addedCount <= 0) {
+        setAlert("warning", "No invitations added", "All selected users are already members or already invited.");
+        return false;
+    }
+
+    setAlert("success", "Invitations sent", `Sent ${addedCount} invitation${addedCount === 1 ? "" : "s"}.`);
+    return true;
 }
 
 export const deleteInvitementRequest: ComponentProps<UI.Workspace.Settings.WorkspaceMembersSettingScreen>["deleteInvitementRequest"] = async (invitement: Workspace.Workspace.WorkspaceMemberInvitement) => {
-    
+    const workspaceId = get(selectedWorkspace)?.id;
+    if (!workspaceId) {
+        setAlert("warning", "Deletion unavailable", "Select workspace before deleting invitations.");
+        return false;
+    }
+
+    if (!invitement.id) {
+        setAlert("warning", "Deletion unavailable", "Invitation identifier is missing.");
+        return false;
+    }
+
+    let response: Response;
+    try {
+        response = await fetchAuthenticated("/delete_invitement", {
+            method: "DELETE",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                workspaceId,
+                invitementId: invitement.id
+            })
+        });
+    } catch {
+        setAlert("error", "Invitation deletion failed", "Cannot reach workspace members service.");
+        return false;
+    }
+
+    const responseBody = await readWorkspaceMembersMutationResponse(response);
+    if (!response.ok || responseBody?.ok === false) {
+        setAlert("error", "Invitation deletion failed", buildWorkspaceMembersError(response, responseBody, "Cannot delete invitation"));
+        return false;
+    }
+
+    setAlert("success", "Invitation deleted", "Workspace invitation was deleted successfully.");
+    return true;
 }
 
 export const deleteMemberRequest: ComponentProps<UI.Workspace.Settings.WorkspaceMembersSettingScreen>["deleteMemberRequest"] = async (userToDelete: Workspace.Workspace.WorkspaceUser) => {
-    
+    const workspaceId = get(selectedWorkspace)?.id;
+    if (!workspaceId) {
+        setAlert("warning", "Removal unavailable", "Select workspace before removing members.");
+        return false;
+    }
+
+    const userId = asNonEmptyString(userToDelete.userId);
+    if (!userId) {
+        setAlert("warning", "Removal unavailable", "Cannot remove member without user id.");
+        return false;
+    }
+
+    let response: Response;
+    try {
+        response = await fetchAuthenticated("/delete_member", {
+            method: "DELETE",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                workspaceId,
+                userId
+            })
+        });
+    } catch {
+        setAlert("error", "Member removal failed", "Cannot reach workspace members service.");
+        return false;
+    }
+
+    const responseBody = await readWorkspaceMembersMutationResponse(response);
+    if (!response.ok || responseBody?.ok === false || responseBody?.deleted === false) {
+        setAlert("error", "Member removal failed", buildWorkspaceMembersError(response, responseBody, "Cannot remove member"));
+        return false;
+    }
+
+    setAlert("success", "Member removed", "Workspace member was removed successfully.");
+    return true;
 }
 
 export const updateMemberPermissions: ComponentProps<UI.Workspace.Settings.WorkspaceMembersSettingScreen>["updateMemberPermissions"] = async (userId: string, permissions: Permissions.Workspace.WorkspaceUserPermissions[]) => {
-    
+    const workspaceId = get(selectedWorkspace)?.id;
+    if (!workspaceId) {
+        setAlert("warning", "Update unavailable", "Select workspace before updating permissions.");
+        return false;
+    }
+
+    const normalizedUserId = asNonEmptyString(userId);
+    if (!normalizedUserId) {
+        setAlert("warning", "Update unavailable", "Cannot update permissions without user id.");
+        return false;
+    }
+
+    let response: Response;
+    try {
+        response = await fetchAuthenticated("/update_member_permissions", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                workspaceId,
+                userId: normalizedUserId,
+                permissions
+            })
+        });
+    } catch {
+        setAlert("error", "Permission update failed", "Cannot reach workspace members service.");
+        return false;
+    }
+
+    const responseBody = await readWorkspaceMembersMutationResponse(response);
+    if (!response.ok || responseBody?.ok === false || responseBody?.updated === false) {
+        setAlert("error", "Permission update failed", buildWorkspaceMembersError(response, responseBody, "Cannot update member permissions"));
+        return false;
+    }
+
+    setAlert("success", "Permissions updated", "Workspace member permissions were updated successfully.");
+    return true;
 }

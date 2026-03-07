@@ -1,1 +1,1 @@
-export { GET, POST } from "./server";
+export { DELETE, GET, POST } from "./server";

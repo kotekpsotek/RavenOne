@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { dev } from '$app/environment';
 import { generateToken } from '$lib/server/auth/jwt';
+import { autoJoinUserToInvitedWorkspaces } from '$lib/server/workspace-invitements';
 import { DB_Models } from '@ravenlens/backend';
 import bcrypt from 'bcryptjs';
 import { fail, redirect } from '@sveltejs/kit';
@@ -55,6 +56,16 @@ export const actions: Actions = {
 					error: 'Failed to create user',
 					values: { fullName, email }
 				});
+			}
+
+			try {
+				await autoJoinUserToInvitedWorkspaces({
+					userId: user.id,
+					userObjectId: (user as { _id?: unknown })._id,
+					email: user.email
+				});
+			} catch (invitationReconciliationError) {
+				console.error('Failed to auto-join invited workspaces after register', invitationReconciliationError);
 			}
 
 			token = generateToken({
