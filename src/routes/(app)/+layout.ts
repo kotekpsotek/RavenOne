@@ -31,7 +31,7 @@ export const load: LayoutLoad = async ({ url }) => {
         }
 
         // Download the real user
-        const userDownloaded = await downloadCurrentUser(token);
+        const userDownloaded = await downloadCurrentUser(token, url.origin);
         if (userDownloaded.data) {
             userProfile.set(userDownloaded.data.user);
         }

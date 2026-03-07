@@ -4,6 +4,8 @@ import { DB_Models } from "@ravenlens/backend";
 import { Permissions, Workspace } from "@ravenlens/shared";
 import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
+import { downloadCurrentUser } from "$lib/utils/auth";
+import { extractBearerToken } from "$lib/server/auth/request";
 
 type WorkspaceEntry = Workspace.Workspace.WorkspaceUserEntryLoaded;
 type WorkspacePermission = WorkspaceEntry["userPermissions"][number];
@@ -271,11 +273,7 @@ export const POST: RequestHandler = async ({ request, cookies, fetch }) => {
 			now
 		});
 
-		const workspaceModel =
-			(DB_Models.Workspace as { workspaceModel?: typeof DB_Models.Workspace.Workspace.workspaceModel })
-				.workspaceModel ?? DB_Models.Workspace.Workspace.workspaceModel;
-
-		const duplicateWorkspace = await workspaceModel
+		const duplicateWorkspace = await DB_Models.Workspace.Workspace.workspaceModel
 			.findOne({
 				ownerUserId: payload.userId,
 				name: workspaceName
@@ -294,13 +292,18 @@ export const POST: RequestHandler = async ({ request, cookies, fetch }) => {
 
 		const workspaceId = randomUUID();
 		const imageUrl = buildDefaultWorkspaceImageUrl(workspaceName, workspaceId);
-
-		await workspaceModel.create({
+		
+		await DB_Models.Workspace.Workspace.workspaceModel.create({
 			id: workspaceId,
 			name: workspaceName,
 			imageUrl,
 			ownerUserId: payload.userId,
-			workspaceMembers: [],
+			workspaceMembers: [
+				{
+					user: currentUserProfile._id,
+					permissions: []
+				}
+			],
 			workspaceInvitements
 		});
 

@@ -1,0 +1,28 @@
+@baseUrl = http://localhost:3000
+
+### Search GitHub Users
+POST {{baseUrl}}/3rd-party/users
+Content-Type: application/json
+
+{
+    "userName": "octocat",
+    "method": "github"
+}
+
+### Search LinkedIn Users (Mock)
+POST {{baseUrl}}/3rd-party/users
+Content-Type: application/json
+
+{
+    "userName": "John Doe",
+    "method": "linkedin"
+}
+
+### Search empty user (Should return empty array)
+POST {{baseUrl}}/3rd-party/users
+Content-Type: application/json
+
+{
+    "userName": "",
+    "method": "github"
+}

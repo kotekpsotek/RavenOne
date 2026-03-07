@@ -4,7 +4,7 @@ import { fetchAuthenticated } from "./fetch";
 import { browser } from "$app/environment";
 import { goto } from "$app/navigation";
 
-const LOCAL_AUTH_API_BASE = '/auth';
+const LOCAL_AUTH_API_BASE_NAME = 'auth';
 
 /** Call to authentication route */
 export function onAuthenticateWith(provider: "github" | "google" | "linkedin", mode: "signin" | "signup") {
@@ -64,7 +64,7 @@ export async function isUserAuthenticated(jwt?: string): Promise<boolean> {
         throw("JWT is required to be specified as parameter for server running auth function");
     }
     
-    const response = await fetchAuthenticated(`${LOCAL_AUTH_API_BASE}/is-authenticated`, {
+    const response = await fetchAuthenticated(`/${LOCAL_AUTH_API_BASE_NAME}/is-authenticated`, {
         method: "GET"
     }, jwt);
 
@@ -72,12 +72,12 @@ export async function isUserAuthenticated(jwt?: string): Promise<boolean> {
 }
 
 /** Make request to download user from api service */
-export async function downloadCurrentUser(jwt?: string): Promise<{ status: boolean, data?: { user: Profile } }> {
+export async function downloadCurrentUser(jwt?: string, origin?: string): Promise<{ status: boolean, data?: { user: Profile } }> {
     if (!browser && !jwt) {
         throw("JWT is required to be specified as parameter for server running auth function");
     }
     
-    const response = await fetchAuthenticated(`${LOCAL_AUTH_API_BASE}/me`, {
+    const response = await fetchAuthenticated(`${origin ?? ""}/${LOCAL_AUTH_API_BASE_NAME}/me`, {
         method: "GET"
     }, jwt);
 
