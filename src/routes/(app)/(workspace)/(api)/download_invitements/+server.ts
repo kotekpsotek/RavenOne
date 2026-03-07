@@ -1,4 +1,4 @@
-import type { RequestHandler } from "@sveltejs/kit";
+import { json, type RequestHandler } from "@sveltejs/kit";
 import { downloadCurrentUser } from "$lib/utils/auth";
 import { prefetchWorkspaceWithMembers } from "$lib/server/db";
 import { extractBearerToken, getAuthenticatedPayload } from "$lib/server/auth/request";
@@ -42,7 +42,5 @@ export const POST: RequestHandler = async ({ request, url }) => {
     }
 
     // Check has user adequate permissions in workspace to invite new members
-    return new Response(JSON.stringify(userWorkspacesQuota.workspaceInvitements), {
-        status: 200
-    });
+    return json(userWorkspacesQuota.workspaceInvitements, { status: 200 });
 }

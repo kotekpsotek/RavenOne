@@ -1,11 +1,11 @@
 <script lang="ts">
+    import { userProfile } from "$lib/stores/user";
     import { avaiableWorkspaces, selectedWorkspace } from "$lib/stores/workspace";
     import { alertState } from "$lib/utils/alert";
     import { fetchAuthenticated } from "$lib/utils/fetch";
     import { UI } from "@ravenlens/frontend";
-    import type { Profile, Workspace } from "@ravenlens/shared";
+    import type { Workspace } from "@ravenlens/shared";
     import type { ComponentProps } from "svelte";
-    import ProfileLoader from "./ProfileLoader.svelte";
 
     let { open = $bindable(false) } = $props();
 
@@ -106,17 +106,13 @@
 </script>
 
 {#if open}
-    <ProfileLoader>
-        {#snippet children(profile: Profile)}
-            <UI.Workspace.Management.AddWorkspaceScreen
-                bind:open
-                avaiableWorkspaces={$avaiableWorkspaces}
-                workspaceAdditionName=""
-                currentUser={profile}
-                onCreate={onCreateWorkspace}
-                isSelectedClassStyle="after:bg-os2-100 after:font-semibold"
-                {fetchAuthenticated}
-            />
-        {/snippet}
-    </ProfileLoader>
+    <UI.Workspace.Management.AddWorkspaceScreen
+        bind:open
+        avaiableWorkspaces={$avaiableWorkspaces}
+        workspaceAdditionName=""
+        currentUser={$userProfile!}
+        onCreate={onCreateWorkspace}
+        isSelectedClassStyle="after:bg-os2-100 after:font-semibold"
+        {fetchAuthenticated}
+    />
 {/if}

@@ -10,3 +10,14 @@ export interface Alert {
 }
 
 export const alertState = writable<{ alert: Alert, timeoutMs: number } | undefined>(undefined);
+
+export function setAlert(type: "success" | "error" | "warning", name: string, description: string) {
+    alertState.set({
+        alert: {
+            type,
+            name,
+            description
+        },
+        timeoutMs: 5_000
+    });
+}

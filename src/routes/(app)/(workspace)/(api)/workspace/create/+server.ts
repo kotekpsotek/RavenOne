@@ -301,7 +301,7 @@ export const POST: RequestHandler = async ({ request, cookies, fetch }) => {
 			workspaceMembers: [
 				{
 					user: currentUserProfile._id,
-					permissions: []
+					permissions: [],
 				}
 			],
 			workspaceInvitements

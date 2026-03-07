@@ -3,7 +3,6 @@
     import { selectedWorkspace } from "$lib/stores/workspace";
     import { JWTAuth } from "$lib/utils/auth";
     import { fetchAuthenticated } from "$lib/utils/fetch";
-    import { defaultAvaiableOptions } from "..";
     import type {
         GetWorkspaceApiKeysResponse,
         SaveWorkspaceApiKeyRequest,
@@ -14,19 +13,6 @@
         SaveWorkspaceModelRequest,
         SaveWorkspaceModelResponse
     } from "./api/models/server";
-
-    defaultAvaiableOptions.update(avaiableOptions => {
-        return avaiableOptions.map(option => {
-            if (option.name === "AI Models") {
-                return {
-                    ...option,
-                    isSelected: true
-                };
-            }
-
-            return option;
-        });
-    });
 
     function handleGetJWT() {
         const jwt = JWTAuth.getToken();

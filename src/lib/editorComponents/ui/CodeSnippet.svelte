@@ -68,7 +68,6 @@
 
     function onDescriptionInput(ev: Event) {
         const el = (ev.currentTarget as HTMLParagraphElement);
-        console.log("Description inputted: ", el.innerHTML)
 
         if (!el.textContent?.length) {
             el.textContent = "";

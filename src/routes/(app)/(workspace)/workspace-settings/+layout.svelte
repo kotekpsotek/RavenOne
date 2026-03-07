@@ -1,354 +1,91 @@
 <script lang=ts>
-    import { UI } from "@ravenlens/frontend";
-    import { browser } from "$app/environment";
-    import { goto } from "$app/navigation";
     import { page } from "$app/stores";
-    import ProfileLoader from "$lib/screens/ProfileLoader.svelte";
-    import { avaiableWorkspaces, selectedWorkspace } from "$lib/stores/workspace";
     import { theme } from "$lib/stores/theme";
-    import type { Profile, Workspace } from "@ravenlens/shared";
-    import { fetchAuthenticated } from "$lib/utils/fetch";
-    import { onDestroy, type ComponentProps, type Snippet } from "svelte";
-    import { alertState } from "$lib/utils/alert";
-    import { defaultAvaiableOptions } from ".";
+    import { selectedWorkspace } from "$lib/stores/workspace";
+    import Icon from "@iconify/svelte";
+    import { UI } from "@ravenlens/frontend";
+    import { avaiableOptions, optionURLToString, selectedOptionItem } from "./default";
 
-    type DownloadWorkspaceForUserResponse = {
-        status: boolean;
-        workspace?: Workspace.Workspace.WorkspaceForUser;
-        error?: string;
-    };
+    let { children } = $props();
 
-    type DeleteWorkspaceResponse = {
-        status?: boolean;
-        deleted?: boolean;
-        workspaceId?: string;
-        error?: string;
-    };
-
-    type SaveWorkspaceResponse = {
-        status?: boolean;
-        saved?: boolean;
-        workspace?: {
-            id?: string;
-            name?: string;
-            imageUrl?: string;
-            ownerUserId?: string;
-        };
-        error?: string;
-    };
-
-    type LayoutProps = {
-        children?: Snippet;
-    };
-
-    let { children: layoutChildren }: LayoutProps = $props();
-
-    let workspaceLoaded = $state<Workspace.Workspace.WorkspaceForUser | undefined>(undefined);
-    let loadedWorkspaceId = "";
-    let activeWorkspaceId = "";
-    let isWorkspaceLoading = $state(false);
-
-    const onSetAlertState: ComponentProps<UI.Workspace.Settings.WorkspaceSettingsScreen>["onSetAlertState"] = (state) => {
-        $alertState = state;
-    };
-
-    function getErrorMessage(error: unknown): string {
-        if (error instanceof Error) {
-            return error.message;
-        }
-
-        if (typeof error === "string") {
-            return error;
-        }
-
-        return "Failed to load selected workspace settings";
-    }
-
-    function setAlert(type: "success" | "error" | "warning", name: string, description: string) {
-        $alertState = {
-            alert: {
-                type,
-                name,
-                description
-            },
-            timeoutMs: 5_000
-        };
-    }
-
-    function isRecord(value: unknown): value is Record<string, unknown> {
-        return typeof value === "object" && value !== null;
-    }
-
-    function asNonEmptyString(value: unknown): string | undefined {
-        if (typeof value !== "string") {
-            return undefined;
-        }
-
-        const trimmed = value.trim();
-        return trimmed.length ? trimmed : undefined;
-    }
-
-    function readImageFile(image: unknown): File | null {
-        if (!isRecord(image)) {
-            return null;
-        }
-
-        const imageCandidate = image.imageFile;
-        if (!(imageCandidate instanceof File) || imageCandidate.size <= 0) {
-            return null;
-        }
-
-        return imageCandidate;
-    }
-
-    function readImageUrl(image: unknown): string | undefined {
-        if (!isRecord(image)) {
-            return undefined;
-        }
-
-        return asNonEmptyString(image.url);
-    }
-
-    async function downloadWorkspaceForUser(workspaceId: string) {
-        isWorkspaceLoading = true;
-        workspaceLoaded = undefined;
-
-        try {
-            const response = await fetchAuthenticated(`/workspace-for-user?workspaceId=${encodeURIComponent(workspaceId)}`, {
-                method: "GET"
-            });
-
-            let responseBody: DownloadWorkspaceForUserResponse | undefined;
-            try {
-                responseBody = await response.json() as DownloadWorkspaceForUserResponse;
-            } catch {
-                responseBody = undefined;
+    function onRedirectHandler(option: UI.Workspace.Settings.Types.AvaiableSettingOption) {
+        return async () => {
+            if (option.onClick) {
+                return option.onClick(option);
             }
+            
 
-            if (!response.ok) {
-                throw new Error(responseBody?.error ?? `Cannot load workspace (status ${response.status})`);
-            }
-
-            if (!responseBody?.workspace) {
-                throw new Error(responseBody?.error ?? "Workspace payload is empty");
-            }
-
-            if (activeWorkspaceId !== workspaceId) {
-                return;
-            }
-
-            workspaceLoaded = responseBody.workspace;
-        } catch (error) {
-            $alertState = {
-                alert: {
-                    type: "error",
-                    name: "Workspace settings load failed",
-                    description: getErrorMessage(error)
-                },
-                timeoutMs: 5_000
-            };
-        } finally {
-            isWorkspaceLoading = false;
+            const path = Array.isArray(option.url) ? option.url.at(-1) : option.url;
+            window.location.assign(path ?? "");
         }
     }
-
-    const onSaveWorkspaceChanges: ComponentProps<UI.Workspace.Settings.WorkspaceSettingsScreen>["onSaveWorkspaceChanges"] = async (name, image) => {
-        const currentWorkspaceLoaded = workspaceLoaded;
-        if (!currentWorkspaceLoaded?.id) {
-            setAlert("warning", "Workspace save unavailable", "Select workspace before trying to save changes.");
-            return false;
-        }
-
-        const workspaceId = currentWorkspaceLoaded.id;
-
-        const normalizedWorkspaceName = name.trim();
-        if (!normalizedWorkspaceName) {
-            setAlert("warning", "Workspace name required", "Workspace name cannot be empty.");
-            return false;
-        }
-
-        const formData = new FormData();
-        formData.set("workspaceId", workspaceId);
-        formData.set("name", normalizedWorkspaceName);
-
-        const imageFile = readImageFile(image);
-        if (imageFile) {
-            formData.set("image", imageFile);
-        } else {
-            const imageUrl = readImageUrl(image);
-            if (imageUrl) {
-                formData.set("imageUrl", imageUrl);
-            }
-        }
-
-        let response: Response;
-        try {
-            response = await fetchAuthenticated(`/workspace-settings/api?workspaceId=${encodeURIComponent(workspaceId)}`, {
-                method: "POST",
-                body: formData
-            });
-        } catch {
-            setAlert("error", "Workspace save failed", "Cannot reach workspace settings service.");
-            return false;
-        }
-
-        let responseBody: SaveWorkspaceResponse | undefined;
-        try {
-            responseBody = await response.json() as SaveWorkspaceResponse;
-        } catch {
-            responseBody = undefined;
-        }
-
-        if (!response.ok || !responseBody?.status || !responseBody.saved) {
-            const errorMessage = responseBody?.error ?? `Cannot save workspace changes (${response.status})`;
-            setAlert("error", "Workspace save failed", errorMessage);
-            return false;
-        }
-
-        const savedName = asNonEmptyString(responseBody.workspace?.name) ?? normalizedWorkspaceName;
-        const savedImageUrl = asNonEmptyString(responseBody.workspace?.imageUrl)
-            ?? asNonEmptyString(currentWorkspaceLoaded.imageUrl)
-            ?? "";
-
-        workspaceLoaded = {
-            ...currentWorkspaceLoaded,
-            name: savedName,
-            imageUrl: savedImageUrl
-        };
-
-        let savedWorkspaceEntry: Workspace.Workspace.WorkspaceUserEntryLoaded | undefined;
-        avaiableWorkspaces.update(existingWorkspaces => {
-            const updatedWorkspaces = existingWorkspaces.map(workspace => {
-                if (workspace.id !== workspaceId) {
-                    return workspace;
-                }
-
-                const updatedWorkspace = {
-                    ...workspace,
-                    name: savedName,
-                    imageUrl: savedImageUrl
-                };
-
-                savedWorkspaceEntry = updatedWorkspace;
-                return updatedWorkspace;
-            });
-
-            return updatedWorkspaces;
-        });
-
-        if (savedWorkspaceEntry) {
-            selectedWorkspace.set(savedWorkspaceEntry);
-        }
-
-        setAlert("success", "Workspace saved", "Workspace changes were saved successfully.");
-        setTimeout(() => location.reload())
-        return true;
-    }
-
-    const onDeleteWorkspace: ComponentProps<UI.Workspace.Settings.WorkspaceSettingsScreen>["onDeleteWorkspace"] = async () => {
-        const workspaceId = workspaceLoaded?.id;
-        if (!workspaceId) {
-            setAlert("warning", "Workspace deletion unavailable", "Select workspace before trying to delete it.");
-            return false;
-        }
-
-        let response: Response;
-        try {
-            response = await fetchAuthenticated(`/workspace-settings/api?workspaceId=${encodeURIComponent(workspaceId)}`, {
-                method: "DELETE"
-            });
-        } catch {
-            setAlert("error", "Workspace deletion failed", "Cannot reach workspace deletion service.");
-            return false;
-        }
-
-        let responseBody: DeleteWorkspaceResponse | undefined;
-        try {
-            responseBody = await response.json() as DeleteWorkspaceResponse;
-        } catch {
-            responseBody = undefined;
-        }
-
-        if (!response.ok || !responseBody?.status || !responseBody.deleted) {
-            const errorMessage = responseBody?.error ?? `Cannot delete workspace (${response.status})`;
-            setAlert("error", "Workspace deletion failed", errorMessage);
-            return false;
-        }
-
-        let remainingWorkspaces: Workspace.Workspace.WorkspaceUserEntryLoaded[] = [];
-        avaiableWorkspaces.update(existingWorkspaces => {
-            remainingWorkspaces = existingWorkspaces.filter(workspace => workspace.id !== workspaceId);
-            return remainingWorkspaces;
-        });
-
-        workspaceLoaded = undefined;
-        loadedWorkspaceId = "";
-        activeWorkspaceId = "";
-
-        selectedWorkspace.set(remainingWorkspaces[0]);
-        setAlert("success", "Workspace deleted", "Workspace was deleted successfully.");
-        return true;
-    };
-    
-    const unsubscribePage = page.subscribe(($page) => {
-        if (!browser) {
-            return;
-        }
-
-        if ($page.url.pathname.endsWith("/workspace-settings")) {
-            void goto("/workspace-settings/common");
-        }
-    });
-
-    const unsubscribeWorkspace = selectedWorkspace.subscribe((workspace) => {
-        if (!browser) {
-            return;
-        }
-
-        const workspaceId = workspace?.id ?? "";
-        activeWorkspaceId = workspaceId;
-
-        if (!workspaceId) {
-            workspaceLoaded = undefined;
-            loadedWorkspaceId = "";
-        } else if (workspaceId !== loadedWorkspaceId) {
-            loadedWorkspaceId = workspaceId;
-            void downloadWorkspaceForUser(workspaceId);
-        }
-    });
-
-    onDestroy(() => {
-        unsubscribePage();
-        unsubscribeWorkspace();
-    });
 </script>
+
+{#snippet SetTitleCard(item: UI.Workspace.Settings.Types.AvaiableSettingOption | undefined)}
+    {#if item}
+        <UI.Common.PageTitleCard
+            icons={[
+                {
+                    name: item.iconProps?.icon,
+                    classAllocation: "top-0 right-0 w-16 h-16",
+                    color: $theme === "dark" ? "white" : ""
+                }
+            ]}
+            cardName={item.nameTranslated ?? item.name}
+        >
+            <svelte:fragment slot="description">
+                {item.description}
+            </svelte:fragment>
+        </UI.Common.PageTitleCard>
+    {/if}
+{/snippet}
 
 <UI.Common.PageWrapper
     additionalClass="p-10"
 >
-    <ProfileLoader>
-        {#snippet children(profile: Profile)}
-            {#if workspaceLoaded}
-                <UI.Workspace.Settings.WorkspaceSettingsScreen
-                    open={true}
-                    user={profile}
-                    theme={$theme}
-                    avaiableOptions={[...$defaultAvaiableOptions]}
-                    selectedWorkspace={workspaceLoaded}
-                    {fetchAuthenticated}
-                    {onSetAlertState}
-                    {onDeleteWorkspace}
-                    {onSaveWorkspaceChanges}
-                >
-                    {@render layoutChildren?.()}
-                </UI.Workspace.Settings.WorkspaceSettingsScreen>
-            {:else if isWorkspaceLoading}
-                <div class="px-4 py-6 text-sm text-base-content/70">Loading workspace settings...</div>
-            <!-- {:else}
-                <div class="px-4 py-6 text-sm text-base-content/70">
-                    Select a workspace to view settings.
-                </div> -->
-            {/if}
-        {/snippet}
-    </ProfileLoader>
+    {#if $selectedWorkspace}
+        <div class="relative flex sm:flex-col sm:gap-10 lg:gap-0 lg:flex-row w-full h-full">
+            <div 
+                class="left-panel sm:w-full sm:border lg:border-0 sm:rounded-lg lg:rounded-none sm:p-2 lg:w-fit sm:h-fit lg:h-screen left-side-stripe space-y-2 text-base-content/70 p-1 pl-0 lg:pr-4 lg:border-r border-gray-500/30"
+            >
+                {#each avaiableOptions as option}
+                    <button 
+                        class="w-full rounded-lg p-2 px-4 flex justify-start cursor-pointer gap-2 items-center justify-center transition-colors duration-200 hover:bg-gray-400/10 hover:text-base-content {option.isSelected ? "bg-gray-400/10 text-base-content" : ""}"
+                        class:selected={$page.url.pathname.endsWith(optionURLToString(option))}
+                        onclick={onRedirectHandler(option)}
+                    >
+                        <Icon
+                            icon={option.iconProps?.icon}
+                        />
+                        
+                        <span>
+                            {option.name}
+                        </span>
+                    </button>
+                {/each}
+            </div>
+
+            <div class="right-panel flex-1 lg:pl-4 pb-4 flex flex-col gap-10 overflow-y-auto">
+                {#if $selectedOptionItem && $selectedOptionItem.name !== "Workspace Members"}
+                    {@render SetTitleCard($selectedOptionItem)}
+                {/if}
+                {@render children()}
+            </div>
+        </div>
+    {:else}
+        <div
+            class="w-screen h-screen flex gap-2 items-center justify-center"
+        >
+            <span class="loading loading-spinner loading-xs"></span>
+            <span>Loading workspace settings...</span>
+        </div>
+    {/if}
 </UI.Common.PageWrapper>
+
+<style>
+    @reference "../../../../app.css";    
+
+    .selected {
+        @apply bg-base-300;
+    }
+</style>

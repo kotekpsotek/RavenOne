@@ -3,6 +3,7 @@ import { DB_Models } from "@ravenlens/backend";
 import { Permissions, Workspace } from "@ravenlens/shared";
 import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
+import type { WorkspaceUser } from "../../../../../../../../packages/shared/dist/types/workspace/workspace";
 
 type WorkspaceForUser = Workspace.Workspace.WorkspaceForUser;
 type WorkspaceMember = Workspace.Workspace.WorkspaceMember;
@@ -10,8 +11,8 @@ type WorkspaceInvitement = Workspace.Workspace.WorkspaceMemberInvitement;
 type WorkspacePermission = WorkspaceForUser["userPermissions"][number];
 
 type WorkspaceMemberRaw = {
-	user?: unknown;
-	permissions?: unknown;
+	user?: WorkspaceMember;
+	permissions?: WorkspaceMember["permissions"];
 };
 
 type WorkspaceInvitementUserRaw = {
@@ -169,15 +170,15 @@ function normalizeDate(value: unknown): Date {
 	return new Date(0);
 }
 
-function toWorkspaceMembers(
+async function toWorkspaceMembers(
 	workspaceMembersRaw: WorkspaceMemberRaw[] | undefined,
 	profilesByObjectId: Map<string, ProfileDocumentRaw>
-): WorkspaceMember[] {
+): Promise<WorkspaceUser[]> {
 	if (!Array.isArray(workspaceMembersRaw)) {
 		return [];
 	}
 
-	const members: WorkspaceMember[] = [];
+	const members: WorkspaceUser[] = [];
 
 	for (const memberRaw of workspaceMembersRaw) {
 		const memberObjectId = normalizeObjectId(memberRaw.user);
@@ -185,15 +186,17 @@ function toWorkspaceMembers(
 			continue;
 		}
 
-		const memberProfile = profilesByObjectId.get(memberObjectId);
-		const userId = asString(memberProfile?.id) ?? memberObjectId;
-		const userName = asString(memberProfile?.name) ?? "Unknown user";
+		const userDB = await DB_Models.UserAccount.profileModel.findById(memberRaw.user)
 
-		members.push({
-			userId,
-			userName,
-			permissions: normalizePermissions(memberRaw.permissions)
-		});
+		if (userDB) {
+			members.push({
+				userId: userDB.id,
+				profileImgURL: userDB.profileImgURL,
+				name: userDB.name,
+				permissions: memberRaw.permissions ?? [],
+				joinDate: memberRaw.user?.joinDate ?? new Date()
+			} satisfies WorkspaceUser);
+		}
 	}
 
 	return members;
@@ -294,7 +297,7 @@ function resolveCurrentUserPermissions(workspace: WorkspaceDocumentRaw, currentU
 	return [];
 }
 
-export const GET: RequestHandler = async ({ request, cookies, fetch, url }) => {
+export const POST: RequestHandler = async ({ request, cookies, fetch, url }) => {
 	const authStatusResponse = await ensureAuthenticatedViaRoute(request, fetch);
 	if (!authStatusResponse) {
 		return json({ status: false, error: "Failed to validate authentication" }, { status: 500 });
@@ -387,7 +390,7 @@ export const GET: RequestHandler = async ({ request, cookies, fetch, url }) => {
 			name,
 			imageUrl,
 			ownerUserId,
-			workspaceMembers: toWorkspaceMembers(downloadedWorkspace.workspaceMembers, profilesByObjectId),
+			workspaceMembers: await toWorkspaceMembers(downloadedWorkspace.workspaceMembers, profilesByObjectId),
 			workspaceInvitements: toWorkspaceInvitements(downloadedWorkspace.workspaceInvitements),
 			isOwner: ownerUserId === payload.userId,
 			userPermissions: resolveCurrentUserPermissions(downloadedWorkspace, {

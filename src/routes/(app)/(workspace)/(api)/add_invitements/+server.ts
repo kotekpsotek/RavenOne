@@ -12,12 +12,9 @@ import { appName } from "$lib/config/app";
 async function sendInvitementEmail(invitedMembers: Workspace.Workspace.WorkspaceMemberInvitement<Workspace.Workspace.InvitementKind>[]) {
     const resendFromEmail = env.RESEND_FROM_EMAIL?.trim();
     const resend = getResendInstance();
-    console.log(invitedMembers)
 
     for (const member of invitedMembers) {
-        console.log(member.user.email)
         if (member.kind === "email" && member.user.email) {
-            console.log('Send')
             const { error } = await resend.emails.send({
                 from: resendFromEmail,
                 to: [member.user.email],
@@ -122,7 +119,6 @@ export const POST: RequestHandler = async ({ request, url }) => {
         }
     });
 
-    console.log('UQ', uniqueMembers)
     if (uniqueMembers.length > 0) {
         // Send email to each invited member
         await sendInvitementEmail(uniqueMembers);
