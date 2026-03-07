@@ -4,7 +4,7 @@
     import { goto } from "$app/navigation";
     import { page } from "$app/stores";
     import ProfileLoader from "$lib/screens/ProfileLoader.svelte";
-    import { selectedWorkspace } from "$lib/stores/workspace";
+    import { avaiableWorkspaces, selectedWorkspace } from "$lib/stores/workspace";
     import { theme } from "$lib/stores/theme";
     import type { Profile, Workspace } from "@ravenlens/shared";
     import { fetchAuthenticated } from "$lib/utils/fetch";
@@ -15,6 +15,13 @@
     type DownloadWorkspaceForUserResponse = {
         status: boolean;
         workspace?: Workspace.Workspace.WorkspaceForUser;
+        error?: string;
+    };
+
+    type DeleteWorkspaceResponse = {
+        status?: boolean;
+        deleted?: boolean;
+        workspaceId?: string;
         error?: string;
     };
 
@@ -43,6 +50,17 @@
         }
 
         return "Failed to load selected workspace settings";
+    }
+
+    function setAlert(type: "success" | "error" | "warning", name: string, description: string) {
+        $alertState = {
+            alert: {
+                type,
+                name,
+                description
+            },
+            timeoutMs: 5_000
+        };
     }
 
     async function downloadWorkspaceForUser(workspaceId: string) {
@@ -88,6 +106,51 @@
         }
     }
 
+    const onDeleteWorkspace: ComponentProps<UI.Workspace.Settings.WorkspaceSettingsScreen>["onDeleteWorkspace"] = async () => {
+        const workspaceId = workspaceLoaded?.id;
+        if (!workspaceId) {
+            setAlert("warning", "Workspace deletion unavailable", "Select workspace before trying to delete it.");
+            return false;
+        }
+
+        let response: Response;
+        try {
+            response = await fetchAuthenticated(`/workspace-settings/api?workspaceId=${encodeURIComponent(workspaceId)}`, {
+                method: "DELETE"
+            });
+        } catch {
+            setAlert("error", "Workspace deletion failed", "Cannot reach workspace deletion service.");
+            return false;
+        }
+
+        let responseBody: DeleteWorkspaceResponse | undefined;
+        try {
+            responseBody = await response.json() as DeleteWorkspaceResponse;
+        } catch {
+            responseBody = undefined;
+        }
+
+        if (!response.ok || !responseBody?.status || !responseBody.deleted) {
+            const errorMessage = responseBody?.error ?? `Cannot delete workspace (${response.status})`;
+            setAlert("error", "Workspace deletion failed", errorMessage);
+            return false;
+        }
+
+        let remainingWorkspaces: Workspace.Workspace.WorkspaceUserEntryLoaded[] = [];
+        avaiableWorkspaces.update(existingWorkspaces => {
+            remainingWorkspaces = existingWorkspaces.filter(workspace => workspace.id !== workspaceId);
+            return remainingWorkspaces;
+        });
+
+        workspaceLoaded = undefined;
+        loadedWorkspaceId = "";
+        activeWorkspaceId = "";
+
+        selectedWorkspace.set(remainingWorkspaces[0]);
+        setAlert("success", "Workspace deleted", "Workspace was deleted successfully.");
+        return true;
+    };
+    
     const unsubscribePage = page.subscribe(($page) => {
         if (!browser) {
             return;
@@ -135,6 +198,7 @@
                     selectedWorkspace={workspaceLoaded}
                     {fetchAuthenticated}
                     {onSetAlertState}
+                    {onDeleteWorkspace}
                 >
                     {@render layoutChildren?.()}
                 </UI.Workspace.Settings.WorkspaceSettingsScreen>
