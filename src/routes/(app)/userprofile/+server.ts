@@ -10,6 +10,7 @@ import jwt from "jsonwebtoken";
 import { Resend } from "resend";
 import type { RequestHandler } from "./$types";
 import { appName } from "$lib/config/app";
+import { getResendInstance } from "$lib/server/email";
 
 const MAX_PROFILE_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
 const DELETE_CODE_LENGTH = 6;
@@ -184,17 +185,10 @@ function isSafeHexEqual(expectedHex: string, candidateHex: string): boolean {
 }
 
 async function sendDeleteCodeEmail(targetEmail: string, code: string): Promise<void> {
-    const resendApiKey = env.RESEND_API_KEY?.trim();
     const resendFromEmail = env.RESEND_FROM_EMAIL?.trim();
 
-    if (!resendApiKey) {
-        throw new Error("RESEND_API_KEY is not configured");
-    }
-    if (!resendFromEmail) {
-        throw new Error("RESEND_FROM_EMAIL is not configured");
-    }
-
-    const resend = new Resend(resendApiKey);
+    const resend = getResendInstance();
+    
     const { error } = await resend.emails.send({
         from: resendFromEmail,
         to: [targetEmail],

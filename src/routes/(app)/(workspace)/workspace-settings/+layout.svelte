@@ -344,8 +344,10 @@
                 </UI.Workspace.Settings.WorkspaceSettingsScreen>
             {:else if isWorkspaceLoading}
                 <div class="px-4 py-6 text-sm text-base-content/70">Loading workspace settings...</div>
-            {:else}
-                <div class="px-4 py-6 text-sm text-base-content/70">Select a workspace to view settings.</div>
+            <!-- {:else}
+                <div class="px-4 py-6 text-sm text-base-content/70">
+                    Select a workspace to view settings.
+                </div> -->
             {/if}
         {/snippet}
     </ProfileLoader>
