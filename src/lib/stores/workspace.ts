@@ -18,11 +18,75 @@ const WORKSPACE_COLLECTION_KEYS = [
     "workspaceUserEntryLoaded"
 ] as const;
 
+const SELECTED_WORKSPACE_ID_STORAGE_KEY = "selected_workspace_id";
+const LEGACY_SELECTED_WORKSPACE_STORAGE_KEY = "selected_workspace";
+
 let hasDownloadedWorkspaces = false;
 let workspaceSyncPromise: Promise<void> | null = null;
+let storedSelectedWorkspaceId: string | undefined;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null;
+}
+
+function asNonEmptyString(value: unknown): string | undefined {
+    if (typeof value !== "string") {
+        return undefined;
+    }
+
+    const normalized = value.trim();
+    return normalized.length ? normalized : undefined;
+}
+
+function readSelectedWorkspaceIdFromStorage(): string | undefined {
+    if (!browser) {
+        return undefined;
+    }
+
+    const storedId = asNonEmptyString(localStorage.getItem(SELECTED_WORKSPACE_ID_STORAGE_KEY));
+    if (storedId) {
+        return storedId;
+    }
+
+    const legacyStoredWorkspace = localStorage.getItem(LEGACY_SELECTED_WORKSPACE_STORAGE_KEY);
+    if (!legacyStoredWorkspace) {
+        return undefined;
+    }
+
+    try {
+        const parsedLegacyWorkspace = JSON.parse(legacyStoredWorkspace) as { id?: unknown };
+        const legacyWorkspaceId = asNonEmptyString(parsedLegacyWorkspace?.id);
+
+        if (legacyWorkspaceId) {
+            localStorage.setItem(SELECTED_WORKSPACE_ID_STORAGE_KEY, legacyWorkspaceId);
+        }
+
+        localStorage.removeItem(LEGACY_SELECTED_WORKSPACE_STORAGE_KEY);
+        return legacyWorkspaceId;
+    } catch {
+        const legacyWorkspaceId = asNonEmptyString(legacyStoredWorkspace);
+        if (legacyWorkspaceId) {
+            localStorage.setItem(SELECTED_WORKSPACE_ID_STORAGE_KEY, legacyWorkspaceId);
+        }
+
+        localStorage.removeItem(LEGACY_SELECTED_WORKSPACE_STORAGE_KEY);
+        return legacyWorkspaceId;
+    }
+}
+
+function persistSelectedWorkspaceId(selectedWorkspaceId: string | undefined): void {
+    if (!browser) {
+        return;
+    }
+
+    if (selectedWorkspaceId) {
+        localStorage.setItem(SELECTED_WORKSPACE_ID_STORAGE_KEY, selectedWorkspaceId);
+    } else {
+        localStorage.removeItem(SELECTED_WORKSPACE_ID_STORAGE_KEY);
+    }
+
+    // Always clear legacy key to keep persistence format stable.
+    localStorage.removeItem(LEGACY_SELECTED_WORKSPACE_STORAGE_KEY);
 }
 
 function toWorkspaceEntry(value: unknown): WorkspaceEntry | undefined {
@@ -92,44 +156,21 @@ function extractWorkspacesFromPayload(payload: unknown): WorkspaceEntry[] {
     return [];
 }
 
-function mergeWorkspaces(existing: WorkspaceEntry[], incoming: WorkspaceEntry[]): WorkspaceEntry[] {
-    const merged = [...existing];
-    const indexById = new Map<string, number>();
-
-    for (let index = 0; index < merged.length; index++) {
-        indexById.set(merged[index].id, index);
-    }
-
-    for (const workspace of incoming) {
-        const existingIndex = indexById.get(workspace.id);
-        if (existingIndex === undefined) {
-            indexById.set(workspace.id, merged.length);
-            merged.push(workspace);
-            continue;
-        }
-
-        // Keep existing order but refresh payload for already-known workspaces.
-        merged[existingIndex] = workspace;
-    }
-
-    return merged;
-}
-
 function syncSelectedWorkspace(workspaces: WorkspaceEntry[]) {
     if (!workspaces.length) {
+        selectedWorkspace.set(undefined);
         return;
     }
 
     const currentSelectedWorkspace = get(selectedWorkspace);
-    if (!currentSelectedWorkspace) {
-        selectedWorkspace.set(workspaces[0]);
-        return;
-    }
+    const preferredWorkspaceId = currentSelectedWorkspace?.id ?? storedSelectedWorkspaceId;
 
-    const refreshedSelectedWorkspace = workspaces.find(workspace => workspace.id === currentSelectedWorkspace.id);
-    if (refreshedSelectedWorkspace) {
-        selectedWorkspace.set(refreshedSelectedWorkspace);
-        return;
+    if (preferredWorkspaceId) {
+        const refreshedSelectedWorkspace = workspaces.find(workspace => workspace.id === preferredWorkspaceId);
+        if (refreshedSelectedWorkspace) {
+            selectedWorkspace.set(refreshedSelectedWorkspace);
+            return;
+        }
     }
 
     selectedWorkspace.set(workspaces[0]);
@@ -165,13 +206,8 @@ async function syncWorkspaces(options: WorkspaceSyncOptions): Promise<void> {
         try {
             const downloadedWorkspaces = await downloadWorkspacesFromBackend();
 
-            let mergedWorkspaces: WorkspaceEntry[] = [];
-            avaiableWorkspaces.update(existingWorkspaces => {
-                mergedWorkspaces = mergeWorkspaces(existingWorkspaces, downloadedWorkspaces);
-                return mergedWorkspaces;
-            });
-
-            syncSelectedWorkspace(mergedWorkspaces);
+            avaiableWorkspaces.set(downloadedWorkspaces);
+            syncSelectedWorkspace(downloadedWorkspaces);
             hasDownloadedWorkspaces = true;
         } catch (error) {
             console.error("Failed to synchronize available workspaces", error);
@@ -200,34 +236,23 @@ function onWorkspaceSelectionStateChange(isOpen: boolean) {
 }
 
 export const selectedWorkspace = (() => {
-    const STORAGE_KEY = 'selected_workspace';
-    const { subscribe, set, update } = writable<Workspace.Workspace.WorkspaceUserEntryLoaded | undefined>(undefined);
-
-    // Load from localStorage if in browser
-    if (browser) {
-        const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored) {
-            try {
-                set(JSON.parse(stored));
-            } catch (e) {
-                console.error("Failed to parse selected workspace from localStorage", e);
-            }
-        }
-    }
+    const { subscribe, set, update } = writable<WorkspaceEntry | undefined>(undefined);
 
     return {
         subscribe,
-        set: (value: Workspace.Workspace.WorkspaceUserEntryLoaded | undefined) => {
-            if (browser) {
-                if (value) {
-                    localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
-                } else {
-                    localStorage.removeItem(STORAGE_KEY);
-                }
-            }
+        set: (value: WorkspaceEntry | undefined) => {
+            storedSelectedWorkspaceId = value?.id;
+            persistSelectedWorkspaceId(storedSelectedWorkspaceId);
             set(value);
         },
-        update
+        update: (updater: (currentWorkspace: WorkspaceEntry | undefined) => WorkspaceEntry | undefined) => {
+            update(currentWorkspace => {
+                const nextWorkspace = updater(currentWorkspace);
+                storedSelectedWorkspaceId = nextWorkspace?.id;
+                persistSelectedWorkspaceId(storedSelectedWorkspaceId);
+                return nextWorkspace;
+            });
+        }
     };
 })();
 export const avaiableWorkspaces = writable<Workspace.Workspace.WorkspaceUserEntryLoaded[]>([]);
@@ -236,7 +261,13 @@ export const isWorkspaceInAddition = writable<boolean>(false);
 export const isWorkspaceDownloadInProgress = writable<boolean>(false);
 
 if (browser) {
+    storedSelectedWorkspaceId = readSelectedWorkspaceIdFromStorage();
     isWorkspaceSelectionOpen.subscribe(onWorkspaceSelectionStateChange);
+
+    // Resolve selected workspace from fresh backend payload instead of stale localStorage object snapshots.
+    void syncWorkspaces({
+        showLoading: true
+    });
 }
 
 /**

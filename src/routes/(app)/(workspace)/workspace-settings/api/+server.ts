@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 import { env } from "$env/dynamic/private";
 import { getAuthenticatedPayload } from "$lib/server/auth/request";
+import { prefetchWorkspaceWithMembers } from "$lib/server/db";
 import { DB_Models } from "@ravenlens/backend";
 import { Storage } from "@google-cloud/storage";
 import { json } from "@sveltejs/kit";
@@ -231,29 +232,40 @@ export const POST: RequestHandler = async ({ request, cookies, fetch, url }) => 
 	const imageUrlCandidate = asNonEmptyString(formData.get("imageUrl"));
 
 	try {
+		const workspace = await prefetchWorkspaceWithMembers(workspaceId);
+		if (!workspace) {
+			return json({ status: false, error: "Workspace not found" }, { status: 404 });
+		}
+
+		const workspaceMembers = Array.isArray(workspace.workspaceMembers) ? workspace.workspaceMembers : [];
+
+		const thisUserAWorkspaceMember = workspaceMembers.find((member) => member.user.id === payload.userId);
+		if (!thisUserAWorkspaceMember) {
+			return json({ status: false, error: "Only workspace members can update this workspace" }, { status: 403 });
+		}
+
+		const canUpdateWorkspace = workspace.ownerUserId === payload.userId
+			|| thisUserAWorkspaceMember.permissions.includes("manage_workspace_settings");
+
+		if (!canUpdateWorkspace) {
+			return json(
+				{ status: false, error: "Only workspace owner or members with manage_workspace_settings can update this workspace" },
+				{ status: 403 }
+			);
+		}
+
 		const existingWorkspace = await DB_Models.Workspace.Workspace.workspaceModel
-			.findOne({
-				id: workspaceId,
-				ownerUserId: payload.userId
-			})
+			.findOne({ id: workspaceId })
+			.select({ imageUrl: 1, _id: 0 })
 			.lean<WorkspaceImageUploadProjection>();
 
 		if (!existingWorkspace) {
-			const workspaceExists = await DB_Models.Workspace.Workspace.workspaceModel
-				.findOne({ id: workspaceId })
-				.select({ id: 1, _id: 0 })
-				.lean();
-
-			if (!workspaceExists) {
-				return json({ status: false, error: "Workspace not found" }, { status: 404 });
-			}
-
-			return json({ status: false, error: "Only workspace owner can update this workspace" }, { status: 403 });
+			return json({ status: false, error: "Workspace not found" }, { status: 404 });
 		}
 
 		const duplicateWorkspace = await DB_Models.Workspace.Workspace.workspaceModel
 			.findOne({
-				ownerUserId: payload.userId,
+				ownerUserId: workspace.ownerUserId,
 				name: workspaceName,
 				id: { $ne: workspaceId }
 			})
@@ -281,7 +293,7 @@ export const POST: RequestHandler = async ({ request, cookies, fetch, url }) => 
 		await DB_Models.Workspace.Workspace.workspaceModel.updateOne(
 			{
 				id: workspaceId,
-				ownerUserId: payload.userId
+				ownerUserId: workspace.ownerUserId
 			},
 			{
 				$set: {
@@ -299,7 +311,7 @@ export const POST: RequestHandler = async ({ request, cookies, fetch, url }) => 
 					id: workspaceId,
 					name: workspaceName,
 					imageUrl: uploadedImageUrl,
-					ownerUserId: payload.userId
+					ownerUserId: workspace.ownerUserId
 				}
 			},
 			{ status: 200 }
@@ -330,24 +342,34 @@ export const DELETE: RequestHandler = async ({ request, cookies, fetch, url }) =
 	}
 
 	try {
+		const workspace = await prefetchWorkspaceWithMembers(workspaceId);
+		if (!workspace) {
+			return json({ status: false, error: "Workspace not found" }, { status: 404 });
+		}
+
+		const workspaceMembers = Array.isArray(workspace.workspaceMembers) ? workspace.workspaceMembers : [];
+
+		const thisUserAWorkspaceMember = workspaceMembers.find((member) => member.user.id === payload.userId);
+		if (!thisUserAWorkspaceMember) {
+			return json({ status: false, error: "Only workspace members can delete this workspace" }, { status: 403 });
+		}
+
+		const canDeleteWorkspace = workspace.ownerUserId === payload.userId
+			|| thisUserAWorkspaceMember.permissions.includes("manage_workspace_settings");
+
+		if (!canDeleteWorkspace) {
+			return json(
+				{ status: false, error: "Only workspace owner or members with manage_workspace_settings can delete this workspace" },
+				{ status: 403 }
+			);
+		}
+
 		const deletedWorkspace = await DB_Models.Workspace.Workspace.workspaceModel
-			.findOneAndDelete({
-				id: workspaceId,
-				ownerUserId: payload.userId
-			})
+			.findOneAndDelete({ id: workspaceId })
 			.lean();
 
 		if (!deletedWorkspace) {
-			const workspaceExists = await DB_Models.Workspace.Workspace.workspaceModel
-				.findOne({ id: workspaceId })
-				.select({ id: 1, _id: 0 })
-				.lean();
-
-			if (!workspaceExists) {
-				return json({ status: false, error: "Workspace not found" }, { status: 404 });
-			}
-
-			return json({ status: false, error: "Only workspace owner can delete this workspace" }, { status: 403 });
+			return json({ status: false, error: "Workspace not found" }, { status: 404 });
 		}
 
 		return json(

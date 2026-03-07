@@ -7,6 +7,7 @@
     import { goto } from "$app/navigation";
     import ExpansionPanel from "./ExpansionPanel.svelte";
     import { isWorkspaceSelectionOpen, selectedWorkspace } from "$lib/stores/workspace";
+    import { getFirstAllowedWorkspaceSettingsPath } from "$lib/workspace-settings/permissions";
     import { isSearchModalOpen } from "$lib/stores/files";
     import { appName } from "$lib/config/app";
 
@@ -22,6 +23,8 @@
 
     let startClientX = 0;
     let startPanelWidth = 0;
+    let workspaceSettingsPath = $derived(getFirstAllowedWorkspaceSettingsPath($selectedWorkspace));
+    let canOpenWorkspaceSettings = $derived(Boolean(workspaceSettingsPath));
 
     onMount(() => {
         syncThemeMode();
@@ -103,8 +106,12 @@
     }
 
     //
-    async function onOpenWorkspaceSettings() {
-        window.location.assign("/workspace-settings/common");
+    function onOpenWorkspaceSettings() {
+        if (!workspaceSettingsPath) {
+            return;
+        }
+
+        window.location.assign(workspaceSettingsPath);
     }
 
     function onHelpMaterials() {
@@ -210,17 +217,19 @@
                         </button>
                     </div>
 
-                    <div class="tooltip tooltip-right" data-tip="Workspace Settings">
-                        <button 
-                            class="btn btn-ghost btn-square btn-sm relative overflow-hidden rounded-lg text-base-content/70 hover:bg-base-300 hover:text-primary active:scale-95 transition-all"
-                            onclick={onOpenWorkspaceSettings}
-                        >
-                            <Icon 
-                                icon="material-symbols:settings-outline-rounded"
-                                class="text-xl"
-                            />
-                        </button>
-                    </div>
+                    {#if canOpenWorkspaceSettings}
+                        <div class="tooltip tooltip-right" data-tip="Workspace Settings">
+                            <button 
+                                class="btn btn-ghost btn-square btn-sm relative overflow-hidden rounded-lg text-base-content/70 hover:bg-base-300 hover:text-primary active:scale-95 transition-all"
+                                onclick={onOpenWorkspaceSettings}
+                            >
+                                <Icon 
+                                    icon="material-symbols:settings-outline-rounded"
+                                    class="text-xl"
+                                />
+                            </button>
+                        </div>
+                    {/if}
                 </div>
 
                 {#if $user}
