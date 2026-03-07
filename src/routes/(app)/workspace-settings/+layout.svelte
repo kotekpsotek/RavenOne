@@ -241,6 +241,7 @@
         }
 
         setAlert("success", "Workspace saved", "Workspace changes were saved successfully.");
+        setTimeout(() => location.reload())
         return true;
     }
 
