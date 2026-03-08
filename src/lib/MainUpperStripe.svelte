@@ -485,6 +485,7 @@
                         Share
                     </span>
                 </summary>
+                
                 <div class="dropdown-content z-[20] mr-3 mt-10 w-[17rem] max-w-[88vw]">
                     <div class="relative rounded-2xl border border-base-300 bg-base-100 px-4 pb-4 pt-8 shadow-xl">
                         <div class="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 rounded-full border border-base-300 bg-base-200 p-3">

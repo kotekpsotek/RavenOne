@@ -2,11 +2,12 @@
     import Icon from "@iconify/svelte";
     import { UI } from "@ravenlens/frontend";
     import AIAnswerRichContent from "../../editorComponents/ui/mod/AIAnswerRichContent.svelte";
-    import { getPlayModeLabel, type AIPoint } from "$lib/editorComponents/types/AIList";
+    import { getPlayModeLabel } from "$lib/editorComponents/types/AIList";
     import { selectedFile } from "$lib/stores/files";
     import { hoveredListItemId } from "$lib/stores/hoveredListItem";
+    import { File } from "@ravenlens/shared";
 
-    let { aiAnswers, itemId = "" }: { aiAnswers: AIPoint["aiAnswers"]; itemId?: string } = $props();
+    let { aiAnswers, itemId = "" }: { aiAnswers: File.FileAI.AIPoint["aiAnswers"]; itemId?: string } = $props();
 
     let openAnswerIndices = $state<number[]>([]);
     let isAnswersListOpen = $state(true);
@@ -193,13 +194,296 @@
         }
     }
 
-    function formatJson(value: unknown) {
-        return JSON.stringify(value, null, 2);
+    const EMPTY_CONTEXT_PAYLOAD: File.FileAI.ContextSpecificationPayload = {
+        desktopFiles: [],
+        editorFiles: [],
+        networkUrls: []
+    };
+
+    function isRecord(value: unknown): value is Record<string, unknown> {
+        return typeof value === 'object' && value !== null;
+    }
+
+    function uniqueStrings(values: string[]) {
+        const seen: Record<string, true> = {};
+        const output: string[] = [];
+
+        for (const value of values) {
+            const trimmed = value.trim();
+            if (!trimmed) {
+                continue;
+            }
+
+            const normalized = trimmed.toLowerCase();
+            if (normalized === 'false') {
+                continue;
+            }
+
+            if (seen[normalized]) {
+                continue;
+            }
+
+            seen[normalized] = true;
+            output.push(trimmed);
+        }
+
+        return output;
+    }
+
+    function splitCommaSeparated(raw: string) {
+        return raw
+            .split(',')
+            .map((value) => value.trim())
+            .filter((value) => value.length > 0);
+    }
+
+    function parseStringList(value: unknown): string[] {
+        if (typeof value === 'string') {
+            return uniqueStrings(splitCommaSeparated(value));
+        }
+
+        if (Array.isArray(value)) {
+            const flattenedValues = value.flatMap((entry) => {
+                if (typeof entry === 'string') {
+                    return splitCommaSeparated(entry);
+                }
+
+                return [];
+            });
+
+            return uniqueStrings(flattenedValues);
+        }
+
+        return [];
+    }
+
+    function getFaviconUrl(targetUrl: string) {
+        try {
+            const host = new URL(targetUrl).hostname;
+            if (!host) {
+                return '';
+            }
+
+            return `https://www.google.com/s2/favicons?domain=${host}&sz=64`;
+        } catch {
+            return '';
+        }
+    }
+
+    function formatToolName(rawName: string) {
+        const normalizedName = rawName.trim();
+        if (!normalizedName) {
+            return '';
+        }
+
+        const lookupKey = normalizedName
+            .toLowerCase()
+            .replace(/([a-z])([A-Z])/g, '$1 $2')
+            .replace(/[_-]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+        switch (lookupKey) {
+            case 'web search':
+            case 'websearch':
+                return 'Web search';
+            case 'current document':
+            case 'currentdocument':
+                return 'Current Document';
+            case 'ravenone documents':
+            case 'ravenonedocuments':
+                return 'RavenOne Documents';
+            default: {
+                const withSpaces = normalizedName
+                    .replace(/([a-z])([A-Z])/g, '$1 $2')
+                    .replace(/[_-]+/g, ' ')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+
+                return withSpaces.charAt(0).toUpperCase() + withSpaces.slice(1);
+            }
+        }
+    }
+
+    function normalizeContextPayload(context: unknown): File.FileAI.ContextSpecificationPayload {
+        if (!isRecord(context)) {
+            return {
+                desktopFiles: [],
+                editorFiles: [],
+                networkUrls: []
+            };
+        }
+
+        const desktopFilesRaw = Array.isArray(context['desktopFiles']) ? context['desktopFiles'] : [];
+        const editorFilesRaw = Array.isArray(context['editorFiles']) ? context['editorFiles'] : [];
+        const networkUrlsRaw = Array.isArray(context['networkUrls']) ? context['networkUrls'] : [];
+
+        const desktopFiles = desktopFilesRaw
+            .map((entry, index): File.FileAI.ContextDeviceFile | null => {
+                if (!isRecord(entry)) {
+                    return null;
+                }
+
+                const name = typeof entry['name'] === 'string' && entry['name'].trim().length > 0
+                    ? entry['name'].trim()
+                    : 'Unknown file';
+
+                return {
+                    id:
+                        typeof entry['id'] === 'string' && entry['id'].trim().length > 0
+                            ? entry['id'].trim()
+                            : `${name}-${index}`,
+                    name,
+                    type:
+                        typeof entry['type'] === 'string' && entry['type'].trim().length > 0
+                            ? entry['type'].trim()
+                            : 'application/octet-stream',
+                    size: typeof entry['size'] === 'number' ? entry['size'] : 0,
+                    locationHint:
+                        typeof entry['locationHint'] === 'string' && entry['locationHint'].trim().length > 0
+                            ? entry['locationHint'].trim()
+                            : 'Desktop',
+                    previewDataUrl:
+                        typeof entry['previewDataUrl'] === 'string' && entry['previewDataUrl'].trim().length > 0
+                            ? entry['previewDataUrl'].trim()
+                            : undefined
+                };
+            })
+            .filter((entry): entry is File.FileAI.ContextDeviceFile => entry !== null);
+
+        const editorFiles = editorFilesRaw
+            .map((entry, index): File.FileAI.ContextEditorFile | null => {
+                if (!isRecord(entry)) {
+                    return null;
+                }
+
+                const name = typeof entry['name'] === 'string' && entry['name'].trim().length > 0
+                    ? entry['name'].trim()
+                    : 'Unknown file';
+
+                return {
+                    id:
+                        typeof entry['id'] === 'string' && entry['id'].trim().length > 0
+                            ? entry['id'].trim()
+                            : `${name}-${index}`,
+                    name
+                };
+            })
+            .filter((entry): entry is File.FileAI.ContextEditorFile => entry !== null);
+
+        const networkUrls = networkUrlsRaw
+            .map((entry, index): File.FileAI.ContextNetworkURL | null => {
+                if (!isRecord(entry)) {
+                    return null;
+                }
+
+                const url = typeof entry['url'] === 'string' ? entry['url'].trim() : '';
+                if (!url) {
+                    return null;
+                }
+
+                return {
+                    id:
+                        typeof entry['id'] === 'string' && entry['id'].trim().length > 0
+                            ? entry['id'].trim()
+                            : `${url}-${index}`,
+                    url,
+                    favicon:
+                        typeof entry['favicon'] === 'string' && entry['favicon'].trim().length > 0
+                            ? entry['favicon'].trim()
+                            : getFaviconUrl(url)
+                };
+            })
+            .filter((entry): entry is File.FileAI.ContextNetworkURL => entry !== null);
+
+        return {
+            desktopFiles,
+            editorFiles,
+            networkUrls
+        };
+    }
+
+    function parseMcpServerNames(mcp: unknown): string[] {
+        if (mcp === false || mcp === null || mcp === undefined) {
+            return [];
+        }
+
+        const directNames = parseStringList(mcp);
+        if (directNames.length > 0) {
+            return directNames;
+        }
+
+        if (!isRecord(mcp)) {
+            return [];
+        }
+
+        const nestedMcpServers = mcp['mcpServers'];
+        const nestedNames = parseStringList(nestedMcpServers);
+        if (nestedNames.length > 0) {
+            return nestedNames;
+        }
+
+        if (isRecord(nestedMcpServers)) {
+            return uniqueStrings(Object.keys(nestedMcpServers));
+        }
+
+        return uniqueStrings(Object.keys(mcp));
+    }
+
+    function parseToolNames(tools: unknown): string[] {
+        const directTools = parseStringList(tools).map(formatToolName);
+        if (directTools.length > 0) {
+            return uniqueStrings(directTools);
+        }
+
+        if (!isRecord(tools)) {
+            return [];
+        }
+
+        const parsedTools: string[] = [];
+
+        for (const [key, value] of Object.entries(tools)) {
+            if (typeof value === 'boolean') {
+                if (value) {
+                    parsedTools.push(formatToolName(key));
+                }
+
+                continue;
+            }
+
+            if (typeof value === 'string') {
+                const normalizedValue = value.trim().toLowerCase();
+                if (normalizedValue === 'true') {
+                    parsedTools.push(formatToolName(key));
+                    continue;
+                }
+
+                if (normalizedValue && normalizedValue !== 'false') {
+                    parsedTools.push(...splitCommaSeparated(value).map(formatToolName));
+                }
+
+                continue;
+            }
+
+            if (Array.isArray(value)) {
+                parsedTools.push(...parseStringList(value).map(formatToolName));
+            }
+        }
+
+        return uniqueStrings(parsedTools);
     }
 
     const zoomedAnswer = $derived(zoomedIndex === null ? null : aiAnswers[zoomedIndex] ?? null);
     const infoAnswer = $derived(infoIndex === null ? null : aiAnswers[infoIndex] ?? null);
     const removeAnswer = $derived(removeAnswerIndex === null ? null : aiAnswers[removeAnswerIndex] ?? null);
+    const infoContextPayload = $derived(infoAnswer ? normalizeContextPayload(infoAnswer.context) : EMPTY_CONTEXT_PAYLOAD);
+    const infoMcpServers = $derived(infoAnswer ? parseMcpServerNames(infoAnswer.mcp) : []);
+    const infoTools = $derived(infoAnswer ? parseToolNames(infoAnswer.tools) : []);
+    const hasInfoContextResources = $derived(
+        infoContextPayload.desktopFiles.length > 0 ||
+            infoContextPayload.editorFiles.length > 0 ||
+            infoContextPayload.networkUrls.length > 0
+    );
 
     function onMouseEnter(ev: Event) {
         ev.stopPropagation();
@@ -360,7 +644,8 @@
                 name="AI answer"
                 open={true}
                 closeOnBackdrop={true}
-                size="2xl"
+                size={{ custom: "max-w-3/4" }}
+                modalClassExtension="h-[80vh]"
                 on:close={closeZoom}
             >
                 <div class="flex items-center justify-between py-2 pb-10">
@@ -376,13 +661,13 @@
                     </button>
                 </div>
 
-                <div class="space-y-2">
+                <div class="space-y-2 h-full mb-4">
                     <div class="flex items-center justify-between text-xs opacity-80">
                         <span>{zoomedAnswer.model.name}</span>
                         <span>{formatDate(zoomedAnswer.endDateTimestamp)}</span>
                     </div>
 
-                    <div class="max-h-[60vh] overflow-auto rounded border border-base-300 bg-base-100 px-4 py-3 text-sm leading-6 whitespace-pre-wrap break-words">
+                    <div class="h-full overflow-auto rounded border border-base-300 bg-base-100 px-4 py-3 text-sm leading-6 whitespace-pre-wrap break-words">
                         <AIAnswerRichContent content={zoomedAnswer.answerTipTapHTML} />
                     </div>
                 </div>
@@ -462,7 +747,7 @@
                 on:close={closeInfo}
             >
                 <div class="flex items-center justify-between py-2">
-                    <h3 class="non-margin-heading text-2xl font-semibold">AI Answer Settings</h3>
+                    <h3 class="non-margin-heading text-2xl font-semibold">AI Answer Details</h3>
                     <button
                         type="button"
                         class="btn btn-ghost btn-circle btn-sm"
@@ -475,30 +760,103 @@
                 </div>
 
                 <div class="space-y-3">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
                         <div class="rounded border border-base-300 bg-base-100 px-3 py-2">
                             <p class="text-xs uppercase tracking-wide opacity-70">Play Mode</p>
                             <p class="mt-1 font-medium">{getPlayModeLabel(infoAnswer.playMode)}</p>
                         </div>
 
                         <div class="rounded border border-base-300 bg-base-100 px-3 py-2">
-                            <p class="text-xs uppercase tracking-wide opacity-70">mcp</p>
-                            <p class="mt-1 font-medium">{infoAnswer.mcp ?? false}</p>
+                            <p class="text-xs uppercase tracking-wide opacity-70">MCP servers</p>
+                            <p class="mt-1 font-medium break-words">
+                                {infoMcpServers.length > 0 ? infoMcpServers.join(', ') : 'None'}
+                            </p>
+                        </div>
+
+                        <div class="rounded border border-base-300 bg-base-100 px-3 py-2">
+                            <p class="text-xs uppercase tracking-wide opacity-70">Tools</p>
+                            <p class="mt-1 font-medium break-words">
+                                {infoTools.length > 0 ? infoTools.join(', ') : 'None'}
+                            </p>
                         </div>
                     </div>
 
-                    <div class="rounded border border-base-300 bg-base-100 px-3 py-2">
-                        <p class="text-xs uppercase tracking-wide opacity-70">tools</p>
-                        <pre class="mt-1 text-xs whitespace-pre-wrap break-words">{formatJson(infoAnswer.tools)}</pre>
+                    <div class="rounded border border-base-300 bg-base-100 px-3 py-2 space-y-2">
+                        <div>
+                            <p class="text-xs uppercase tracking-wide opacity-70">Context</p>
+                            <p class="text-xs opacity-70 mt-1">Resources used in this run.</p>
+                        </div>
+
+                        {#if !hasInfoContextResources}
+                            <p class="text-xs opacity-60">No context resources were used.</p>
+                        {:else}
+                            <div class="space-y-2">
+                                <div class="space-y-1">
+                                    <p class="text-[11px] uppercase tracking-wide opacity-60">Desktop files</p>
+
+                                    {#if infoContextPayload.desktopFiles.length === 0}
+                                        <p class="text-xs opacity-60">No desktop files used.</p>
+                                    {/if}
+
+                                    <div class="space-y-1 max-h-28 overflow-auto">
+                                        {#each infoContextPayload.desktopFiles as file (file.id)}
+                                            <div class="flex items-center gap-2 rounded border border-base-300 px-2 py-1" title={file.locationHint}>
+                                                {#if file.previewDataUrl}
+                                                    <img src={file.previewDataUrl} alt={file.name} class="w-8 h-8 rounded object-cover" />
+                                                {:else}
+                                                    <Icon icon="material-symbols:description-outline-rounded" class="w-5 h-5 opacity-70" />
+                                                {/if}
+
+                                                <span class="text-xs truncate">{file.name}</span>
+                                            </div>
+                                        {/each}
+                                    </div>
+                                </div>
+
+                                <div class="space-y-1">
+                                    <p class="text-[11px] uppercase tracking-wide opacity-60">Editor files</p>
+
+                                    {#if infoContextPayload.editorFiles.length === 0}
+                                        <p class="text-xs opacity-60">No editor files used.</p>
+                                    {/if}
+
+                                    <div class="space-y-1 max-h-28 overflow-auto">
+                                        {#each infoContextPayload.editorFiles as file (file.id)}
+                                            <div class="flex items-center gap-2 rounded border border-base-300 px-2 py-1">
+                                                <Icon icon="material-symbols:article-outline-rounded" class="w-5 h-5 opacity-70" />
+                                                <span class="text-xs truncate">{file.name}</span>
+                                            </div>
+                                        {/each}
+                                    </div>
+                                </div>
+
+                                <div class="space-y-1">
+                                    <p class="text-[11px] uppercase tracking-wide opacity-60">Network URLs</p>
+
+                                    {#if infoContextPayload.networkUrls.length === 0}
+                                        <p class="text-xs opacity-60">No URLs used.</p>
+                                    {/if}
+
+                                    <div class="space-y-1 max-h-28 overflow-auto">
+                                        {#each infoContextPayload.networkUrls as entry (entry.id)}
+                                            <div class="flex items-center gap-2 rounded border border-base-300 px-2 py-1">
+                                                {#if entry.favicon}
+                                                    <img src={entry.favicon} alt="website favicon" class="w-4 h-4" />
+                                                {:else}
+                                                    <Icon icon="material-symbols:link-rounded" class="w-4 h-4 opacity-70" />
+                                                {/if}
+
+                                                <span class="text-xs truncate">{entry.url}</span>
+                                            </div>
+                                        {/each}
+                                    </div>
+                                </div>
+                            </div>
+                        {/if}
                     </div>
 
                     <div class="rounded border border-base-300 bg-base-100 px-3 py-2">
-                        <p class="text-xs uppercase tracking-wide opacity-70">context</p>
-                        <pre class="mt-1 text-xs whitespace-pre-wrap break-words max-h-40 overflow-auto">{formatJson(infoAnswer.context)}</pre>
-                    </div>
-
-                    <div class="rounded border border-base-300 bg-base-100 px-3 py-2">
-                        <p class="text-xs uppercase tracking-wide opacity-70">Asnwer</p>
+                        <p class="text-xs uppercase tracking-wide opacity-70">Answer</p>
                         <pre class="mt-1 text-xs whitespace-pre-wrap break-words max-h-52 overflow-auto">{infoAnswer.answerTipTapHTML}</pre>
                     </div>
                 </div>

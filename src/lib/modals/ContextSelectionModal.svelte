@@ -1,5 +1,5 @@
 <script lang="ts">
-    import type { ContextDeviceFile, ContextEditorFile, ContextNetworkURL, ContextSpecificationPayload } from "$lib/editorComponents/types/AIList";
+    import { File } from "@ravenlens/shared";
     import { selectedFile } from "$lib/stores/files";
     import Icon from "@iconify/svelte";
     import { UI } from "@ravenlens/frontend";
@@ -18,19 +18,19 @@
         infoMessage = ""
     } = $props<{
         open: boolean;
-        contextPayload: ContextSpecificationPayload;
-        onSave?: (payload: ContextSpecificationPayload) => void;
+        contextPayload: File.FileAI.ContextSpecificationPayload;
+        onSave?: (payload: File.FileAI.ContextSpecificationPayload) => void;
         infoMessage?: string;
     }>();
 
     // ...
     const contextPayloadClone = cloneContextPayload(contextPayload);
-    let desktopContextFiles = $state<ContextDeviceFile[]>(contextPayloadClone.desktopFiles);
-    let editorContextFiles = $state<ContextEditorFile[]>(contextPayloadClone.editorFiles);
-    let networkContextUrls = $state<ContextNetworkURL[]>(contextPayloadClone.networkUrls);
+    let desktopContextFiles = $state<File.FileAI.ContextDeviceFile[]>(contextPayloadClone.desktopFiles);
+    let editorContextFiles = $state<File.FileAI.ContextEditorFile[]>(contextPayloadClone.editorFiles);
+    let networkContextUrls = $state<File.FileAI.ContextNetworkURL[]>(contextPayloadClone.networkUrls);
     let networkUrlDraft = $state("");
 
-    function cloneContextPayload(payload: ContextSpecificationPayload): ContextSpecificationPayload {
+    function cloneContextPayload(payload: File.FileAI.ContextSpecificationPayload): File.FileAI.ContextSpecificationPayload {
         return {
             desktopFiles: [...payload.desktopFiles],
             editorFiles: [...payload.editorFiles],
@@ -76,7 +76,7 @@
                     size: file.size,
                     locationHint,
                     previewDataUrl: isImage ? await fileToDataUrl(file) : undefined
-                } satisfies ContextDeviceFile;
+                } satisfies File.FileAI.ContextDeviceFile;
             })
         );
 
@@ -92,7 +92,7 @@
             return;
         }
 
-        const nextFile: ContextEditorFile = {
+        const nextFile: File.FileAI.ContextEditorFile = {
             id: $selectedFile.id,
             name: $selectedFile.name
         };
@@ -120,7 +120,7 @@
     }
 
     function handleSaveContext() {
-        const payload: ContextSpecificationPayload = {
+        const payload: File.FileAI.ContextSpecificationPayload = {
             desktopFiles: desktopContextFiles,
             editorFiles: editorContextFiles,
             networkUrls: networkContextUrls

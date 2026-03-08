@@ -346,7 +346,7 @@
                     on:close={closeListTrayModal}
                 />
 
-                <div class="max-h-[70vh] overflow-y-auto pr-1">
+                <div class="max-h-[80vh] p-4 overflow-y-auto pr-1">
                     {@render listItemsContent()}
                 </div>
             </UI.Modals.ModalWrapper>

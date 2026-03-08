@@ -1,7 +1,8 @@
 <script lang="ts">
     import { browser } from '$app/environment';
     import Icon from '@iconify/svelte';
-    import type { AI, File } from '@ravenlens/shared';
+    import type { ContextSpecificationPayload, PlayMode } from '$lib/editorComponents/types/AIList';
+    import type { AI } from '@ravenlens/shared';
     import { playMode, selectedFile, selectedModel, selectedTools } from '$lib/stores/files';
     import { selectedMcpServers } from '$lib/stores/mcpConfig';
     import { contextSpecification } from '$lib/stores/contextSpec';
@@ -30,11 +31,11 @@
         onPlay?: (
             pointId: string,
             config: {
-                mode: File.FileAI.PlayMode;
+                mode: PlayMode;
                 model: AI.RavenLensAvaiableAIModel;
                 tools: string[];
                 mcpServers: string[];
-                contextSpec: File.FileAI.ContextSpecificationPayload;
+                contextSpec: ContextSpecificationPayload;
             }
         ) => void | Promise<void>;
         onStop?: (pointId: string) => void | Promise<void>;
@@ -42,8 +43,8 @@
         selectedItemModel: AI.RavenLensAvaiableAIModel | undefined;
         availableItemTools: string[],
         selectedItemMcpServers: string[],
-        selectedItemPlayMode: File.FileAI.PlayMode,
-        selectedItemContext: File.FileAI.ContextSpecificationPayload,
+        selectedItemPlayMode: PlayMode,
+        selectedItemContext: ContextSpecificationPayload,
         playDisabledReason: string
     } = $props();
 
@@ -59,7 +60,7 @@
         return `${POINT_CONTEXT_STORAGE_KEY_PREFIX}${currentItemId}`;
     }
 
-    function cloneContextPayload(payload: File.FileAI.ContextSpecificationPayload): File.FileAI.ContextSpecificationPayload {
+    function cloneContextPayload(payload: ContextSpecificationPayload): ContextSpecificationPayload {
         return {
             desktopFiles: [...payload.desktopFiles],
             editorFiles: [...payload.editorFiles],
@@ -67,17 +68,17 @@
         };
     }
 
-    function isContextSpecificationPayload(value: unknown): value is File.FileAI.ContextSpecificationPayload {
+    function isContextSpecificationPayload(value: unknown): value is ContextSpecificationPayload {
         return Boolean(
             value &&
             typeof value === 'object' &&
-            Array.isArray((value as File.FileAI.ContextSpecificationPayload).desktopFiles) &&
-            Array.isArray((value as File.FileAI.ContextSpecificationPayload).editorFiles) &&
-            Array.isArray((value as File.FileAI.ContextSpecificationPayload).networkUrls)
+            Array.isArray((value as ContextSpecificationPayload).desktopFiles) &&
+            Array.isArray((value as ContextSpecificationPayload).editorFiles) &&
+            Array.isArray((value as ContextSpecificationPayload).networkUrls)
         );
     }
 
-    function readPointContextPayload(currentItemId: string): File.FileAI.ContextSpecificationPayload | null {
+    function readPointContextPayload(currentItemId: string): ContextSpecificationPayload | null {
         if (!browser) {
             return null;
         }
@@ -111,7 +112,7 @@
         isPointContextModalOpen = true;
     }
 
-    function onSavePointContext(payload: File.FileAI.ContextSpecificationPayload) {
+    function onSavePointContext(payload: ContextSpecificationPayload) {
         const pointContext = cloneContextPayload(payload);
 
         if (browser) {
@@ -160,9 +161,6 @@
             };
         });
 
-        // Persist point-level context immediately to reduce loss on quick refresh/navigation.
-        void selectedFile.flushPendingFiles();
-
         selectedItemContext = pointContext;
         isPointContextModalOpen = false;
     }
@@ -179,7 +177,7 @@
         isPointPlayModeModalOpen = true;
     }
 
-    function onSavePointPlayMode(mode: File.FileAI.PlayMode) {
+    function onSavePointPlayMode(mode: PlayMode) {
         selectedFile.update(file => {
             if (!file) {
                 return file;
@@ -336,7 +334,7 @@
         type="button"
         class="btn btn-ghost btn-xs min-h-0 h-6 w-6 p-0 text-base-content/70 hover:text-base-content"
         aria-label="Selection modes"
-        title="Show possible modes. Modes will be applied only for playing this point individually. Additionally and all level subpoints of this point will be play with this selected mode"
+        title="Show possible modes"
         disabled={isPointPlaying}
         onclick={onOpenPointPlayModeModal}
     >
