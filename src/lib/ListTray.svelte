@@ -2,13 +2,13 @@
     import { onMount } from 'svelte';
     import { UI } from '@ravenlens/frontend';
     import { selectedFile } from '$lib/stores/files';
-    import {  } from "@ravenlens/shared";
     import Icon from '@iconify/svelte';
     import type { ElementInsertionItem } from './editorComponents/ui/ElementsListForMenus';
     import OrderedListItem from '$lib/listItems/OrderedListItem.svelte';
     import UnorderedListItem from '$lib/listItems/UnorderedListItem.svelte';
     import TaskListItem from '$lib/listItems/TaskListItem.svelte';
     import { createListId } from './listItems/utils';
+    import { File } from "@ravenlens/shared";
 
     const PANEL_HEIGHT_STORAGE_PREFIX = 'list-tray-height';
     const PANEL_MIN_HEIGHT = 120;
@@ -76,8 +76,8 @@
     }
 
     function onSelectListType(item: ElementInsertionItem, event: MouseEvent) {
-        let listKind = resolveListKind(item);
-        const listItem: EditableListItem = listKind === "task" ?
+        const listKind = resolveListKind(item);
+        const listItem: File.File.EditableListItem = listKind === "task" ?
             {
                 id: createListId(),
                 text: "",
@@ -89,25 +89,43 @@
                 id: createListId(),
                 text: "",
                 depth: 0
+            };
+
+        selectedFile.update(file => {
+            if (!file) {
+                return file;
             }
-        
-        $selectedFile!.lists = [
-            ...$selectedFile!.lists,
-            {
-                id: createId(),
-                kind: listKind,
-                name: item.name,
-                icon: item.icon,
-                items: [listItem]
-            }
-        ];
+
+            return {
+                ...file,
+                lists: [
+                    ...file.lists,
+                    {
+                        id: createId(),
+                        kind: listKind,
+                        name: item.name,
+                        icon: item.icon,
+                        items: [listItem]
+                    }
+                ]
+            };
+        });
 
         const triggerElement = event.currentTarget as HTMLElement | null;
         triggerElement?.closest('details')?.removeAttribute('open');
     }
 
     function removeSpawnedList(spawnedListId: string) {
-        $selectedFile!.lists = $selectedFile!.lists.filter((spawnedList) => spawnedList.id !== spawnedListId);
+        selectedFile.update(file => {
+            if (!file) {
+                return file;
+            }
+
+            return {
+                ...file,
+                lists: file.lists.filter(spawnedList => spawnedList.id !== spawnedListId)
+            };
+        });
     }
 
     function openListTrayModal() {

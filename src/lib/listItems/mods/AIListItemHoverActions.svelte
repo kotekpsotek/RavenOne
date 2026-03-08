@@ -160,6 +160,9 @@
             };
         });
 
+        // Persist point-level context immediately to reduce loss on quick refresh/navigation.
+        void selectedFile.flushPendingFiles();
+
         selectedItemContext = pointContext;
         isPointContextModalOpen = false;
     }

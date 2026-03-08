@@ -44,6 +44,10 @@ export const selectedFile = (() => {
         });
     }
 
+    const syncEntryListWithFile = (file: File.File.File) => {
+        entriesList.update(entries => updateEntryById(entries, file.id, file));
+    }
+
     const constructUnsavedFile = (file: File.File.File, dateTimestamp: number): UnsavedFile => {
         return {
             file: file,
@@ -312,6 +316,11 @@ export const selectedFile = (() => {
             store.update(updater);
 
             const afterFile = get(store);
+            if (afterFile) {
+                // Keep explorer tree in sync with selected file changes (also nested entries).
+                syncEntryListWithFile(afterFile);
+            }
+
             if (!afterFile || !priorFile || priorFile.id !== afterFile.id) {
                 return;
             }
@@ -361,6 +370,10 @@ export const selectedFile = (() => {
             }
 
             const afterFile = get(store);
+            if (afterFile) {
+                syncEntryListWithFile(afterFile);
+            }
+
             const afterPersistedState = getPersistedStateSignature(afterFile);
 
             if (afterFile && priorPersistedState !== afterPersistedState) {
