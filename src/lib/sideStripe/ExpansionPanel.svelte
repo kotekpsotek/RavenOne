@@ -775,7 +775,7 @@
             }}
             ondrop={(e) => handleDrop(e, null)}
         >
-            {#each $entriesList as entry (entry.id)}
+            {#each $entriesList as entry}
                 {@render renderEntry(entry)}
             {/each}
         </nav>

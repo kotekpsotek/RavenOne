@@ -168,6 +168,59 @@ export function sanitizeEntry(entry: FileEntry, workspaceId: string): FileEntry 
     };
 }
 
+function collectNestedEntryIds(items: FileEntry[], bucket: Set<string> = new Set<string>()): Set<string> {
+    for (const item of items) {
+        if (!item.subentries?.length) {
+            continue;
+        }
+
+        for (const subentry of item.subentries) {
+            bucket.add(String(subentry.id));
+        }
+
+        collectNestedEntryIds(item.subentries, bucket);
+    }
+
+    return bucket;
+}
+
+function dedupeEntryTree(entries: FileEntry[]): FileEntry[] {
+    const seenIds = new Set<string>();
+    const nestedEntryIds = collectNestedEntryIds(entries);
+
+    const walk = (items: FileEntry[], isRootLevel: boolean): FileEntry[] => {
+        const dedupedEntries: FileEntry[] = [];
+
+        for (const item of items) {
+            const entryId = String(item.id);
+
+            // If the same id exists as nested entry, drop duplicated root copy.
+            if (isRootLevel && nestedEntryIds.has(entryId)) {
+                continue;
+            }
+
+            if (seenIds.has(entryId)) {
+                continue;
+            }
+
+            seenIds.add(entryId);
+
+            const dedupedSubentries = item.subentries?.length
+                ? walk(item.subentries, false)
+                : undefined;
+
+            dedupedEntries.push({
+                ...item,
+                ...(dedupedSubentries?.length ? { subentries: dedupedSubentries } : {})
+            });
+        }
+
+        return dedupedEntries;
+    };
+
+    return walk(entries, true);
+}
+
 export async function loadWorkspaceEntries(workspaceId: string): Promise<FileEntry[]> {
     const entries = await DB_Models.File.fileModel
         .find({ createdByAuthorId: workspaceId })
@@ -177,18 +230,19 @@ export async function loadWorkspaceEntries(workspaceId: string): Promise<FileEnt
         return [];
     }
 
-    return entries.map((entry) => sanitizeEntry(entry, workspaceId));
+    return dedupeEntryTree(entries.map((entry) => sanitizeEntry(entry, workspaceId)));
 }
 
 export async function persistWorkspaceEntries(workspaceId: string, entries: FileEntry[]): Promise<void> {
     const normalizedEntries = entries.map((entry) => sanitizeEntry(entry, workspaceId));
+    const dedupedEntries = dedupeEntryTree(normalizedEntries);
 
     await DB_Models.File.fileModel.deleteMany({ createdByAuthorId: workspaceId });
-    if (!normalizedEntries.length) {
+    if (!dedupedEntries.length) {
         return;
     }
 
-    await DB_Models.File.fileModel.insertMany(normalizedEntries);
+    await DB_Models.File.fileModel.insertMany(dedupedEntries);
 }
 
 export function createFileEntry(name: string, workspaceId: string): FileEntry {

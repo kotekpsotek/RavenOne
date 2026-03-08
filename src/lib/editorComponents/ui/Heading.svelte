@@ -7,6 +7,8 @@
 	import WallpaperSelectionModal from "$lib/modals/WallpaperSelectionModal.svelte";
 	import IconValue from "$lib/IconValue.svelte";
     import { entriesList, selectedFile } from "$lib/stores/files";
+    import { renameFileRequest } from "$lib/files/connections/connections";
+    import { selectedWorkspace } from "$lib/stores/workspace";
 
 	let { node, updateAttributes, editor, getPos }: NodeViewProps = $props();
 
@@ -19,7 +21,7 @@
 	let lastSyncedFileName = "";
 
 	let icon = $derived((node.attrs.icon as string | undefined) ?? "");
-	let walper = $derived((node.attrs.walper as string | undefined) ?? "");
+	let walper = $derived($selectedFile?.walper ?? (node.attrs.walper as string | undefined) ?? "");
 	let isHeadingEmpty = $state(true);
 
 	function dispatchHeadingTyping(isTyping: boolean, value: string) {
@@ -149,12 +151,19 @@
 			clearTimeout(typingDebounceTimer);
 		}
 
-		typingDebounceTimer = setTimeout(() => {
+		typingDebounceTimer = setTimeout(async () => {
 			dispatchHeadingTyping(false, nextHeading);
 			typingDebounceTimer = null;
 
 			// Update selected file
 			selectedFile.update(current => (current ? { ...current, name: nextHeading } : current));
+
+			// Update file content remotelly
+			renameFileRequest(
+				$selectedWorkspace?.id!,
+				$selectedFile?.id!,
+				nextHeading
+			).catch(err => console.error(`Cannot update file:`, err));
 
 			// Update the file on entires list
 			entriesList.update(entries => {

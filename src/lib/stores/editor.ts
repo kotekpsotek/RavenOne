@@ -4,7 +4,7 @@ import { Document } from "@tiptap/extension-document";
 import { Placeholder } from "@tiptap/extension-placeholder";
 import { writable } from "svelte/store";
 import { StarterKit } from "@tiptap/starter-kit"
-import { selectedFile } from "./files";
+import { patchFileById, selectedFile } from "./files";
 import { isWorkspaceInAddition, isWorkspaceSelectionOpen } from "./workspace";
 import { FileHeading } from "../editorComponents/components/Heading";
 import { SlashCommand } from "../editorComponents/components/Suggestions.js";
@@ -70,6 +70,15 @@ export const editor = (() => {
                         // Custom Components
                         CodeSnippet
                     ],
+                    onUpdate(props) {
+                        if (!activeFileId) {
+                            return;
+                        }
+
+                        patchFileById(activeFileId, {
+                            content: props.editor.getHTML()
+                        });
+                    },
                 });
                 
                 // Track the instance and update the store

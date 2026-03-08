@@ -1,10 +1,17 @@
-import { asNonEmptyString, parseJsonBody, requireWorkspaceAccess } from "../server-utils";
-import { DB_Models } from "@ravenlens/backend";
+import {
+    asNonEmptyString,
+    loadWorkspaceEntries,
+    parseJsonBody,
+    persistWorkspaceEntries,
+    requireWorkspaceAccess,
+    updateFileById
+} from "../server-utils";
 import { File } from "@ravenlens/shared";
 import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
 
 type SaveContentRequestBody = {
+    workspaceId?: unknown;
     files?: unknown;
 };
 
@@ -15,14 +22,12 @@ type SaveFileEnvelope = {
 
 type IncomingFilePayload = {
     id?: unknown;
-    createdByAuthorId?: unknown;
     content?: unknown;
     lists?: unknown;
 };
 
 type FileUpdate = {
     fileId: string;
-    workspaceId: string;
     date: number;
     content: string;
     lists: File.File.SpawnedList[];
@@ -78,15 +83,12 @@ function buildFileUpdates(filesCandidate: unknown): FileUpdate[] | null {
         const filePayload = envelope.file as IncomingFilePayload;
 
         const fileId = asNonEmptyString(filePayload.id);
-        const workspaceId = asNonEmptyString(filePayload.createdByAuthorId);
-
-        if (!fileId || !workspaceId) {
+        if (!fileId) {
             return null;
         }
 
         updates.push({
             fileId,
-            workspaceId,
             date: normalizeDate(envelope.date),
             content: normalizeFileContent(filePayload.content),
             lists: normalizeLists(filePayload.lists)
@@ -102,6 +104,11 @@ export const POST: RequestHandler = async ({ request, cookies, fetch }) => {
         return json({ ok: false, message: "Invalid request body" }, { status: 400 });
     }
 
+    const workspaceId = asNonEmptyString(requestBody.workspaceId);
+    if (!workspaceId) {
+        return json({ ok: false, message: "workspaceId is required" }, { status: 400 });
+    }
+
     const incomingUpdates = buildFileUpdates(requestBody.files);
     if (!incomingUpdates) {
         return json({ ok: false, message: "files has to be an array of unsaved file entries" }, { status: 400 });
@@ -111,10 +118,10 @@ export const POST: RequestHandler = async ({ request, cookies, fetch }) => {
         return json([], { status: 200 });
     }
 
-    // Keep only the newest item for each workspace/file key.
+    // Keep only the newest item for each file key.
     const dedupedUpdates = new Map<string, FileUpdate>();
     for (const update of incomingUpdates) {
-        const dedupeKey = `${update.workspaceId}:${update.fileId}`;
+        const dedupeKey = update.fileId;
         const existingUpdate = dedupedUpdates.get(dedupeKey);
 
         if (!existingUpdate || existingUpdate.date < update.date) {
@@ -123,44 +130,48 @@ export const POST: RequestHandler = async ({ request, cookies, fetch }) => {
     }
 
     const updates = [...dedupedUpdates.values()];
-    const workspaceIds = [...new Set(updates.map((update) => update.workspaceId))];
 
-    for (const workspaceId of workspaceIds) {
-        const access = await requireWorkspaceAccess({
-            request,
-            cookies,
-            fetchFn: fetch,
-            workspaceId
-        });
+    const access = await requireWorkspaceAccess({
+        request,
+        cookies,
+        fetchFn: fetch,
+        workspaceId
+    });
 
-        if (access instanceof Response) {
-            return access;
-        }
+    if (access instanceof Response) {
+        return access;
     }
 
     try {
-        const saveResults = await Promise.all(
-            updates.map(async (update) => {
-                const result = await DB_Models.File.fileModel.updateOne(
-                    {
-                        id: update.fileId,
-                        createdByAuthorId: update.workspaceId
-                    },
-                    {
-                        $set: {
-                            content: update.content,
-                            lists: update.lists
-                        }
-                    }
-                );
+        let workspaceEntries = await loadWorkspaceEntries(workspaceId);
+        const acknowledgedFileIds: string[] = [];
+        let hasPersistedChanges = false;
 
-                return result.matchedCount > 0 ? update.fileId : null;
-            })
-        );
+        for (const update of updates) {
+            const updateResult = updateFileById(workspaceEntries, update.fileId, (entry) => {
+                return {
+                    ...entry,
+                    content: update.content,
+                    lists: update.lists
+                };
+            });
 
-        const savedFileIds = saveResults.filter((value): value is string => Boolean(value));
+            // File may already be removed by delete operation; acknowledge to avoid stuck retries.
+            if (!updateResult.updated) {
+                acknowledgedFileIds.push(update.fileId);
+                continue;
+            }
 
-        return json(savedFileIds, { status: 200 });
+            hasPersistedChanges = true;
+            workspaceEntries = updateResult.entries;
+            acknowledgedFileIds.push(update.fileId);
+        }
+
+        if (hasPersistedChanges) {
+            await persistWorkspaceEntries(workspaceId, workspaceEntries);
+        }
+
+        return json(acknowledgedFileIds, { status: 200 });
     } catch (error) {
         console.error("Cannot persist file content", error);
         return json({ ok: false, message: "Cannot save file content" }, { status: 500 });
