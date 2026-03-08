@@ -1,11 +1,12 @@
 <script lang="ts">
     import Icon from "@iconify/svelte";
-    import { selectedFile, type SpawnedList } from "$lib/stores/files";
+    import { selectedFile } from "$lib/stores/files";
+    import { File } from "@ravenlens/shared";
     import { onMount } from "svelte";
     import { CancelPointEvent, playableDocumentsAndListsWithPoints, PlayEvent, StopPlayEvent } from "$lib/stores/playModeStore";
     import { isPointSuccessorOfPoint } from "../utils";
 
-    let { itemId, spawnedList }: { itemId: string, spawnedList: SpawnedList } = $props();
+    let { itemId, spawnedList }: { itemId: string, spawnedList: File.File.SpawnedList } = $props();
 
     let wasPlaying = $state<null | { finishReason: "finished" | "stoped" }>(null);
     let wasPlayingTimeout: ReturnType<typeof setTimeout> | null = null;

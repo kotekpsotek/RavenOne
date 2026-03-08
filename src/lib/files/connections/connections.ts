@@ -1,6 +1,13 @@
 import { type DropPosition, type FilesDownloadResponse } from "../utils";
 import { File } from "@ravenlens/shared";
 import { requestFilesApi } from "./common";
+import type { PlayRequestBody } from "../../../routes/(app)/play/play.types";
+
+export type ShareFileResponse = {
+    shareUrl?: string;
+    shareId?: string;
+    sharedAt?: string;
+};
 
 export async function downloadFilesRequest(workspaceId: string) {
     return await requestFilesApi<FilesDownloadResponse>(
@@ -119,5 +126,28 @@ export async function changeWalperFileRequest(
         },
         walperUrl ? "Wallpaper update failed" : "Wallpaper deletion failed",
         walperUrl ? "Cannot update file wallpaper" : "Cannot delete file wallpaper"
+    )
+}
+
+export async function shareFileRequest(workspaceId: string, fileId: string) {
+    return requestFilesApi<ShareFileResponse>(
+        "/files/api/share",
+        "POST",
+        {
+            workspaceId,
+            fileId
+        },
+        "Share failed",
+        "Cannot generate a share link"
+    );
+}
+
+export async function playRequest(requestBody: PlayRequestBody) {
+    return requestFilesApi<PlayRequestBody>(
+        "/play",
+        "POST",
+        { ...requestBody },
+        "Play failed",
+        "Cannot play the entity"
     )
 }

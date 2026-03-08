@@ -148,10 +148,39 @@ function normalizeSubentries(subentries: unknown, workspaceId: string): FileEntr
     return subentries.map((entry) => sanitizeEntry(entry as FileEntry, workspaceId));
 }
 
+function normalizeSharedUrls(sharedUrls: unknown): NonNullable<FileEntry["sharedURLs"]> | undefined {
+    if (!Array.isArray(sharedUrls) || !sharedUrls.length) {
+        return undefined;
+    }
+
+    const normalizedSharedUrls = sharedUrls
+        .filter((entry): entry is NonNullable<FileEntry["sharedURLs"]>[number] => {
+            return Boolean(
+                entry
+                && typeof entry === "object"
+                && "url" in entry
+                && "sharedByUserId" in entry
+            );
+        })
+        .map((entry) => {
+            const sharedAt = toDate(entry.sharedAt);
+
+            return {
+                url: String(entry.url),
+                sharedAt,
+                sharedByUserId: String(entry.sharedByUserId)
+            };
+        })
+        .filter((entry) => entry.url.trim().length && entry.sharedByUserId.trim().length);
+
+    return normalizedSharedUrls.length ? normalizedSharedUrls : undefined;
+}
+
 export function sanitizeEntry(entry: FileEntry, workspaceId: string): FileEntry {
     const normalizedIcon = asNonEmptyString(entry.icon);
     const normalizedWalper = asNonEmptyString(entry.walper);
     const normalizedSubentries = normalizeSubentries(entry.subentries, workspaceId);
+    const normalizedSharedUrls = normalizeSharedUrls(entry.sharedURLs);
 
     return {
         type: "file",
@@ -164,7 +193,8 @@ export function sanitizeEntry(entry: FileEntry, workspaceId: string): FileEntry 
         createdByAuthorId: workspaceId,
         ...(normalizedIcon ? { icon: normalizedIcon } : {}),
         ...(normalizedWalper ? { walper: normalizedWalper } : {}),
-        ...(normalizedSubentries?.length ? { subentries: normalizedSubentries } : {})
+        ...(normalizedSubentries?.length ? { subentries: normalizedSubentries } : {}),
+        ...(normalizedSharedUrls?.length ? { sharedURLs: normalizedSharedUrls } : {})
     };
 }
 

@@ -1,8 +1,9 @@
 <script lang="ts">
     import { browser } from '$app/environment';
-    import Icon from '@iconify/svelte';
-    import type { ContextSpecificationPayload, PlayMode } from '$lib/editorComponents/types/AIList';
-    import type { AI } from '@ravenlens/shared';
+    import Icon, { setCustomIconsLoader } from '@iconify/svelte';
+    import type { AI, File } from '@ravenlens/shared';
+    type ContextSpecificationPayload = File.FileAI.ContextSpecificationPayload;
+    type PlayMode = File.FileAI.PlayMode;
     import { playMode, selectedFile, selectedModel, selectedTools } from '$lib/stores/files';
     import { selectedMcpServers } from '$lib/stores/mcpConfig';
     import { contextSpecification } from '$lib/stores/contextSpec';

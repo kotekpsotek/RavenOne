@@ -1,5 +1,5 @@
 <script lang="ts">
-    import type { SpawnedList } from '$lib/stores/files';
+    import { File } from '@ravenlens/shared';
     import EditableListItems from './EditableListItems.svelte';
 
     let {
@@ -7,7 +7,7 @@
         spawnedList
     }: {
         onEmptyList?: () => void;
-        spawnedList: SpawnedList
+        spawnedList: File.File.SpawnedList
     } = $props();
 </script>
 

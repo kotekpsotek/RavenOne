@@ -11,6 +11,8 @@
     import { isSearchModalOpen } from "$lib/stores/files";
     import { appName } from "$lib/config/app";
 
+    let { isSharedView = false }: { isSharedView?: boolean } = $props();
+
     let isExpanded = $state(false);
     const PANEL_WIDTH_STORAGE_KEY = 'expansion-panel-width';
     const PANEL_MIN_WIDTH = 260;
@@ -52,10 +54,18 @@
     }
 
     function onSearch() {
+        if (isSharedView) {
+            return;
+        }
+
         $isSearchModalOpen = !$isSearchModalOpen;
     }
 
     function onToggleSidebar() {
+        if (isSharedView) {
+            return;
+        }
+
         isExpanded = !isExpanded;
     }
 
@@ -102,6 +112,10 @@
 
     //
     function onToggleWorkspaceSelection() {
+        if (isSharedView) {
+            return;
+        }
+
         $isWorkspaceSelectionOpen = !$isWorkspaceSelectionOpen;
     }
 
@@ -123,6 +137,10 @@
     }
     
     function onKeyDownWindow(ev: KeyboardEvent) {
+        if (isSharedView) {
+            return;
+        }
+
         if (ev.ctrlKey && ev.key === '.') {
             isExpanded = !isExpanded;
         }
@@ -140,7 +158,7 @@
 
 <aside 
     class="relative flex h-full flex-col border-r border-base-300 bg-base-100 {isResizing ? '' : 'transition-all duration-300'}"
-    style={`width: ${isExpanded ? panelWidth + COLLAPSED_WIDTH : COLLAPSED_WIDTH}px`}
+    style={`width: ${isSharedView ? COLLAPSED_WIDTH : isExpanded ? panelWidth + COLLAPSED_WIDTH : COLLAPSED_WIDTH}px`}
 >
     <div class="flex flex-1 overflow-hidden">
         <!-- Narrow Stripe (Activity Bar) -->
@@ -148,40 +166,53 @@
             <div class="mb-4 flex flex-col items-center gap-6">
                 <!-- Workspace selection -->
                 <div class="tooltip tooltip-right" data-tip="{appName}">
-                    <button 
-                        class="flex h-10 w-10 p-2 items-center justify-center rounded-xl bg-primary/10 transition-all hover:scale-105 hover:bg-primary/20"
-                        class:isSelected={$isWorkspaceSelectionOpen}
-                        onclick={onToggleWorkspaceSelection}
-                    >
-                        <UI.Workspace.WorkspaceProfile
-                            imageUrl={$selectedWorkspace?.imageUrl}
-                            workspaceName={$selectedWorkspace?.name ?? ""}
-                        />
-                    </button>
+                    {#if isSharedView}
+                        <div
+                            class="flex h-10 w-10 p-2 items-center justify-center rounded-xl bg-primary/10"
+                            aria-label="Shared workspace"
+                        >
+                            <UI.Workspace.WorkspaceProfile
+                                imageUrl={$selectedWorkspace?.imageUrl}
+                                workspaceName={$selectedWorkspace?.name ?? ""}
+                            />
+                        </div>
+                    {:else}
+                        <button 
+                            class="flex h-10 w-10 p-2 items-center justify-center rounded-xl bg-primary/10 transition-all hover:scale-105 hover:bg-primary/20"
+                            class:isSelected={$isWorkspaceSelectionOpen}
+                            onclick={onToggleWorkspaceSelection}
+                        >
+                            <UI.Workspace.WorkspaceProfile
+                                imageUrl={$selectedWorkspace?.imageUrl}
+                                workspaceName={$selectedWorkspace?.name ?? ""}
+                            />
+                        </button>
+                    {/if}
                 </div>
 
                 <!-- Quick Actions -->
                 <div class="flex flex-col items-center gap-3">
-                    <div class="tooltip tooltip-right" data-tip="Search (Ctrl+P)">
-                        <!-- disabled={!($page.url.pathname.endsWith("/") || $page.url.pathname.includes("file"))} -->
-                        <button
-                            onclick={onSearch}
-                            class="btn btn-ghost btn-square btn-sm rounded-lg text-base-content/70 hover:bg-base-300 hover:text-primary active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed {$isSearchModalOpen ? 'bg-base-100 text-primary' : 'text-base-content/70'}"
-                            aria-label="Search"
-                        >
-                            <Icon icon="material-symbols:search-rounded" class="text-xl"/>
-                        </button>
-                    </div>
-                    
-                    <div class="tooltip tooltip-right" data-tip={isExpanded ? `Collapse Sidebar (Ctrl + .)` : 'Expand Tasks Explorer (Ctrl + .)'}>
-                        <button
-                            onclick={onToggleSidebar}
-                            class="btn btn-ghost btn-square btn-sm rounded-lg {isExpanded ? 'bg-base-100 text-primary' : 'text-base-content/70'} hover:bg-base-300 hover:text-primary active:scale-95 transition-colors"
-                            aria-label="Toggle sidebar"
-                        >
-                            <Icon icon="material-symbols:thumbnail-bar-outline" class="text-xl"/>
-                        </button>
-                    </div>
+                    {#if !isSharedView}
+                        <div class="tooltip tooltip-right" data-tip="Search (Ctrl+P)">
+                            <button
+                                onclick={onSearch}
+                                class="btn btn-ghost btn-square btn-sm rounded-lg text-base-content/70 hover:bg-base-300 hover:text-primary active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed {$isSearchModalOpen ? 'bg-base-100 text-primary' : 'text-base-content/70'}"
+                                aria-label="Search"
+                            >
+                                <Icon icon="material-symbols:search-rounded" class="text-xl"/>
+                            </button>
+                        </div>
+                        
+                        <div class="tooltip tooltip-right" data-tip={isExpanded ? `Collapse Sidebar (Ctrl + .)` : 'Expand Tasks Explorer (Ctrl + .)'}>
+                            <button
+                                onclick={onToggleSidebar}
+                                class="btn btn-ghost btn-square btn-sm rounded-lg {isExpanded ? 'bg-base-100 text-primary' : 'text-base-content/70'} hover:bg-base-300 hover:text-primary active:scale-95 transition-colors"
+                                aria-label="Toggle sidebar"
+                            >
+                                <Icon icon="material-symbols:thumbnail-bar-outline" class="text-xl"/>
+                            </button>
+                        </div>
+                    {/if}
                 </div>
             </div>
 
@@ -252,11 +283,13 @@
         </div>
 
         <!-- Expansion Panel (Explorer) -->
-        <ExpansionPanel 
-            {isExpanded}
-        />
+        {#if !isSharedView}
+            <ExpansionPanel 
+                {isExpanded}
+            />
+        {/if}
 
-        {#if isExpanded}
+        {#if !isSharedView && isExpanded}
             <div
                 class="absolute right-0 top-0 z-20 h-full w-1.5 cursor-ew-resize transition-colors {isResizing || isResizeHandleHovered ? 'bg-primary/50' : 'bg-transparent hover:bg-primary/30'}"
                 onmouseenter={() => {

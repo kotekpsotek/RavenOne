@@ -5,6 +5,7 @@
     import { avaiableModels, getProviderIconifyIcon } from "./config/models";
     import { availableTools, playMode, selectedFile, selectedTools, type BrowserToolsUnion } from "./stores/files";
     import { selectedModel } from "./stores/files";
+    import { selectedWorkspace } from "./stores/workspace";
     import { contextSpecification } from "./stores/contextSpec";
     import { mcpConfigurationStore, selectedMcpServers } from "./stores/mcpConfig";
     import { alertState } from "./utils/alert";
@@ -17,6 +18,7 @@
     import { playableDocumentsAndListsWithPoints } from "./stores/playModeStore";
     import { isFilePlayable } from "./listItems/utils";
     import SaveFile from "./components/SaveFile.svelte";
+    import { shareFileRequest } from "./files/connections/connections";
     import { File } from "@ravenlens/shared";
 
     type DropdownName = "model-settings" | "mcp-tools" | "play-settings" | "share";
@@ -40,7 +42,9 @@
         editorFiles: [],
         networkUrls: []
     });
-    const shareUrl = $derived(getShareUrl());
+    let generatedShareUrl = $state("");
+    let isShareLinkGenerating = $state(false);
+    const shareUrl = $derived(generatedShareUrl);
 
     function cloneContextPayload(payload: File.FileAI.ContextSpecificationPayload): File.FileAI.ContextSpecificationPayload {
         return {
@@ -135,18 +139,48 @@
         isContextModalOpen = false;
     }
 
-    function getShareUrl() {
-        if (typeof window === "undefined") {
-            return "";
+    async function generateShareUrl() {
+        const selectedFileLocal = get(selectedFile);
+        const selectedWorkspaceLocal = get(selectedWorkspace);
+        const workspaceId = selectedWorkspaceLocal?.id?.trim() || selectedFileLocal?.createdByAuthorId?.trim();
+
+        if (!selectedFileLocal?.id || !workspaceId) {
+            alertState.set({
+                alert: {
+                    name: "Cannot share file",
+                    description: "Select a file inside a workspace before sharing.",
+                    type: "warning"
+                },
+                timeoutMs: 3_500
+            });
+            return;
         }
 
-        const url = new URL(window.location.href);
+        isShareLinkGenerating = true;
+        try {
+            const response = await shareFileRequest(workspaceId, selectedFileLocal.id);
+            const nextShareUrl = response?.shareUrl?.trim();
 
-        if ($selectedFile?.id) {
-            url.searchParams.set("sharedFile", $selectedFile.id);
+            if (nextShareUrl) {
+                generatedShareUrl = nextShareUrl;
+            }
+        } finally {
+            isShareLinkGenerating = false;
+        }
+    }
+
+    async function onShareButtonClick(event: MouseEvent) {
+        const summary = event.currentTarget as HTMLElement | null;
+        const details = summary?.closest("details");
+
+        if (!(details instanceof HTMLDetailsElement)) {
+            return;
         }
 
-        return url.toString();
+        // Generate a fresh link only when opening the dropdown.
+        if (!details.open) {
+            await generateShareUrl();
+        }
     }
 
     async function copyShareUrl() {
@@ -277,6 +311,7 @@
         const _setupState = await playableDocumentsAndListsWithPoints.playDocument(selectedFileLocal, {
             model: selectedModelLocal,
             tools: $selectedTools,
+            context: $contextSpecification,
             selectedItemMcpServers: useMcpServers ? $selectedMcpServers : [],
             selectedItemPlayMode: $playMode
         });
@@ -479,7 +514,7 @@
                 open={openDropdown === "share"}
                 ontoggle={(event) => onDropdownToggle("share", event)}
             >
-                <summary class="btn btn-sm theme-dark:bg-sky-700 bg-sky-400 font-bold text-white">
+                <summary class="btn btn-sm theme-dark:bg-sky-700 bg-sky-400 font-bold text-white" onclick={onShareButtonClick}>
                     <Icon icon="material-symbols:share"/>
                     <span>
                         Share
@@ -509,13 +544,22 @@
 
                         <div class="mt-5 space-y-2">
                             <p class="text-base font-semibold">Share your link</p>
-                            <div class="flex h-10 items-center rounded-xl bg-base-200 pl-3 pr-1">
+                            <div class="flex h-10 items-center rounded-xl bg-base-200 pl-3 pr-1 gap-1">
+                                {#if isShareLinkGenerating}
+                                    <span class="loading loading-spinner loading-xs"></span>
+                                {/if}
                                 <input
                                     class="h-full w-full bg-transparent text-xs outline-none border-none shadow-none active:outline-none focus:border-none"
                                     readonly
                                     value={shareUrl}
                                 />
-                                <button class="btn btn-ghost btn-circle btn-xs" onclick={copyShareUrl} aria-label="Copy share URL" title="Copy share URL">
+                                <button
+                                    class="btn btn-ghost btn-circle btn-xs"
+                                    onclick={copyShareUrl}
+                                    aria-label="Copy share URL"
+                                    title="Copy share URL"
+                                    disabled={!shareUrl || isShareLinkGenerating}
+                                >
                                     <Icon icon="material-symbols:content-copy-outline-rounded" class="w-4 h-4" />
                                 </button>
                             </div>
@@ -524,31 +568,31 @@
                         <div class="mt-5 space-y-2">
                             <p class="text-base font-semibold">Share to</p>
                             <div class="grid grid-cols-5 gap-1 text-center">
-                                <button class="space-y-1" type="button" title="Share to Facebook" onclick={() => openSocialShare("facebook")}>
+                                <button class="space-y-1 disabled:opacity-40" type="button" title="Share to Facebook" onclick={() => openSocialShare("facebook")} disabled={!shareUrl || isShareLinkGenerating}>
                                     <span class="mx-auto flex h-8 w-8 items-center justify-center rounded-full bg-base-200">
                                         <Icon icon="logos:facebook" class="h-6 w-6" />
                                     </span>
                                     <span class="text-[10px]">Facebook</span>
                                 </button>
-                                <button class="space-y-1" type="button" title="Share to X" onclick={() => openSocialShare("x")}>
+                                <button class="space-y-1 disabled:opacity-40" type="button" title="Share to X" onclick={() => openSocialShare("x")} disabled={!shareUrl || isShareLinkGenerating}>
                                     <span class="mx-auto flex h-8 w-8 items-center justify-center rounded-full bg-base-200">
                                         <Icon icon="simple-icons:x" class="h-4 w-4" />
                                     </span>
                                     <span class="text-[10px]">X</span>
                                 </button>
-                                <button class="space-y-1" type="button" title="Share to Whatsapp" onclick={() => openSocialShare("whatsapp")}>
+                                <button class="space-y-1 disabled:opacity-40" type="button" title="Share to Whatsapp" onclick={() => openSocialShare("whatsapp")} disabled={!shareUrl || isShareLinkGenerating}>
                                     <span class="mx-auto flex h-8 w-8 items-center justify-center rounded-full bg-base-200">
                                         <Icon icon="logos:whatsapp-icon" class="h-6 w-6" />
                                     </span>
                                     <span class="text-[10px]">Whatsapp</span>
                                 </button>
-                                <button class="space-y-1" type="button" title="Share to Telegram" onclick={() => openSocialShare("telegram")}>
+                                <button class="space-y-1 disabled:opacity-40" type="button" title="Share to Telegram" onclick={() => openSocialShare("telegram")} disabled={!shareUrl || isShareLinkGenerating}>
                                     <span class="mx-auto flex h-8 w-8 items-center justify-center rounded-full bg-base-200">
                                         <Icon icon="logos:telegram" class="h-6 w-6" />
                                     </span>
                                     <span class="text-[10px]">Telegram</span>
                                 </button>
-                                <button class="space-y-1" type="button" title="Share to LinkedIn" onclick={() => openSocialShare("linkedin")}>
+                                <button class="space-y-1 disabled:opacity-40" type="button" title="Share to LinkedIn" onclick={() => openSocialShare("linkedin")} disabled={!shareUrl || isShareLinkGenerating}>
                                     <span class="mx-auto flex h-8 w-8 items-center justify-center rounded-full bg-base-200">
                                         <Icon icon="logos:linkedin-icon" class="h-6 w-6" />
                                     </span>

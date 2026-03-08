@@ -1,5 +1,7 @@
 import type { Editor } from "@tiptap/core";
-import { getAIAnswers, type AIAnswer } from "$lib/editorComponents/types/AIList";
+import { getAIAnswers } from "$lib/editorComponents/types/AIList";
+import type { File } from "@ravenlens/shared";
+type AIAnswer = NonNullable<File.FileAI.AIPoint["aiAnswers"]>[number];
 
 const editorAppendQueue = new WeakMap<Editor, Promise<void>>();
 

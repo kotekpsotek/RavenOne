@@ -1,5 +1,6 @@
 import { browser } from "$app/environment";
-import type { ContextSpecificationPayload } from "$lib/editorComponents/types/AIList";
+import type { File } from "@ravenlens/shared";
+type ContextSpecificationPayload = File.FileAI.ContextSpecificationPayload;
 import { get, writable } from "svelte/store";
 
 const CONTEXT_SPEC_STORAGE_KEY = "ravenone:context-spec";

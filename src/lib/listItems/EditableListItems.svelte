@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { page } from '$app/stores';
     import { tick } from 'svelte';
     import { UI } from '@ravenlens/frontend';
     import { clickedListItemId, hoveredListItemId, mouseOutTimeout } from '$lib/stores/hoveredListItem';
@@ -30,6 +31,7 @@
     let items = $derived(spawnedList!.items);
     let pendingFocusId = $state<string | null>(null);
     let removeTargetItemId = $state<string | null>(null);
+    const isSharedRoute = $derived($page.url.pathname.startsWith('/share/'));
 
     function createItem(depth: number): File.File.EditableListItem {
         return {
@@ -41,6 +43,10 @@
     }
 
     async function startPlayingItem(itemId: string) {
+        if (isSharedRoute) {
+            return;
+        }
+
         if (playableDocumentsAndListsWithPoints.isPointPlaying($selectedFile, spawnedList.id, itemId)) {
             return;
         }
@@ -53,10 +59,10 @@
         const itemIndex = findItemIndex(items, itemId);
         const item = spawnedList.items[itemIndex];
 
-        // FIXME: Context has to be passed from actual point -> we can get it `playPoint` method itself
         await playableDocumentsAndListsWithPoints.playPoint($selectedFile!, spawnedList.id, items[itemIndex], {
             model: $selectedModel,
             tools: $selectedTools ?? [],
+            context: item.context ?? $contextSpecification ?? [],
             selectedItemMcpServers: $selectedMcpServers ?? [],
             selectedItemPlayMode: item.playMode ?? $playMode
         });
@@ -71,11 +77,19 @@
     }
 
     function handleItemMouseEnter(itemId: string) {
+        if (isSharedRoute) {
+            return;
+        }
+
         mouseOutTimeout.clearTimeout();
         hoveredListItemId.set(itemId);
     }
 
     function handleItemMouseLeave() {
+        if (isSharedRoute) {
+            return;
+        }
+
         mouseOutTimeout.setTimeout();
     }
 
@@ -329,12 +343,21 @@
     }
 
     async function onItemInput(event: Event, itemId: string) {
+        if (isSharedRoute) {
+            return;
+        }
+
         const textarea = event.currentTarget as HTMLTextAreaElement;
         await updateItemText(itemId, textarea.value);
         resizeTextarea(textarea);
     }
 
     function onItemKeyDown(event: KeyboardEvent, itemId: string) {
+        if (isSharedRoute) {
+            event.preventDefault();
+            return;
+        }
+
         if (event.key === 'Enter' && !event.shiftKey) {
             event.preventDefault();
             addSiblingItem(itemId);
@@ -394,7 +417,6 @@
         {@const isSomeChildPlaying = playableStoreState && playableDocumentsAndListsWithPoints.isPointSomeChildPlaying($selectedFile, spawnedList.id, item.id)}
         {@const isPointParentPlaying = playableStoreState && playableDocumentsAndListsWithPoints.isPointParentPlaying($selectedFile, spawnedList.id, item.id)}
     
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
             class="flex flex-col w-full min-w-0 justify-center py-0.5"
             style={`padding-left: ${item.depth * INDENT_SIZE}px`}
@@ -402,28 +424,34 @@
             <div
                 class="upper flex w-full min-w-0 items-center"
             >
-                <AITaskOpenButton 
-                    itemId={item.id}
-                    onmouseenter={() => handleItemMouseEnter(item.id)}
-                    onmouseleave={handleItemMouseLeave}
-                />
+                {#if !isSharedRoute}
+                    <AITaskOpenButton 
+                        itemId={item.id}
+                        onmouseenter={() => handleItemMouseEnter(item.id)}
+                        onmouseleave={handleItemMouseLeave}
+                    />
+                {:else}
+                    <span class="block h-6 w-6" aria-hidden="true"></span>
+                {/if}
 
                 <div class="relative flex w-full min-w-0 items-center gap-2">
-                    <AIListItemHoverActions
-                        visible={$hoveredListItemId === item.id || $clickedListItemId === item.id}
-                        itemId={item.id}
-                        {isPointPlaying}
-                        isPointPlayable={isPointPlayableState && !isSomeChildPlaying && !isPointParentPlaying}
-                        playDisabledReason={getDisabledReason(isSomeChildPlaying, isPointParentPlaying, isPointPlayableState)}
-                        onPlay={(pointId) => startPlayingItem(pointId)}
-                        onStop={(pointId) => stopPlayingItem(pointId)}
-                        onClearContent={() => requestRemoveItem(item.id)}
-                        selectedItemModel={$selectedModel}
-                        availableItemTools={$selectedTools}
-                        selectedItemMcpServers={$selectedMcpServers}
-                        selectedItemContext={item.context ?? $contextSpecification}
-                        selectedItemPlayMode={item.playMode ?? $playMode}
-                    />
+                    {#if !isSharedRoute}
+                        <AIListItemHoverActions
+                            visible={$hoveredListItemId === item.id || $clickedListItemId === item.id}
+                            itemId={item.id}
+                            {isPointPlaying}
+                            isPointPlayable={isPointPlayableState && !isSomeChildPlaying && !isPointParentPlaying}
+                            playDisabledReason={getDisabledReason(isSomeChildPlaying, isPointParentPlaying, isPointPlayableState)}
+                            onPlay={(pointId) => startPlayingItem(pointId)}
+                            onStop={(pointId) => stopPlayingItem(pointId)}
+                            onClearContent={() => requestRemoveItem(item.id)}
+                            selectedItemModel={$selectedModel}
+                            availableItemTools={$selectedTools}
+                            selectedItemMcpServers={$selectedMcpServers}
+                            selectedItemContext={item.context ?? $contextSpecification}
+                            selectedItemPlayMode={item.playMode ?? $playMode}
+                        />
+                    {/if}
 
                     {#if kind === 'ordered'}
                         <span class="w-fit shrink-0 text-right text-sm text-base-content/70">{getOrderedMarker(itemIndex)}.</span>
@@ -438,6 +466,7 @@
                                 title="Checkbox is manually interactive. Checkbox is going be checked out when finished"
                                 onclick={e => e.preventDefault()}
                                 onchange={(event) => toggleChecked(item.id, (event.currentTarget as HTMLInputElement).checked)}
+                                disabled={isSharedRoute}
                             />
                         </label>
                     {/if}
@@ -447,7 +476,7 @@
                         value={item.text}
                         data-list-item-id={item.id}
                         placeholder="Type and press Enter"
-                        disabled={isPointPlaying}
+                        disabled={isPointPlaying || isSharedRoute}
                         class="w-full min-w-0 resize-none overflow-hidden rounded-md border border-transparent bg-transparent px-1 py-1 text-sm leading-6 outline-none focus:border-base-300 focus:bg-base-100"
                         oninput={(event) => onItemInput(event, item.id)}
                         onkeydown={(event) => onItemKeyDown(event, item.id)}
