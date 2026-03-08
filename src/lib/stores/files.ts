@@ -72,10 +72,13 @@ export const selectedFile = (() => {
 
             try {
                 const backendCall = await fetchAuthenticated(
-                    `/api/files/save`,
+                    `/files/api/save_content`,
                     {
                         method: "POST",
                         keepalive: options.keepalive,
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
                         body: JSON.stringify({
                             files: filesToSave
                         })

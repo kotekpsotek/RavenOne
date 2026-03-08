@@ -2,14 +2,146 @@
     import { goto } from "$app/navigation";
     import { UI } from "@ravenlens/frontend";
     import { entriesList, moveEntry, selectedFile } from "$lib/stores/files";
+    import { selectedWorkspace } from "$lib/stores/workspace";
     import Icon from "@iconify/svelte";
     import IconSelectionModal from "$lib/modals/IconSelectionModal.svelte";
     import WallpaperSelectionModal from "$lib/modals/WallpaperSelectionModal.svelte";
     import IconValue from "$lib/IconValue.svelte";
+    import { fetchAuthenticated } from "$lib/utils/fetch";
+    import { setAlert } from "$lib/utils/alert";
+    import { onMount } from "svelte";
     import { get } from "svelte/store";
     import { File } from "@ravenlens/shared";
  
     let { isExpanded = false }: { isExpanded?: boolean } = $props();
+
+    type FilesApiRequestMethod = "POST" | "PUT" | "DELETE";
+    type FilesApiFailurePayload = {
+        message?: string;
+        error?: string;
+    };
+    type FilesDownloadResponse = {
+        files?: File.File.File[];
+    };
+
+    function getCurrentWorkspaceId(): string | null {
+        const workspaceId = $selectedWorkspace?.id?.trim();
+        if (!workspaceId) {
+            setAlert("warning", "Workspace not selected", "Select workspace before managing files.");
+            return null;
+        }
+
+        return workspaceId;
+    }
+
+    async function readFailureMessage(response: Response, fallbackMessage: string): Promise<string> {
+        let responsePayload: FilesApiFailurePayload | null = null;
+        try {
+            responsePayload = (await response.json()) as FilesApiFailurePayload;
+        } catch {
+            responsePayload = null;
+        }
+
+        const message = responsePayload?.message?.trim() || responsePayload?.error?.trim();
+        return message || `${fallbackMessage} (${response.status})`;
+    }
+
+    async function requestFilesApi<T>(
+        path: string,
+        method: FilesApiRequestMethod,
+        payload: Record<string, unknown>,
+        alertTitle: string,
+        fallbackMessage: string
+    ): Promise<T | null> {
+        let response: Response;
+        try {
+            response = await fetchAuthenticated(path, {
+                method,
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(payload)
+            });
+        } catch {
+            setAlert("error", alertTitle, "Cannot reach files service.");
+            return null;
+        }
+
+        if (!response.ok) {
+            const message = await readFailureMessage(response, fallbackMessage);
+            setAlert("error", alertTitle, message);
+            return null;
+        }
+
+        try {
+            return (await response.json()) as T;
+        } catch {
+            return {} as T;
+        }
+    }
+
+    let activeWorkspaceId: string | null = null;
+    let filesSyncRequestId = 0;
+
+    async function downloadWorkspaceFiles(workspaceId: string) {
+        const currentRequestId = ++filesSyncRequestId;
+
+        const responseBody = await requestFilesApi<FilesDownloadResponse>(
+            "/files/api/download",
+            "POST",
+            {
+                workspaceId
+            },
+            "File sync failed",
+            "Cannot download files"
+        );
+
+        if (currentRequestId !== filesSyncRequestId || workspaceId !== activeWorkspaceId) {
+            return;
+        }
+
+        if (!responseBody) {
+            return;
+        }
+
+        const downloadedFiles = Array.isArray(responseBody.files) ? responseBody.files : [];
+        entriesList.set(downloadedFiles);
+
+        const selectedFileCurrent = get(selectedFile);
+        if (!selectedFileCurrent) {
+            return;
+        }
+
+        const refreshedSelectedFile = findFileById(downloadedFiles, selectedFileCurrent.id);
+        if (!refreshedSelectedFile) {
+            selectedFile.set(undefined);
+            return;
+        }
+
+        selectedFile.set(refreshedSelectedFile);
+    }
+
+    onMount(() => {
+        const unsubscribe = selectedWorkspace.subscribe((workspace) => {
+            const selectedWorkspaceId = workspace?.id?.trim() || null;
+
+            if (selectedWorkspaceId === activeWorkspaceId) {
+                return;
+            }
+
+            activeWorkspaceId = selectedWorkspaceId;
+            entriesList.set([]);
+            selectedFile.set(undefined);
+
+            if (!selectedWorkspaceId) {
+                return;
+            }
+
+            void downloadWorkspaceFiles(selectedWorkspaceId);
+        });
+
+        return unsubscribe;
+    });
 
     let draggedId = $state<string | null>(null);
     let dropTargetId = $state<string | null>(null);
@@ -32,16 +164,37 @@
         });
     }
 
-    function onNewFile(targetId: string | null = null) {
+    async function onNewFile(targetId: string | null = null) {
+        const workspaceId = getCurrentWorkspaceId();
+        if (!workspaceId) {
+            return;
+        }
+
         const name = getNextName($entriesList, 'Task');
-        const newFile: File.File.File = {
+        const responseBody = await requestFilesApi<{ createdFile?: File.File.File }>(
+            "/files/api/create",
+            "POST",
+            {
+                workspaceId,
+                targetId,
+                name
+            },
+            "File creation failed",
+            "Cannot create file"
+        );
+
+        if (!responseBody) {
+            return;
+        }
+
+        const newFile: File.File.File = responseBody.createdFile ?? {
             type: "file",
             id: crypto.randomUUID(),
             name,
             lists: [],
             createdAt: new Date(),
             content: '',
-            createdByAuthorId: 'current-user'
+            createdByAuthorId: workspaceId
         };
 
         if (targetId === null) {
@@ -89,7 +242,7 @@
             }
         }
         
-        scan($entriesList);
+        scan(entries);
         return `${prefix} ${max + 1}`;
     }
 
@@ -124,12 +277,33 @@
         }
     }
 
-    function handleDrop(e: DragEvent, targetId: string | null) {
+    async function handleDrop(e: DragEvent, targetId: string | null) {
         e.preventDefault();
         e.stopPropagation();
         
         if (draggedId && (targetId !== null || dropPosition === 'inside')) {
-            moveEntry(draggedId, targetId, dropPosition || 'inside');
+            const workspaceId = getCurrentWorkspaceId();
+            const sourceId = draggedId;
+            const nextDropPosition = dropPosition || 'inside';
+
+            if (workspaceId) {
+                const moveResult = await requestFilesApi<{ moved?: boolean }>(
+                    "/files/api/change_position",
+                    "PUT",
+                    {
+                        workspaceId,
+                        sourceId,
+                        targetId,
+                        position: nextDropPosition
+                    },
+                    "File move failed",
+                    "Cannot move file"
+                );
+
+                if (moveResult) {
+                    moveEntry(sourceId, targetId, nextDropPosition);
+                }
+            }
         }
         
         draggedId = null;
@@ -234,6 +408,7 @@
             renamingId = null;
             deleteTarget = null;
             closeIconPicker();
+            closeWalperPicker();
         }
         else if (e.ctrlKey && e.key === "r" && $selectedFile) {
             e.preventDefault();
@@ -247,9 +422,30 @@
         closeContextMenu();
     }
 
-    function submitRename(entryId: string) {
+    async function submitRename(entryId: string) {
         const nextName = renameValue.trim();
         if (!nextName) {
+            return;
+        }
+
+        const workspaceId = getCurrentWorkspaceId();
+        if (!workspaceId) {
+            return;
+        }
+
+        const renameResult = await requestFilesApi<{ updated?: boolean }>(
+            "/files/api/rename",
+            "PUT",
+            {
+                workspaceId,
+                fileId: entryId,
+                name: nextName
+            },
+            "Rename failed",
+            "Cannot rename file"
+        );
+
+        if (!renameResult) {
             return;
         }
 
@@ -257,8 +453,6 @@
             ...entry,
             name: nextName
         })));
-
-        
 
         renamingId = null;
     }
@@ -279,13 +473,34 @@
         iconPickerInitialValue = "";
     }
 
-    function applyPickedIcon(iconValue: string) {
+    async function applyPickedIcon(iconValue: string) {
         if (!iconPickerEntryId) {
             return;
         }
 
         const entryId = iconPickerEntryId;
         const normalizedIconValue = iconValue.trim();
+
+        const workspaceId = getCurrentWorkspaceId();
+        if (!workspaceId) {
+            return;
+        }
+
+        const iconUpdateResult = await requestFilesApi<{ updated?: boolean }>(
+            "/files/api/icon",
+            "PUT",
+            {
+                workspaceId,
+                fileId: entryId,
+                icon: normalizedIconValue
+            },
+            "Icon update failed",
+            "Cannot update file icon"
+        );
+
+        if (!iconUpdateResult) {
+            return;
+        }
 
         entriesList.update((list) => updateFileById(list, entryId, (entry) => ({
             ...entry,
@@ -304,12 +519,33 @@
         closeIconPicker();
     }
 
-    function removePickedIcon() {
+    async function removePickedIcon() {
         if (!iconPickerEntryId) {
             return;
         }
 
         const entryId = iconPickerEntryId;
+
+        const workspaceId = getCurrentWorkspaceId();
+        if (!workspaceId) {
+            return;
+        }
+
+        const iconUpdateResult = await requestFilesApi<{ updated?: boolean }>(
+            "/files/api/icon",
+            "PUT",
+            {
+                workspaceId,
+                fileId: entryId,
+                icon: null
+            },
+            "Icon removal failed",
+            "Cannot remove file icon"
+        );
+
+        if (!iconUpdateResult) {
+            return;
+        }
 
         entriesList.update((list) => updateFileById(list, entryId, (entry) => ({
             ...entry,
@@ -339,12 +575,33 @@
         walperPickerInitialValue = "";
     }
 
-    function applyWalperToFile(walperValue: string) {
+    async function applyWalperToFile(walperValue: string) {
         if (!walperPickerEntryId) {
             return;
         }
 
         const entryId = walperPickerEntryId;
+
+        const workspaceId = getCurrentWorkspaceId();
+        if (!workspaceId) {
+            return;
+        }
+
+        const walperUpdateResult = await requestFilesApi<{ updated?: boolean }>(
+            "/files/api/walper",
+            "PUT",
+            {
+                workspaceId,
+                fileId: entryId,
+                walper: walperValue
+            },
+            "Wallpaper update failed",
+            "Cannot update file wallpaper"
+        );
+
+        if (!walperUpdateResult) {
+            return;
+        }
 
         entriesList.update((list) => updateFileById(list, entryId, (entry) => ({
             ...entry,
@@ -361,12 +618,33 @@
         closeWalperPicker();
     }
 
-    function removeWalperFromFile() {
+    async function removeWalperFromFile() {
         if (!walperPickerEntryId) {
             return;
         }
 
         const entryId = walperPickerEntryId;
+
+        const workspaceId = getCurrentWorkspaceId();
+        if (!workspaceId) {
+            return;
+        }
+
+        const walperUpdateResult = await requestFilesApi<{ updated?: boolean }>(
+            "/files/api/walper",
+            "PUT",
+            {
+                workspaceId,
+                fileId: entryId,
+                walper: null
+            },
+            "Wallpaper removal failed",
+            "Cannot remove file wallpaper"
+        );
+
+        if (!walperUpdateResult) {
+            return;
+        }
 
         entriesList.update((list) => updateFileById(list, entryId, (entry) => ({
             ...entry,
@@ -392,9 +670,29 @@
         deleteTarget = null;
     }
 
-    function confirmDelete() {
+    async function confirmDelete() {
         const target = deleteTarget;
         if (!target) {
+            return;
+        }
+
+        const workspaceId = getCurrentWorkspaceId();
+        if (!workspaceId) {
+            return;
+        }
+
+        const deleteResult = await requestFilesApi<{ deleted?: boolean }>(
+            "/files/api/delete",
+            "DELETE",
+            {
+                workspaceId,
+                fileId: target.id
+            },
+            "Delete failed",
+            "Cannot delete file"
+        );
+
+        if (!deleteResult) {
             return;
         }
 
