@@ -1,7 +1,8 @@
 <script lang="ts">
     import { onMount } from 'svelte';
     import { UI } from '@ravenlens/frontend';
-    import { selectedFile, type EditableListItem, type ListItemKind } from '$lib/stores/files';
+    import { selectedFile } from '$lib/stores/files';
+    import {  } from "@ravenlens/shared";
     import Icon from '@iconify/svelte';
     import type { ElementInsertionItem } from './editorComponents/ui/ElementsListForMenus';
     import OrderedListItem from '$lib/listItems/OrderedListItem.svelte';
@@ -62,7 +63,7 @@
         return `list-${Math.random().toString(36).slice(2, 10)}-${Date.now()}`;
     }
 
-    function resolveListKind(item: ElementInsertionItem): ListItemKind {
+    function resolveListKind(item: ElementInsertionItem): File.File.ListItemKind {
         if (item.name.toLowerCase().includes('checkbox') || item.name.toLowerCase().includes('task')) {
             return 'task';
         }

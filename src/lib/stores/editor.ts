@@ -1,6 +1,5 @@
 import { createEditor } from "svelte-tiptap";
 import type { Editor as SvelteEditor } from "svelte-tiptap";
-import type { File } from "./files";
 import { Document } from "@tiptap/extension-document";
 import { Placeholder } from "@tiptap/extension-placeholder";
 import { writable } from "svelte/store";
@@ -12,6 +11,7 @@ import { SlashCommand } from "../editorComponents/components/Suggestions.js";
 import { StandardTaskList } from "../editorComponents/components/StandardTaskList.js";
 import { StandardTaskItem } from "../editorComponents/components/StandardTaskItem.js";
 import { CodeSnippet } from "../editorComponents/components/CodeSnippet.js";
+import { File } from "@ravenlens/shared";
 
 function normalizeContent(content?: string): string {
     if (!content || !content.trim()) {
@@ -28,7 +28,7 @@ export const editor = (() => {
 
     const store = {
         subscribe,
-        selectFile(file: File) {
+        selectFile(file: File.File.File) {
             const content = normalizeContent(file.content);
             activeFileId = file.id;
             

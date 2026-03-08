@@ -1,61 +1,22 @@
 import { browser } from "$app/environment";
-import type { AIAnswer, ContextSpecificationPayload, PlayMode } from "$lib/editorComponents/types/AIList";
 import { fetchAuthenticated } from "$lib/utils/fetch";
 import type { AI } from "@ravenlens/shared";
 import { get, writable } from "svelte/store";
-
-export type ListItemKind = 'ordered' | 'unordered' | 'task';
-
-export type EditableListItem = {
-    id: string;
-    text: string;
-    depth: number;
-    checked?: boolean;
-    /** Present only when answers were provided */
-    answers?: AIAnswer[];
-    /** Playmode for this specific point */
-    playMode?: PlayMode;
-    /** Context for this specific point */
-    context?: ContextSpecificationPayload;
-};
-
-export interface SpawnedList {
-    id: string;
-    kind: ListItemKind;
-    name: string;
-    icon: string;
-    items: EditableListItem[];
-};
-
-export interface File {
-    type: "file";
-    id: string;
-    name: string;
-    createdAt: Date;
-    /** It's the list with point items */
-    lists: SpawnedList[];
-    /** It's the editor content */
-    content: string;
-    createdByAuthorId: string;
-    icon?: string;
-    /** Walper is the cover url */
-    walper?: string;
-    subentries?: File[];
-}
+import { File } from "@ravenlens/shared";
 
 // Entries
-export const entriesList = writable<File[]>([]);
+export const entriesList = writable<File.File.File[]>([]);
 /** Access saving state -> 'true' when file is actually saving, 'false' when is not */
 export const isFileSaving = writable<boolean>(false);
 
 // File
 export const selectedFile = (() => {
-    type FileType = File | undefined;
-    type UnsavedFile = { file: NonNullable<File>; date: number };
+    type FileType = File.File.File | undefined;
+    type UnsavedFile = { file: NonNullable<File.File.File>; date: number };
     type SaveFilesOptions = { keepalive?: boolean };
 
     const store = writable<FileType>(undefined);
-    const constructUnsavedFile = (file: File, dateTimestamp: number): UnsavedFile => {
+    const constructUnsavedFile = (file: File.File.File, dateTimestamp: number): UnsavedFile => {
         return {
             file: file,
             date: dateTimestamp
@@ -214,7 +175,7 @@ export const selectedFile = (() => {
             /// Schedules files to be saved
             unsavedFiles.addNew(filesToSave);
         },
-        updateFileListItems(spawnedListId: string, items: EditableListItem[]): Promise<boolean> {
+        updateFileListItems(spawnedListId: string, items: File.File.EditableListItem[]): Promise<boolean> {
             const priorFile = get(store);
             let wasUpdated = false;
 
@@ -262,7 +223,7 @@ export const availableTools = ["Web search", "Current Document", "RavenOne Docum
 
 // File config
 export const selectedModel = writable<AI.RavenLensAvaiableAIModel | undefined>(undefined);
-export const playMode = writable<PlayMode>("run-all");
+export const playMode = writable<File.FileAI.PlayMode>("run-all");
 
 const STORAGE_KEY = "raven_selected_tools";
 const initialTools = (typeof window !== 'undefined' && localStorage.getItem(STORAGE_KEY)) 
@@ -280,7 +241,7 @@ if (typeof window !== 'undefined') {
 
 export const isSearchModalOpen = writable(false);
 
-function updateEntryById(items: File[], fileId: string, patch: Partial<File>): File[] {
+function updateEntryById(items: File.File.File[], fileId: string, patch: Partial<File.File.File>): File.File.File[] {
     return items.map(item => {
         if (item.id === fileId) {
             return { ...item, ...patch };
@@ -297,7 +258,7 @@ function updateEntryById(items: File[], fileId: string, patch: Partial<File>): F
     });
 }
 
-export function patchFileById(fileId: string, patch: Partial<File>) {
+export function patchFileById(fileId: string, patch: Partial<File.File.File>) {
     entriesList.update(entries => updateEntryById(entries, fileId, patch));
     selectedFile.update(file => {
         if (!file || file.id !== fileId) {
@@ -320,7 +281,7 @@ export function moveEntry(sourceId: string, targetId: string | null, position: '
             return entries;
         }
 
-        function findById(items: File[], id: string): File | null {
+        function findById(items: File.File.File[], id: string): File.File.File | null {
             for (const item of items) {
                 if (item.id === id) {
                     return item;
@@ -337,8 +298,8 @@ export function moveEntry(sourceId: string, targetId: string | null, position: '
             return null;
         }
 
-        function hasNestedEntry(item: File, searchId: string): boolean {
-            if (!item.subentries?.length) {
+        function hasNestedEntry(item: File.File.File | null, searchId: string): boolean {
+            if (!item?.subentries?.length) {
                 return false;
             }
 
@@ -358,10 +319,10 @@ export function moveEntry(sourceId: string, targetId: string | null, position: '
             }
         }
 
-        let draggedItem: File | null = null;
+        let draggedItem: File.File.File | null = null;
 
         // 1. Find and remove the entry (immutable)
-        function findAndRemove(items: File[]): File[] {
+        function findAndRemove(items: File.File.File[]): File.File.File[] {
             const index = items.findIndex(i => i.id === sourceId);
             if (index !== -1) {
                 draggedItem = items[index];
@@ -376,7 +337,7 @@ export function moveEntry(sourceId: string, targetId: string | null, position: '
         }
 
         // 2. Find target and insert (immutable)
-        function findAndInsert(items: File[], itemToInsert: File): File[] {
+        function findAndInsert(items: File.File.File[], itemToInsert: File.File.File): File.File.File[] {
             if (targetId === null) {
                 return [...items, itemToInsert];
             }

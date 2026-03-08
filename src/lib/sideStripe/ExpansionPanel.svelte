@@ -1,13 +1,14 @@
 <script lang="ts">
     import { goto } from "$app/navigation";
     import { UI } from "@ravenlens/frontend";
-    import { entriesList, moveEntry, selectedFile, type File } from "$lib/stores/files";
+    import { entriesList, moveEntry, selectedFile } from "$lib/stores/files";
     import Icon from "@iconify/svelte";
     import IconSelectionModal from "$lib/modals/IconSelectionModal.svelte";
     import WallpaperSelectionModal from "$lib/modals/WallpaperSelectionModal.svelte";
     import IconValue from "$lib/IconValue.svelte";
     import { get } from "svelte/store";
-
+    import { File } from "@ravenlens/shared";
+ 
     let { isExpanded = false }: { isExpanded?: boolean } = $props();
 
     let draggedId = $state<string | null>(null);
@@ -16,7 +17,7 @@
     let contextMenu = $state<{ entryId: string; x: number; y: number } | null>(null);
     let renamingId = $state<string | null>(null);
     let renameValue = $state('');
-    let deleteTarget = $state<File | null>(null);
+    let deleteTarget = $state<File.File.File | null>(null);
     let iconPickerEntryId = $state<string | null>(null);
     let iconPickerInitialValue = $state("");
     let walperPickerEntryId = $state<string | null>(null);
@@ -33,7 +34,7 @@
 
     function onNewFile(targetId: string | null = null) {
         const name = getNextName($entriesList, 'Task');
-        const newFile: File = {
+        const newFile: File.File.File = {
             type: "file",
             id: crypto.randomUUID(),
             name,
@@ -48,7 +49,7 @@
             return;
         }
 
-        function addToTarget(items: File[]): File[] {
+        function addToTarget(items: File.File.File[]): File.File.File[] {
             return items.map((item) => {
                 if (item.id === targetId) {
                     return {
@@ -71,11 +72,11 @@
         entriesList.update((list) => addToTarget(list));
     }
 
-    function getNextName(entries: File[], type: 'Task') {
+    function getNextName(entries: File.File.File[], type: 'Task') {
         const prefix = `Unnamed ${type}`;
         let max = 0;
         
-        function scan(items: File[]) {
+        function scan(items: File.File.File[]) {
             for (const item of items) {
                 const match = item.name.match(new RegExp(`^${prefix} (\\d+)$`));
                 if (match) {
@@ -100,7 +101,7 @@
         }
     }
 
-    function handleDragOver(e: DragEvent, entry: File) {
+    function handleDragOver(e: DragEvent, entry: File.File.File) {
         e.preventDefault();
         e.stopPropagation();
         
@@ -142,7 +143,7 @@
         dropPosition = null;
     }
 
-    function updateFileById(items: File[], fileId: string, updater: (item: File) => File): File[] {
+    function updateFileById(items: File.File.File[], fileId: string, updater: (item: File.File.File) => File.File.File): File.File.File[] {
         return items.map((item) => {
             if (item.id === fileId) {
                 const updaterValue = updater(item);
@@ -177,7 +178,7 @@
         });
     }
 
-    function removeFileById(items: File[], fileId: string): File[] {
+    function removeFileById(items: File.File.File[], fileId: string): File.File.File[] {
         return items
             .filter((item) => item.id !== fileId)
             .map((item) => {
@@ -192,7 +193,7 @@
             });
     }
 
-    function findFileById(items: File[], fileId: string): File | null {
+    function findFileById(items: File.File.File[], fileId: string): File.File.File | null {
         for (const item of items) {
             if (item.id === fileId) {
                 return item;
@@ -209,7 +210,7 @@
         return null;
     }
 
-    function onEntryContextMenu(e: MouseEvent, entry: File) {
+    function onEntryContextMenu(e: MouseEvent, entry: File.File.File) {
         e.preventDefault();
         e.stopPropagation();
         contextMenu = {
@@ -240,7 +241,7 @@
         }
     }
 
-    function openRename(entry: File) {
+    function openRename(entry: File.File.File) {
         renamingId = entry.id;
         renameValue = entry.name;
         closeContextMenu();
@@ -267,7 +268,7 @@
         renameValue = '';
     }
 
-    function openIconPicker(entry: File) {
+    function openIconPicker(entry: File.File.File) {
         iconPickerEntryId = entry.id;
         iconPickerInitialValue = entry.icon ?? "";
         closeContextMenu();
@@ -327,7 +328,7 @@
         closeIconPicker();
     }
 
-    function openWalperPicker(entry: File) {
+    function openWalperPicker(entry: File.File.File) {
         walperPickerEntryId = entry.id;
         walperPickerInitialValue = entry.walper ?? "";
         closeContextMenu();
@@ -382,7 +383,7 @@
         closeWalperPicker();
     }
 
-    function openDeleteModal(entry: File) {
+    function openDeleteModal(entry: File.File.File) {
         deleteTarget = entry;
         closeContextMenu();
     }
@@ -407,18 +408,18 @@
         deleteTarget = null;
     }
 
-    function onEntryClick(entry: File) {
+    function onEntryClick(entry: File.File.File) {
         return async () => {
             await goto("/");
             $selectedFile = entry;
         }
     }
 
-    function hasSubentries(entry: File) {
+    function hasSubentries(entry: File.File.File) {
         return (entry.subentries?.length ?? 0) > 0;
     }
 
-    function isEntryExpanded(entry: File) {
+    function isEntryExpanded(entry: File.File.File) {
         if (!hasSubentries(entry)) {
             return false;
         }
@@ -433,7 +434,7 @@
         };
     }
 
-    async function onEntryKeydown(e: KeyboardEvent, entry: File) {
+    async function onEntryKeydown(e: KeyboardEvent, entry: File.File.File) {
         if (e.key === 'Enter' || e.key === ' ') {
             await goto("/");
             e.preventDefault();
@@ -444,7 +445,7 @@
 
 <svelte:window onclick={onWindowClick} onkeydown={onWindowKeydown} />
 
-{#snippet renderEntry(entry: File, depth = 0)}
+{#snippet renderEntry(entry: File.File.File, depth = 0)}
     {@const isTarget = dropTargetId === entry.id}
     {@const entryHasSubentries = hasSubentries(entry)}
     {@const entryExpanded = isEntryExpanded(entry)}

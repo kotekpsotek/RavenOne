@@ -4,22 +4,22 @@
     import { clickedListItemId, hoveredListItemId, mouseOutTimeout } from '$lib/stores/hoveredListItem';
     import AITaskOpenButton from '$lib/listItems/mods/AITaskOpenButton.svelte';
     import AIListItemHoverActions from '$lib/listItems/mods/AIListItemHoverActions.svelte';
-    import { playMode, selectedFile, selectedModel, selectedTools, type EditableListItem, type ListItemKind, type SpawnedList } from '$lib/stores/files';
+    import { playMode, selectedFile, selectedModel, selectedTools } from '$lib/stores/files';
     import { createListItemId, findItemIndex, findSubtreeEndIndex, isPointPlayable } from './utils';
     import { playableDocumentsAndListsWithPoints } from '$lib/stores/playModeStore';
-    import type { PlayMode } from '$lib/editorComponents/types/AIList';
     import { selectedMcpServers } from '$lib/stores/mcpConfig';
     import AITaskPlayingState from './mods/AITaskPlayingState.svelte';
     import { contextSpecification } from '$lib/stores/contextSpec';
     import AIAnswersList from './mods/AIAnswersList.svelte';
+    import { File } from "@ravenlens/shared";
 
     let {
         kind,
         onEmptyList = () => {},
         spawnedList
     }: {
-        kind: ListItemKind;
-        spawnedList: SpawnedList
+        kind: File.File.ListItemKind;
+        spawnedList: File.File.SpawnedList
         onEmptyList?: () => void;
     } = $props();
 
@@ -31,7 +31,7 @@
     let pendingFocusId = $state<string | null>(null);
     let removeTargetItemId = $state<string | null>(null);
 
-    function createItem(depth: number): EditableListItem {
+    function createItem(depth: number): File.File.EditableListItem {
         return {
             id: createListItemId(),
             text: '',

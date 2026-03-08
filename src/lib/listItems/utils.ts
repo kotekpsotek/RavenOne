@@ -1,6 +1,6 @@
-import type { PlayMode } from "$lib/editorComponents/types/AIList";
-import { playMode, selectedFile, type EditableListItem, type File } from "$lib/stores/files";
+import { playMode, selectedFile } from "$lib/stores/files";
 import { playableDocumentsAndListsWithPoints } from "$lib/stores/playModeStore";
+import { File } from "@ravenlens/shared";
 import { get } from "svelte/store";
 import { v4 as uuid } from "uuid";
 
@@ -12,11 +12,11 @@ export function createListItemId() {
     return `list-item-${uuid()}`;
 }
 
-export function findItemIndex(items: EditableListItem[], itemId: string) {
+export function findItemIndex(items: File.File.EditableListItem[], itemId: string) {
     return items.findIndex((item) => item.id === itemId);
 }
 
-export function findSubtreeEndIndex(items: EditableListItem[], startIndex: number) {
+export function findSubtreeEndIndex(items: File.File.EditableListItem[], startIndex: number) {
     const rootDepth = items[startIndex]?.depth ?? 0;
     let endIndex = startIndex + 1;
 
@@ -28,7 +28,7 @@ export function findSubtreeEndIndex(items: EditableListItem[], startIndex: numbe
 }
 
 /** Find items with depth about 1 bigger than others */
-export function findItemDirectSubitems(items: EditableListItem[], item: EditableListItem) {
+export function findItemDirectSubitems(items: File.File.EditableListItem[], item: File.File.EditableListItem) {
     const itemIndex = findItemIndex(items, item.id);
     if (itemIndex === -1) {
         console.warn(`Item doesn't exist so it hasn't got subitems`)
@@ -36,7 +36,7 @@ export function findItemDirectSubitems(items: EditableListItem[], item: Editable
     }
 
     const depth = item.depth;
-    const foundSubItems: EditableListItem[] = [];
+    const foundSubItems: File.File.EditableListItem[] = [];
     for (let index = itemIndex + 1; index < items.length; index += 1) {
         const currentItem = items[index];
 
@@ -52,12 +52,12 @@ export function findItemDirectSubitems(items: EditableListItem[], item: Editable
     return foundSubItems;
 }
 
-function hasNonEmptyTextContent(item: EditableListItem) {
+function hasNonEmptyTextContent(item: File.File.EditableListItem) {
     return item.text.trim().length > 0;
 }
 
 /** Returns all descendant points for the item at index (does not include the item itself). */
-export function getAllSubpointChildrenByItemIndex(items: EditableListItem[], itemIndex: number) {
+export function getAllSubpointChildrenByItemIndex(items: File.File.EditableListItem[], itemIndex: number) {
     if (itemIndex < 0 || itemIndex >= items.length) {
         return [];
     }
@@ -66,7 +66,7 @@ export function getAllSubpointChildrenByItemIndex(items: EditableListItem[], ite
     return items.slice(itemIndex + 1, subtreeEndIndex);
 }
 
-function getPointAndAllSubpointChildren(items: EditableListItem[], itemId: string) {
+function getPointAndAllSubpointChildren(items: File.File.EditableListItem[], itemId: string) {
     const itemIndex = findItemIndex(items, itemId);
     if (itemIndex < 0) {
         return [];
@@ -78,7 +78,7 @@ function getPointAndAllSubpointChildren(items: EditableListItem[], itemId: strin
     ];
 }
 
-function isPointRunnableForMode(point: EditableListItem, selectedPlayMode: PlayMode) {
+function isPointRunnableForMode(point: File.File.EditableListItem, selectedPlayMode: File.FileAI.PlayMode) {
     if (!hasNonEmptyTextContent(point)) {
         return false;
     }
@@ -97,7 +97,7 @@ function isPointRunnableForMode(point: EditableListItem, selectedPlayMode: PlayM
  * 3. Has some point with text
  * 4. Is not this point already playing
  */
-export function isFilePlayable(file: File, selectedPlayMode: PlayMode) {
+export function isFilePlayable(file: File.File.File, selectedPlayMode: File.FileAI.PlayMode) {
     return file.lists?.some(list => {
         const itemCheck = list.items.some(item => {
             if (playableDocumentsAndListsWithPoints.isPointPlaying(file, list.id, item.id)) {
@@ -112,7 +112,7 @@ export function isFilePlayable(file: File, selectedPlayMode: PlayMode) {
     });
 }
 
-export function isPointPlayable(items: EditableListItem[], itemId: string, selectedPlayMode: PlayMode = get(playMode)) {
+export function isPointPlayable(items: File.File.EditableListItem[], itemId: string, selectedPlayMode: File.FileAI.PlayMode = get(playMode)) {
     const subtreePoints = getPointAndAllSubpointChildren(items, itemId);
     if (!subtreePoints.length) {
         return false;

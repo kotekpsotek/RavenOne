@@ -1,9 +1,9 @@
 <script lang=ts>
     import { entriesList, isSearchModalOpen } from "$lib/stores/files";
     import Icon from "@iconify/svelte";
-    import type { File } from "$lib/stores/files";
     import { selectedFile } from "$lib/stores/files";
     import IconValue from "$lib/IconValue.svelte";
+    import { File } from "@ravenlens/shared";
 
     const SEARCH_MODAL_MIN_MARGIN = 12;
     const SEARCH_MODAL_ROOT_ID = "editor-search-modal-root";
@@ -21,7 +21,7 @@
     let filteredSearchEntries = $derived(filterEntries($entriesList, searchQuery));
     
     // Logic
-    function countDirectSubentries(entry: File) {
+    function countDirectSubentries(entry: File.File.File) {
         return entry.subentries?.length ?? 0;
     }
 
@@ -36,18 +36,18 @@
         };
     }
 
-    function onSelectSearchEntry(entry: File) {
+    function onSelectSearchEntry(entry: File.File.File) {
         $selectedFile = entry;
         $isSearchModalOpen = false;
     }
     
-    function filterEntries(entries: File[], query: string): File[] {
+    function filterEntries(entries: File.File.File[], query: string): File.File.File[] {
         const normalizedQuery = query.trim().toLowerCase();
         if (!normalizedQuery) {
             return entries;
         }
 
-        const filtered: File[] = [];
+        const filtered: File.File.File[] = [];
 
         for (const entry of entries) {
             const nested = entry.subentries?.length ? filterEntries(entry.subentries, normalizedQuery) : [];
@@ -132,7 +132,7 @@
     }
 </script>
 
-{#snippet renderSearchEntry(entry: File, depth = 0)}
+{#snippet renderSearchEntry(entry: File.File.File, depth = 0)}
     {@const hasSubentries = (entry.subentries?.length ?? 0) > 0}
     {@const entryExpanded = isExpanded(entry.id) || searchQuery.trim().length > 0}
 

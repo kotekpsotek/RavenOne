@@ -1,8 +1,7 @@
 <script lang="ts">
     import { browser } from '$app/environment';
     import Icon from '@iconify/svelte';
-    import type { ContextSpecificationPayload, PlayMode } from '$lib/editorComponents/types/AIList';
-    import type { AI } from '@ravenlens/shared';
+    import type { AI, File } from '@ravenlens/shared';
     import { playMode, selectedFile, selectedModel, selectedTools } from '$lib/stores/files';
     import { selectedMcpServers } from '$lib/stores/mcpConfig';
     import { contextSpecification } from '$lib/stores/contextSpec';
@@ -31,11 +30,11 @@
         onPlay?: (
             pointId: string,
             config: {
-                mode: PlayMode;
+                mode: File.FileAI.PlayMode;
                 model: AI.RavenLensAvaiableAIModel;
                 tools: string[];
                 mcpServers: string[];
-                contextSpec: ContextSpecificationPayload;
+                contextSpec: File.FileAI.ContextSpecificationPayload;
             }
         ) => void | Promise<void>;
         onStop?: (pointId: string) => void | Promise<void>;
@@ -43,8 +42,8 @@
         selectedItemModel: AI.RavenLensAvaiableAIModel | undefined;
         availableItemTools: string[],
         selectedItemMcpServers: string[],
-        selectedItemPlayMode: PlayMode,
-        selectedItemContext: ContextSpecificationPayload,
+        selectedItemPlayMode: File.FileAI.PlayMode,
+        selectedItemContext: File.FileAI.ContextSpecificationPayload,
         playDisabledReason: string
     } = $props();
 
@@ -60,7 +59,7 @@
         return `${POINT_CONTEXT_STORAGE_KEY_PREFIX}${currentItemId}`;
     }
 
-    function cloneContextPayload(payload: ContextSpecificationPayload): ContextSpecificationPayload {
+    function cloneContextPayload(payload: File.FileAI.ContextSpecificationPayload): File.FileAI.ContextSpecificationPayload {
         return {
             desktopFiles: [...payload.desktopFiles],
             editorFiles: [...payload.editorFiles],
@@ -68,17 +67,17 @@
         };
     }
 
-    function isContextSpecificationPayload(value: unknown): value is ContextSpecificationPayload {
+    function isContextSpecificationPayload(value: unknown): value is File.FileAI.ContextSpecificationPayload {
         return Boolean(
             value &&
             typeof value === 'object' &&
-            Array.isArray((value as ContextSpecificationPayload).desktopFiles) &&
-            Array.isArray((value as ContextSpecificationPayload).editorFiles) &&
-            Array.isArray((value as ContextSpecificationPayload).networkUrls)
+            Array.isArray((value as File.FileAI.ContextSpecificationPayload).desktopFiles) &&
+            Array.isArray((value as File.FileAI.ContextSpecificationPayload).editorFiles) &&
+            Array.isArray((value as File.FileAI.ContextSpecificationPayload).networkUrls)
         );
     }
 
-    function readPointContextPayload(currentItemId: string): ContextSpecificationPayload | null {
+    function readPointContextPayload(currentItemId: string): File.FileAI.ContextSpecificationPayload | null {
         if (!browser) {
             return null;
         }
@@ -112,7 +111,7 @@
         isPointContextModalOpen = true;
     }
 
-    function onSavePointContext(payload: ContextSpecificationPayload) {
+    function onSavePointContext(payload: File.FileAI.ContextSpecificationPayload) {
         const pointContext = cloneContextPayload(payload);
 
         if (browser) {
@@ -177,7 +176,7 @@
         isPointPlayModeModalOpen = true;
     }
 
-    function onSavePointPlayMode(mode: PlayMode) {
+    function onSavePointPlayMode(mode: File.FileAI.PlayMode) {
         selectedFile.update(file => {
             if (!file) {
                 return file;

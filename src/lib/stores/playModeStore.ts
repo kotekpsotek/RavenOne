@@ -1,17 +1,16 @@
 import { get, writable, type Updater } from "svelte/store";
-import { selectedFile, type BrowserToolsUnion, type EditableListItem, type File, type SpawnedList } from "./files";
+import { selectedFile, type BrowserToolsUnion } from "./files";
 import { findItemDirectSubitems } from "$lib/listItems/utils";
-import type { PlayMode } from "$lib/editorComponents/types/AIList";
-import type { AI } from "@ravenlens/shared";
+import type { AI, File } from "@ravenlens/shared";
 
-interface PlayableListItem extends Omit<EditableListItem, "answers"> {
+interface PlayableListItem extends Omit<File.File.EditableListItem, "answers"> {
     /** Is attached once starts playing -> means point was started */
     startedAtTimestamp?: number;
     /** Is attached once finishes playing -> means point was finished */
     finishedAtTimestamp?: number;
 }
 
-interface PlayableSpawnedList extends Omit<SpawnedList, "items"> {
+interface PlayableSpawnedList extends Omit<File.File.SpawnedList, "items"> {
     startedAtTimestamp?: number;
     finishedAtTimestamp?: number;
     items: PlayableListItem[];
@@ -25,7 +24,7 @@ export interface PlayableList {
         model: AI.RavenLensAvaiableAIModel;
         tools: BrowserToolsUnion[];
         selectedItemMcpServers: string[];
-        selectedItemPlayMode: PlayMode;
+        selectedItemPlayMode: File.FileAI.PlayMode;
     }
 }
 
@@ -36,8 +35,8 @@ export interface EventFinishedPlaying {
 }
 
 interface PlayableDocumentsWithListsAndPoints {
-    document: File;
-    mode: PlayMode;
+    document: File.File.File;
+    mode: File.FileAI.PlayMode;
     lists: PlayableList[];
     startAtTimestamp: number;
 }
@@ -72,12 +71,12 @@ export class CancelPointEvent {
 
 interface DocumentEvent {
     kind: "document";
-    document: File;
+    document: File.File.File;
 }
 
 interface PointEvent {
     kind: "point";
-    document: File;
+    document: File.File.File;
     listId: string;
     pointId: string;
 }
@@ -106,12 +105,12 @@ export class PlayEvent {
 
 interface StopDocumentEvent {
     kind: "document";
-    document: File;
+    document: File.File.File;
 }
 
 interface StopPointEvent {
     kind: "point";
-    document: File;
+    document: File.File.File;
     listId: string;
     pointId: string;
 }
@@ -171,11 +170,11 @@ export const playableDocumentsAndListsWithPoints = (() => {
         return kind !== "ordered" && kind !== "unordered";
     };
 
-    const hasPointTextContent = (point: EditableListItem) => {
+    const hasPointTextContent = (point: File.File.EditableListItem) => {
         return point.text.trim().length > 0;
     };
 
-    const isPointPlayableByContent = (items: EditableListItem[], pointId: string) => {
+    const isPointPlayableByContent = (items: File.File.EditableListItem[], pointId: string) => {
         const pointIndex = items.findIndex(item => item.id === pointId);
         if (pointIndex < 0) {
             return false;
@@ -204,11 +203,11 @@ export const playableDocumentsAndListsWithPoints = (() => {
         return playMode === "run-non-runned" || playMode === "run-not-runned";
     };
 
-    const hasPointAnswers = (point: EditableListItem) => {
+    const hasPointAnswers = (point: File.File.EditableListItem) => {
         return (point.answers?.length ?? 0) > 0;
     };
 
-    const hasPlayableDescendants = (items: EditableListItem[], point: EditableListItem) => {
+    const hasPlayableDescendants = (items: File.File.EditableListItem[], point: File.File.EditableListItem) => {
         const directSubItems = findItemDirectSubitems(items, point);
 
         for (const directSubItem of directSubItems) {
@@ -223,8 +222,8 @@ export const playableDocumentsAndListsWithPoints = (() => {
     };
 
     const shouldSchedulePointByPlayMode = (
-        items: EditableListItem[],
-        point: EditableListItem,
+        items: File.File.EditableListItem[],
+        point: File.File.EditableListItem,
         selectedItemPlayMode: string
     ) => {
         if (!isPointPlayableByContent(items, point.id)) {
@@ -249,10 +248,10 @@ export const playableDocumentsAndListsWithPoints = (() => {
     };
 
     const collectSchedulableSubtreePoints = (
-        items: EditableListItem[],
-        point: EditableListItem,
+        items: File.File.EditableListItem[],
+        point: File.File.EditableListItem,
         selectedItemPlayMode: string
-    ): EditableListItem[] => {
+    ): File.File.EditableListItem[] => {
         const directSubItems = findItemDirectSubitems(items, point);
         const childPoints = directSubItems.flatMap(subPoint => {
             return collectSchedulableSubtreePoints(items, subPoint, selectedItemPlayMode);
@@ -265,7 +264,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
         return childPoints;
     };
 
-    const collectPointSubtreeIds = (items: EditableListItem[], pointId: string) => {
+    const collectPointSubtreeIds = (items: File.File.EditableListItem[], pointId: string) => {
         const pointIndex = items.findIndex(item => item.id === pointId);
         if (pointIndex < 0) {
             return [];
@@ -293,7 +292,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
 
     return {
         ...playableStore,
-        isDocumentPlaying(selectedDocumentLocal: File | undefined) {
+        isDocumentPlaying(selectedDocumentLocal: File.File.File | undefined) {
             if (!selectedDocumentLocal) {
                 return false;
             }
@@ -301,7 +300,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
             const storeStateCurrent = get(playableStore);
             return storeStateCurrent?.some(state => state.document.id === selectedDocumentLocal.id) ?? false;
         },
-        isSomePointPlayingInSomeList(selectedDocumentLocal?: File) {
+        isSomePointPlayingInSomeList(selectedDocumentLocal?: File.File.File) {
             const storeStateCurrent = get(playableStore);
             const documentStates = selectedDocumentLocal
                 ? storeStateCurrent.filter(state => state.document.id === selectedDocumentLocal.id)
@@ -311,7 +310,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
                 return state.lists.some(playableList => playableList.list.items.length > 0);
             });
         },
-        isSomePointPlayingInThisList(selectedDocumentLocal: File | undefined, listId: string) {
+        isSomePointPlayingInThisList(selectedDocumentLocal: File.File.File | undefined, listId: string) {
             if (!selectedDocumentLocal) {
                 return false;
             }
@@ -326,7 +325,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
                         .some(playableList => playableList.list.items.length > 0);
                 });
         },
-        isPointPlayable(selectedDocumentLocal: File | undefined, listId: string, pointId: string) {
+        isPointPlayable(selectedDocumentLocal: File.File.File | undefined, listId: string, pointId: string) {
             if (!selectedDocumentLocal) {
                 return false;
             }
@@ -338,7 +337,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
 
             return isPointPlayableByContent(fileList.items, pointId);
         },
-        isPointInCurrentPlayScope(selectedDocumentLocal: File | undefined, listId: string, pointId: string) {
+        isPointInCurrentPlayScope(selectedDocumentLocal: File.File.File | undefined, listId: string, pointId: string) {
             if (!selectedDocumentLocal) {
                 return false;
             }
@@ -350,7 +349,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
                 .filter(playableList => playableList.list.id === listId)
                 .some(playableList => getRunScopePointIds(playableList).includes(pointId));
         },
-        isPointMatchingCurrentPlayMode(selectedDocumentLocal: File | undefined, listId: string, pointId: string) {
+        isPointMatchingCurrentPlayMode(selectedDocumentLocal: File.File.File | undefined, listId: string, pointId: string) {
             if (!selectedDocumentLocal) {
                 return false;
             }
@@ -384,7 +383,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
                 );
             });
         },
-        isPointPlaying(selectedDocumentLocal: File | undefined, listId: string, pointId: string) {
+        isPointPlaying(selectedDocumentLocal: File.File.File | undefined, listId: string, pointId: string) {
             if (!selectedDocumentLocal) {
                 return false;
             }
@@ -400,7 +399,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
                         });
                 });
         },
-        isPointActivelyPlaying(selectedDocumentLocal: File | undefined, listId: string, pointId: string) {
+        isPointActivelyPlaying(selectedDocumentLocal: File.File.File | undefined, listId: string, pointId: string) {
             if (!selectedDocumentLocal) {
                 return false;
             }
@@ -425,7 +424,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
 
             return false;
         },
-        isPointParentPlaying(selectedDocumentLocal: File | undefined, listId: string, pointId: string) {
+        isPointParentPlaying(selectedDocumentLocal: File.File.File | undefined, listId: string, pointId: string) {
             if (!selectedDocumentLocal) {
                 return false;
             }
@@ -470,7 +469,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
                         });
                 });
         },
-        isPointSomeChildPlaying(selectedDocumentLocal: File | undefined, listId: string, pointId: string) {
+        isPointSomeChildPlaying(selectedDocumentLocal: File.File.File | undefined, listId: string, pointId: string) {
             if (!selectedDocumentLocal) {
                 return false;
             }
@@ -513,7 +512,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
                         });
                 });
         },
-        async playDocument(selectedDocumentLocal: File, config: PlayableList["config"]) {
+        async playDocument(selectedDocumentLocal: File.File.File, config: PlayableList["config"]) {
             if (!selectedDocumentLocal?.lists?.length) {
                 return false;
             }
@@ -523,7 +522,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
 
             const playRootPoint = async (
                 listId: string,
-                rootPoint: EditableListItem,
+                rootPoint: File.File.EditableListItem,
                 options?: PlayPointOptions
             ) => {
                 if (!isCurrentDocumentRun(selectedDocumentLocal.id, playDocumentRunVersion)) {
@@ -625,9 +624,9 @@ export const playableDocumentsAndListsWithPoints = (() => {
         },
         /** Launches point playing and its subpoints */
         async playPoint(
-            selectedDocumentLocal: File,
+            selectedDocumentLocal: File.File.File,
             listId: string,
-            point: EditableListItem,
+            point: File.File.EditableListItem,
             config: PlayableList["config"],
             options?: PlayPointOptions
         ) {
@@ -692,7 +691,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
              * 
              * * 
              */
-            const backendPlayPoint = async (point: EditableListItem): Promise<true | "don-not-allow-to-play-childs"> => {
+            const backendPlayPoint = async (point: File.File.EditableListItem): Promise<true | "don-not-allow-to-play-childs"> => {
                 if (!pointsForSchedulingIds.has(point.id)) {
                     return "don-not-allow-to-play-childs";
                 }
@@ -778,7 +777,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
                     }
 
                     const now = Date.now();
-                    const dummyAnswer: NonNullable<EditableListItem["answers"]>[number] = {
+                    const dummyAnswer: NonNullable<File.File.EditableListItem["answers"]>[number] = {
                         playMode: config.selectedItemPlayMode,
                         startDateTimestamp: now - 5_000,
                         endDateTimestamp: now,
@@ -823,7 +822,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
 
                 return true;
             }
-            const checkPointStateUpdate = (point: EditableListItem, isChecked: boolean) => {
+            const checkPointStateUpdate = (point: File.File.EditableListItem, isChecked: boolean) => {
                 if (!isTaskLikeListKind(fileList.kind)) {
                     return;
                 }
@@ -894,7 +893,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
                         .filter(documentState => documentState.lists.length > 0);
                 });
             };
-            const playPointIfSchedulable = async (point: EditableListItem) => {
+            const playPointIfSchedulable = async (point: File.File.EditableListItem) => {
                 if (!pointsForSchedulingIds.has(point.id)) {
                     return true;
                 }
@@ -907,7 +906,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
                 checkPointStateUpdate(point, true);
                 return true;
             };
-            const findChildsFromHigherDepthAndPlay = async (point: EditableListItem): Promise<boolean> => {
+            const findChildsFromHigherDepthAndPlay = async (point: File.File.EditableListItem): Promise<boolean> => {
                 const directSubItems = findItemDirectSubitems(fileList.items, point);
                 if (!directSubItems.length) {
                     return true;
@@ -957,7 +956,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
                 return asyncResults.every(result => result);
             };
 
-            const toPlayableItem = (item: EditableListItem): PlayableListItem => ({
+            const toPlayableItem = (item: File.File.EditableListItem): PlayableListItem => ({
                 ...item,
                 startedAtTimestamp: undefined,
                 finishedAtTimestamp: undefined
@@ -1023,11 +1022,11 @@ export const playableDocumentsAndListsWithPoints = (() => {
             return hasAnyPointStartedInRun;
         },
         /** Stop point playing and its subpoints */
-        async stopPlayingPoint(selectedDocumentLocal: File, listId: string, pointId: string) {
+        async stopPlayingPoint(selectedDocumentLocal: File.File.File, listId: string, pointId: string) {
             const fileList = selectedDocumentLocal?.lists.find(list => list.id === listId);
             const pointsToStop = new Set<string>([pointId]);
 
-            const findSubpointsAndNestedWithPoint = (items: EditableListItem[], point: EditableListItem) => {
+            const findSubpointsAndNestedWithPoint = (items: File.File.EditableListItem[], point: File.File.EditableListItem) => {
                 const directSubitems = findItemDirectSubitems(items, point);
 
                 for (const subitem of directSubitems) {
@@ -1131,7 +1130,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
 
             return hasChanges;
         },
-        stopPlayingDocument(document: File) {
+        stopPlayingDocument(document: File.File.File) {
             let hasChanges = false;
             beginDocumentRun(document.id);
 

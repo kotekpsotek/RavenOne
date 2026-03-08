@@ -8,7 +8,6 @@
     import { contextSpecification } from "./stores/contextSpec";
     import { mcpConfigurationStore, selectedMcpServers } from "./stores/mcpConfig";
     import { alertState } from "./utils/alert";
-    import type { BrowserToolsSpec, ContextSpecificationPayload, PlayMode } from "./editorComponents/types/AIList";
     import { editor } from "./stores/editor";
     import { get } from "svelte/store";
     import McpSelectionModal from "./modals/McpSelectionModal.svelte";
@@ -18,6 +17,7 @@
     import { playableDocumentsAndListsWithPoints } from "./stores/playModeStore";
     import { isFilePlayable } from "./listItems/utils";
     import SaveFile from "./components/SaveFile.svelte";
+    import { File } from "@ravenlens/shared";
 
     type DropdownName = "model-settings" | "mcp-tools" | "play-settings" | "share";
 
@@ -35,14 +35,14 @@
 
     let isContextModalOpen = $state(false);
     let isMcpConfigModalOpen = $state(false);
-    let contextModalPayloadDraft = $state<ContextSpecificationPayload>({
+    let contextModalPayloadDraft = $state<File.FileAI.ContextSpecificationPayload>({
         desktopFiles: [],
         editorFiles: [],
         networkUrls: []
     });
     const shareUrl = $derived(getShareUrl());
 
-    function cloneContextPayload(payload: ContextSpecificationPayload): ContextSpecificationPayload {
+    function cloneContextPayload(payload: File.FileAI.ContextSpecificationPayload): File.FileAI.ContextSpecificationPayload {
         return {
             desktopFiles: [...payload.desktopFiles],
             editorFiles: [...payload.editorFiles],
@@ -130,7 +130,7 @@
         isContextModalOpen = true;
     }
 
-    function onSaveGlobalContext(payload: ContextSpecificationPayload) {
+    function onSaveGlobalContext(payload: File.FileAI.ContextSpecificationPayload) {
         contextSpecification.set(payload);
         isContextModalOpen = false;
     }
@@ -231,7 +231,7 @@
         }
     }
 
-    function onSelectPlayMode(mode: PlayMode) {
+    function onSelectPlayMode(mode: File.FileAI.PlayMode) {
         $playMode = mode;
     }
 
