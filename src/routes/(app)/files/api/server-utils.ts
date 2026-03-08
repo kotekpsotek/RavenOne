@@ -9,6 +9,8 @@ import type { Cookies } from "@sveltejs/kit";
 export type FileEntry = File.File.File;
 export type MovePosition = "before" | "after" | "inside";
 
+const EMPTY_FILE_CONTENT = "<p></p>";
+
 type RequireWorkspaceAccessArgs = {
     request: Request;
     cookies: Cookies;
@@ -61,6 +63,18 @@ export function asNullableString(value: unknown): string | null | undefined {
     }
 
     return asNonEmptyString(value);
+}
+
+function normalizeFileContent(contentCandidate: unknown): string {
+    if (typeof contentCandidate !== "string") {
+        return EMPTY_FILE_CONTENT;
+    }
+
+    if (!contentCandidate.trim()) {
+        return EMPTY_FILE_CONTENT;
+    }
+
+    return contentCandidate;
 }
 
 export async function parseJsonBody<T>(request: Request): Promise<T | null> {
@@ -145,7 +159,7 @@ export function sanitizeEntry(entry: FileEntry, workspaceId: string): FileEntry 
         name: String(entry.name),
         createdAt: toDate(entry.createdAt),
         lists: Array.isArray(entry.lists) ? entry.lists : [],
-        content: typeof entry.content === "string" ? entry.content : "",
+        content: normalizeFileContent(entry.content),
         // Keep entries grouped per workspace in the current schema shape.
         createdByAuthorId: workspaceId,
         ...(normalizedIcon ? { icon: normalizedIcon } : {}),
@@ -184,7 +198,7 @@ export function createFileEntry(name: string, workspaceId: string): FileEntry {
         name,
         lists: [],
         createdAt: new Date(),
-        content: "",
+        content: EMPTY_FILE_CONTENT,
         createdByAuthorId: workspaceId
     };
 }

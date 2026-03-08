@@ -7,23 +7,14 @@
     import IconSelectionModal from "$lib/modals/IconSelectionModal.svelte";
     import WallpaperSelectionModal from "$lib/modals/WallpaperSelectionModal.svelte";
     import IconValue from "$lib/IconValue.svelte";
-    import { fetchAuthenticated } from "$lib/utils/fetch";
     import { setAlert } from "$lib/utils/alert";
     import { onMount } from "svelte";
     import { get } from "svelte/store";
     import { File } from "@ravenlens/shared";
+    import { changeFilePositionRequest, changeIconFileRequest, changeWalperFileRequest, deleteFileRequest, downloadFilesRequest, newFileRequest, renameFileRequest } from "$lib/files/connections/connections";
+    import type { DropPosition } from "$lib/files/utils";
  
     let { isExpanded = false }: { isExpanded?: boolean } = $props();
-
-    type FilesApiRequestMethod = "POST" | "PUT" | "DELETE";
-    type FilesApiFailurePayload = {
-        message?: string;
-        error?: string;
-    };
-    type FilesDownloadResponse = {
-        files?: File.File.File[];
-    };
-
     function getCurrentWorkspaceId(): string | null {
         const workspaceId = $selectedWorkspace?.id?.trim();
         if (!workspaceId) {
@@ -34,68 +25,13 @@
         return workspaceId;
     }
 
-    async function readFailureMessage(response: Response, fallbackMessage: string): Promise<string> {
-        let responsePayload: FilesApiFailurePayload | null = null;
-        try {
-            responsePayload = (await response.json()) as FilesApiFailurePayload;
-        } catch {
-            responsePayload = null;
-        }
-
-        const message = responsePayload?.message?.trim() || responsePayload?.error?.trim();
-        return message || `${fallbackMessage} (${response.status})`;
-    }
-
-    async function requestFilesApi<T>(
-        path: string,
-        method: FilesApiRequestMethod,
-        payload: Record<string, unknown>,
-        alertTitle: string,
-        fallbackMessage: string
-    ): Promise<T | null> {
-        let response: Response;
-        try {
-            response = await fetchAuthenticated(path, {
-                method,
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify(payload)
-            });
-        } catch {
-            setAlert("error", alertTitle, "Cannot reach files service.");
-            return null;
-        }
-
-        if (!response.ok) {
-            const message = await readFailureMessage(response, fallbackMessage);
-            setAlert("error", alertTitle, message);
-            return null;
-        }
-
-        try {
-            return (await response.json()) as T;
-        } catch {
-            return {} as T;
-        }
-    }
-
     let activeWorkspaceId: string | null = null;
     let filesSyncRequestId = 0;
 
     async function downloadWorkspaceFiles(workspaceId: string) {
         const currentRequestId = ++filesSyncRequestId;
 
-        const responseBody = await requestFilesApi<FilesDownloadResponse>(
-            "/files/api/download",
-            "POST",
-            {
-                workspaceId
-            },
-            "File sync failed",
-            "Cannot download files"
-        );
-
+        const responseBody = await downloadFilesRequest(workspaceId);
         if (currentRequestId !== filesSyncRequestId || workspaceId !== activeWorkspaceId) {
             return;
         }
@@ -145,7 +81,7 @@
 
     let draggedId = $state<string | null>(null);
     let dropTargetId = $state<string | null>(null);
-    let dropPosition = $state<'before' | 'after' | 'inside' | null>(null);
+    let dropPosition = $state<DropPosition>(null);
     let contextMenu = $state<{ entryId: string; x: number; y: number } | null>(null);
     let renamingId = $state<string | null>(null);
     let renameValue = $state('');
@@ -171,18 +107,7 @@
         }
 
         const name = getNextName($entriesList, 'Task');
-        const responseBody = await requestFilesApi<{ createdFile?: File.File.File }>(
-            "/files/api/create",
-            "POST",
-            {
-                workspaceId,
-                targetId,
-                name
-            },
-            "File creation failed",
-            "Cannot create file"
-        );
-
+        const responseBody = await newFileRequest(workspaceId, targetId, name);
         if (!responseBody) {
             return;
         }
@@ -287,19 +212,12 @@
             const nextDropPosition = dropPosition || 'inside';
 
             if (workspaceId) {
-                const moveResult = await requestFilesApi<{ moved?: boolean }>(
-                    "/files/api/change_position",
-                    "PUT",
-                    {
-                        workspaceId,
-                        sourceId,
-                        targetId,
-                        position: nextDropPosition
-                    },
-                    "File move failed",
-                    "Cannot move file"
+                const moveResult = await changeFilePositionRequest(
+                    workspaceId,
+                    sourceId,
+                    targetId,
+                    dropPosition
                 );
-
                 if (moveResult) {
                     moveEntry(sourceId, targetId, nextDropPosition);
                 }
@@ -422,7 +340,7 @@
         closeContextMenu();
     }
 
-    async function submitRename(entryId: string) {
+    async function submitRename(fileId: string) {
         const nextName = renameValue.trim();
         if (!nextName) {
             return;
@@ -433,23 +351,12 @@
             return;
         }
 
-        const renameResult = await requestFilesApi<{ updated?: boolean }>(
-            "/files/api/rename",
-            "PUT",
-            {
-                workspaceId,
-                fileId: entryId,
-                name: nextName
-            },
-            "Rename failed",
-            "Cannot rename file"
-        );
-
+        const renameResult = await renameFileRequest(workspaceId, fileId, nextName);
         if (!renameResult) {
             return;
         }
 
-        entriesList.update((list) => updateFileById(list, entryId, (entry) => ({
+        entriesList.update((list) => updateFileById(list, fileId, (entry) => ({
             ...entry,
             name: nextName
         })));
@@ -486,18 +393,7 @@
             return;
         }
 
-        const iconUpdateResult = await requestFilesApi<{ updated?: boolean }>(
-            "/files/api/icon",
-            "PUT",
-            {
-                workspaceId,
-                fileId: entryId,
-                icon: normalizedIconValue
-            },
-            "Icon update failed",
-            "Cannot update file icon"
-        );
-
+        const iconUpdateResult = await changeIconFileRequest(workspaceId, entryId, normalizedIconValue);
         if (!iconUpdateResult) {
             return;
         }
@@ -531,18 +427,7 @@
             return;
         }
 
-        const iconUpdateResult = await requestFilesApi<{ updated?: boolean }>(
-            "/files/api/icon",
-            "PUT",
-            {
-                workspaceId,
-                fileId: entryId,
-                icon: null
-            },
-            "Icon removal failed",
-            "Cannot remove file icon"
-        );
-
+        const iconUpdateResult = await changeIconFileRequest(workspaceId, entryId, null);
         if (!iconUpdateResult) {
             return;
         }
@@ -587,18 +472,7 @@
             return;
         }
 
-        const walperUpdateResult = await requestFilesApi<{ updated?: boolean }>(
-            "/files/api/walper",
-            "PUT",
-            {
-                workspaceId,
-                fileId: entryId,
-                walper: walperValue
-            },
-            "Wallpaper update failed",
-            "Cannot update file wallpaper"
-        );
-
+        const walperUpdateResult = await changeWalperFileRequest(workspaceId, entryId, walperValue);
         if (!walperUpdateResult) {
             return;
         }
@@ -630,18 +504,7 @@
             return;
         }
 
-        const walperUpdateResult = await requestFilesApi<{ updated?: boolean }>(
-            "/files/api/walper",
-            "PUT",
-            {
-                workspaceId,
-                fileId: entryId,
-                walper: null
-            },
-            "Wallpaper removal failed",
-            "Cannot remove file wallpaper"
-        );
-
+        const walperUpdateResult = await changeWalperFileRequest(workspaceId, entryId, null);
         if (!walperUpdateResult) {
             return;
         }
@@ -681,17 +544,7 @@
             return;
         }
 
-        const deleteResult = await requestFilesApi<{ deleted?: boolean }>(
-            "/files/api/delete",
-            "DELETE",
-            {
-                workspaceId,
-                fileId: target.id
-            },
-            "Delete failed",
-            "Cannot delete file"
-        );
-
+        const deleteResult = await deleteFileRequest(workspaceId, target.id);
         if (!deleteResult) {
             return;
         }

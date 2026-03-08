@@ -28,6 +28,8 @@ type FileUpdate = {
     lists: File.File.SpawnedList[];
 };
 
+const EMPTY_FILE_CONTENT = "<p></p>";
+
 function normalizeDate(dateCandidate: unknown): number {
     if (typeof dateCandidate === "number" && Number.isFinite(dateCandidate)) {
         return dateCandidate;
@@ -42,6 +44,18 @@ function normalizeLists(listsCandidate: unknown): File.File.SpawnedList[] {
     }
 
     return listsCandidate as File.File.SpawnedList[];
+}
+
+function normalizeFileContent(contentCandidate: unknown): string {
+    if (typeof contentCandidate !== "string") {
+        return EMPTY_FILE_CONTENT;
+    }
+
+    if (!contentCandidate.trim()) {
+        return EMPTY_FILE_CONTENT;
+    }
+
+    return contentCandidate;
 }
 
 function buildFileUpdates(filesCandidate: unknown): FileUpdate[] | null {
@@ -74,7 +88,7 @@ function buildFileUpdates(filesCandidate: unknown): FileUpdate[] | null {
             fileId,
             workspaceId,
             date: normalizeDate(envelope.date),
-            content: typeof filePayload.content === "string" ? filePayload.content : "",
+            content: normalizeFileContent(filePayload.content),
             lists: normalizeLists(filePayload.lists)
         });
     }
