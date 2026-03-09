@@ -3,6 +3,7 @@ import { DB_Models } from "@ravenlens/backend";
 import { randomUUID } from "node:crypto";
 import { extractBearerToken } from "$lib/server/auth/request";
 import { prefetchWorkspaceWithMembers } from "$lib/server/db";
+import { getWorkspaceActiveSubscription } from "$lib/server/subscription";
 import { Permissions, type Workspace } from "@ravenlens/shared";
 import type { RequestHandler } from "@sveltejs/kit";
 import { env } from "$env/dynamic/private";
@@ -479,6 +480,17 @@ export const POST: RequestHandler = async ({ request, url }) => {
         return new Response(JSON.stringify({ message: "You've not permission to invite new members to workspace" }), {
             status: 401
         })
+    }
+
+    const workspaceSubscription = await getWorkspaceActiveSubscription(workspaceId);
+    if (!workspaceSubscription.hasActiveSubscription) {
+        return new Response(
+            JSON.stringify({ message: "Cannot invite new members because this workspace has no active subscription" }),
+            {
+                status: 401,
+                headers: { "content-type": "application/json" }
+            }
+        );
     }
 
     const workspaceInvitementsFromDb: WorkspaceInvitement[] = Array.isArray(userWorkspacesQuota.workspaceInvitements)

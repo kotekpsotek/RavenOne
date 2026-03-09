@@ -3,10 +3,9 @@
     import { page } from '$app/stores';
     import SideStripe from '$lib/sideStripe/SideStripe.svelte';
 	import SearchModal from '$lib/modals/SearchModal.svelte';
+    import { isSharedRoute } from '$lib/stores/share';
 
 	let { children } = $props();
-
-    const isSharedRoute = $derived($page.url.pathname.startsWith('/share/'));
 </script>
 
 <svelte:head>
@@ -14,10 +13,10 @@
 </svelte:head>
 
 <div class="flex h-screen w-screen overflow-hidden bg-base-100 text-base-content">
-	<SideStripe isSharedView={isSharedRoute}/>
+	<SideStripe/>
 	
 	<main class="relative flex-1 flex flex-col h-full min-w-0">
-		{#if !isSharedRoute}
+		{#if !$isSharedRoute}
 			<SearchModal/>
 		{/if}
 		{@render children()}

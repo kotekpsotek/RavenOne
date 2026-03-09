@@ -16,6 +16,7 @@ type SubscriptionRouteResponse = {
     subscribed?: boolean;
     subscription?: {
         userId?: string;
+        subscriptionKind?: string;
         kind?: string;
         status?: string;
         priceId?: string;
@@ -63,8 +64,8 @@ async function toResponseError(response: Response): Promise<string> {
 }
 
 function normalizeSubscriptionKind(value: unknown): ProfileSubscriptionKind {
-    const normalized = String(value ?? "individual").trim().toLowerCase();
-    if (normalized === "company") {
+    const normalized = String(value ?? "growth").trim().toLowerCase();
+    if (normalized === "enterprise" || normalized === "company") {
         return "company" as ProfileSubscriptionKind;
     }
 
@@ -111,7 +112,9 @@ function mapSubscriptionFromRoute(
         return defaultSubscription;
     }
 
-    const subscriptionKind = normalizeSubscriptionKind(body.subscription.kind);
+    const subscriptionKind = normalizeSubscriptionKind(
+        body.subscription.subscriptionKind ?? body.subscription.kind
+    );
     const renewsOn = toDate(body.subscription.currentPeriodEnd ?? profile.createdAt);
     const priceId = String(body.subscription.priceId ?? "");
 

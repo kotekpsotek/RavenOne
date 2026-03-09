@@ -1,26 +1,35 @@
 <script lang="ts">
+    import { workspaceHasActiveSubscription, workspaceSubscriptionCheckInProgress } from "$lib/stores/subscription";
     import { UI } from "@ravenlens/frontend";
     import { onDestroy, type ComponentProps } from "svelte";
     import { selectedWorkspace } from "$lib/stores/workspace";
+    import { setAlert } from "$lib/utils/alert";
     import { sendDeleteWorkspace, sendSaveWorkspaceChanges } from "$lib/workspace-settings/connections";
     
     // Workspace state (should be loaded from backend in real app)
-    $: workspaceName = $selectedWorkspace?.name;
-    $: originalWorkspaceName = workspaceName;
+        let workspaceName = $state("");
+        let originalWorkspaceName = $state("");
 
     // Profile image handling
-    let profileImageUrl: string | null = null; // existing image URL
-    let profilePreviewUrl: string | null = null; // object URL for preview (optional)
+    let profileImageUrl = $state<string | null>(null); // existing image URL
+    let profilePreviewUrl = $state<string | null>(null); // object URL for preview (optional)
 
     // UI state
-    let editing = false;
+    let editing = $state(false);
 
     // Delete workspace flow
-    let showDeleteSection = false;
-    let deleteConfirmInput = "";
-    let deleting = false;
+    let showDeleteSection = $state(false);
+    let deleteConfirmInput = $state("");
+    let deleting = $state(false);
 
-    $: deleteInputMatches = deleteConfirmInput === originalWorkspaceName;
+    const canEditWorkspaceSettings = $derived(!$workspaceSubscriptionCheckInProgress && $workspaceHasActiveSubscription);
+    const deleteInputMatches = $derived(deleteConfirmInput === originalWorkspaceName);
+
+    $effect(() => {
+        const selectedWorkspaceName = $selectedWorkspace?.name ?? "";
+        workspaceName = selectedWorkspaceName;
+        originalWorkspaceName = selectedWorkspaceName;
+    });
 
     function openDelete() {
         showDeleteSection = true;
@@ -50,6 +59,11 @@
     }
 
     const onSaveWorkspaceChange: ComponentProps<UI.Common.ProfileCard>["onSaveChange"] = async (name, image) => {
+        if (!canEditWorkspaceSettings) {
+            setAlert("warning", "Active workspace subscription required", "Cannot edit workspace name or image because this workspace has no active subscription.");
+            return;
+        }
+
         workspaceName = name;
 
         try {
@@ -77,32 +91,43 @@
 </script>
 
 <div class="space-y-6">
-    {#if profilePreviewUrl}
-        <UI.Common.ProfileCard
-            name={workspaceName!}
-            profileName={$selectedWorkspace?.name}
-            profileImgURL={$selectedWorkspace?.imageUrl}
-            label="Workspace"
-            editionDescription="Customize workspace appearance and basic settings."
-            {profileImageUrl}
-            {profilePreviewUrl}
-            profileImageErrorHandler={() => UI.Common.Avatar.onWorkspaceAvatarError(workspaceName!)}
-            onSaveChange={onSaveWorkspaceChange}
-        />
-    {:else}
-        <UI.Common.ProfileCard
-            name={workspaceName!}
-            profileName={$selectedWorkspace?.name}
-            profileImgURL={$selectedWorkspace?.imageUrl}
-            label="Workspace"
-            editionDescription="Customize workspace appearance and basic settings."
-            {profileImageUrl}
-            
-            {profilePreviewUrl}
-            profileImageErrorHandler={() => UI.Common.Avatar.onWorkspaceAvatarError(workspaceName!)}
-            onSaveChange={onSaveWorkspaceChange}
-        />
-    {/if}
+    <div class="relative">
+        <div class={!canEditWorkspaceSettings ? "pointer-events-none opacity-60" : ""}>
+            {#if profilePreviewUrl}
+                <UI.Common.ProfileCard
+                    name={workspaceName!}
+                    profileName={$selectedWorkspace?.name}
+                    profileImgURL={$selectedWorkspace?.imageUrl}
+                    label="Workspace"
+                    editionDescription="Customize workspace appearance and basic settings."
+                    {profileImageUrl}
+                    {profilePreviewUrl}
+                    profileImageErrorHandler={() => UI.Common.Avatar.onWorkspaceAvatarError(workspaceName!)}
+                    onSaveChange={onSaveWorkspaceChange}
+                />
+            {:else}
+                <UI.Common.ProfileCard
+                    name={workspaceName!}
+                    profileName={$selectedWorkspace?.name}
+                    profileImgURL={$selectedWorkspace?.imageUrl}
+                    label="Workspace"
+                    editionDescription="Customize workspace appearance and basic settings."
+                    {profileImageUrl}
+                    {profilePreviewUrl}
+                    profileImageErrorHandler={() => UI.Common.Avatar.onWorkspaceAvatarError(workspaceName!)}
+                    onSaveChange={onSaveWorkspaceChange}
+                />
+            {/if}
+        </div>
+
+        {#if !canEditWorkspaceSettings && !$workspaceSubscriptionCheckInProgress}
+            <div class="absolute inset-0 z-10 flex items-start justify-center p-4">
+                <div class="alert alert-warning max-w-2xl text-sm">
+                    Active workspace subscription is required to edit workspace name and image.
+                </div>
+            </div>
+        {/if}
+    </div>
 
     <div class="bg-base-100 rounded-2xl p-5 space-y-4 border border-error/30">
         <div class="flex items-center justify-between">
@@ -111,7 +136,7 @@
                 <div class="text-sm text-base-content/60 mt-1">Remove this workspace permanently. This action cannot be undone.</div>
             </div>
             <div>
-                <button class="btn btn-outline btn-error hover:text-white" on:click={openDelete}>Remove workspace</button>
+                <button class="btn btn-outline btn-error hover:text-white" onclick={openDelete}>Remove workspace</button>
             </div>
         </div>
     </div>
@@ -142,10 +167,10 @@
     </div>
 
     <div class="modal-action">
-        <button class="btn btn-ghost" on:click={onCancelDelete}>Cancel</button>
+        <button class="btn btn-ghost" onclick={onCancelDelete}>Cancel</button>
         <button 
             class="btn btn-error text-white" 
-            on:click={onConfirmDelete} 
+            onclick={onConfirmDelete} 
             disabled={deleteConfirmInput !== originalWorkspaceName || deleting}
         >
             {#if deleting}

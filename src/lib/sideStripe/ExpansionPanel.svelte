@@ -2,6 +2,7 @@
     import { goto } from "$app/navigation";
     import { UI } from "@ravenlens/frontend";
     import { entriesList, moveEntry, selectedFile } from "$lib/stores/files";
+    import { canManageWorkspaceFiles, workspaceSubscriptionCheckInProgress } from "$lib/stores/subscription";
     import { selectedWorkspace } from "$lib/stores/workspace";
     import Icon from "@iconify/svelte";
     import IconSelectionModal from "$lib/modals/IconSelectionModal.svelte";
@@ -93,6 +94,22 @@
     let expandedEntries = $state<Record<string, boolean>>({});
     let contextMenuEntry = $derived(contextMenu ? findFileById($entriesList, contextMenu.entryId) : null);
 
+    function ensureActiveWorkspaceSubscription(operationName: string): boolean {
+        if ($canManageWorkspaceFiles) {
+            return true;
+        }
+
+        if (!$workspaceSubscriptionCheckInProgress) {
+            setAlert(
+                "warning",
+                "Active workspace subscription required",
+                `Cannot ${operationName} because this workspace has no active subscription.`
+            );
+        }
+
+        return false;
+    }
+
     function focusInputAttachment(node: HTMLInputElement) {
         queueMicrotask(() => {
             node.focus();
@@ -101,6 +118,10 @@
     }
 
     async function onNewFile(targetId: string | null = null) {
+        if (!ensureActiveWorkspaceSubscription("create files")) {
+            return;
+        }
+
         const workspaceId = getCurrentWorkspaceId();
         if (!workspaceId) {
             return;
@@ -370,6 +391,10 @@
     }
 
     function openIconPicker(entry: File.File.File) {
+        if (!ensureActiveWorkspaceSubscription("change file icon")) {
+            return;
+        }
+
         iconPickerEntryId = entry.id;
         iconPickerInitialValue = entry.icon ?? "";
         closeContextMenu();
@@ -381,6 +406,10 @@
     }
 
     async function applyPickedIcon(iconValue: string) {
+        if (!ensureActiveWorkspaceSubscription("change file icon")) {
+            return;
+        }
+
         if (!iconPickerEntryId) {
             return;
         }
@@ -416,6 +445,10 @@
     }
 
     async function removePickedIcon() {
+        if (!ensureActiveWorkspaceSubscription("change file icon")) {
+            return;
+        }
+
         if (!iconPickerEntryId) {
             return;
         }
@@ -450,6 +483,10 @@
     }
 
     function openWalperPicker(entry: File.File.File) {
+        if (!ensureActiveWorkspaceSubscription("change file wallpaper")) {
+            return;
+        }
+
         walperPickerEntryId = entry.id;
         walperPickerInitialValue = entry.walper ?? "";
         closeContextMenu();
@@ -461,6 +498,10 @@
     }
 
     async function applyWalperToFile(walperValue: string) {
+        if (!ensureActiveWorkspaceSubscription("change file wallpaper")) {
+            return;
+        }
+
         if (!walperPickerEntryId) {
             return;
         }
@@ -493,6 +534,10 @@
     }
 
     async function removeWalperFromFile() {
+        if (!ensureActiveWorkspaceSubscription("change file wallpaper")) {
+            return;
+        }
+
         if (!walperPickerEntryId) {
             return;
         }
@@ -691,12 +736,14 @@
                 </div>
             {:else}
                 <button
-                    class="btn btn-ghost btn-square btn-xs opacity-0 group-hover/file:opacity-100 transition-opacity"
+                    class="btn btn-ghost btn-square btn-xs opacity-0 group-hover/file:opacity-100 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
                     onclick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
                         onNewFile(entry.id);
                     }}
+                    disabled={!$canManageWorkspaceFiles}
+                    title={!$canManageWorkspaceFiles ? "Active workspace subscription required" : "Add file"}
                     aria-label="Add file"
                 >
                     <Icon icon="material-symbols:add-rounded" class="text-lg"/>
@@ -721,9 +768,32 @@
     >
         <ul class="menu dropdown-content z-[1] w-52 rounded-box border border-base-300 bg-base-100 p-2 shadow-xl">
             {#if contextMenuEntry}
-                <li><button onclick={() => openRename(contextMenuEntry)}>Change name</button></li>
-                <li><button onclick={() => openIconPicker(contextMenuEntry)}>{contextMenuEntry.icon ? 'Change icon' : 'Add icon'}</button></li>
-                <li><button onclick={() => openWalperPicker(contextMenuEntry)}>{contextMenuEntry.walper ? 'Change walper' : 'Add walper'}</button></li>
+                <li>
+                    <button
+                        onclick={() => openRename(contextMenuEntry)}
+                        disabled={!$canManageWorkspaceFiles}
+                    >
+                        Change name
+                    </button>
+                </li>
+                <li>
+                    <button
+                        onclick={() => openIconPicker(contextMenuEntry)}
+                        disabled={!$canManageWorkspaceFiles}
+                        title={!$canManageWorkspaceFiles ? "Active workspace subscription required" : undefined}
+                    >
+                        {contextMenuEntry.icon ? 'Change icon' : 'Add icon'}
+                    </button>
+                </li>
+                <li>
+                    <button
+                        onclick={() => openWalperPicker(contextMenuEntry)}
+                        disabled={!$canManageWorkspaceFiles}
+                        title={!$canManageWorkspaceFiles ? "Active workspace subscription required" : undefined}
+                    >
+                        {contextMenuEntry.walper ? 'Change walper' : 'Add walper'}
+                    </button>
+                </li>
                 <li><button class="text-error" onclick={() => openDeleteModal(contextMenuEntry)}>Delete</button></li>
             {/if}
         </ul>
@@ -754,8 +824,9 @@
             <div class="flex items-center gap-1">
                 <button 
                     onclick={() => onNewFile()}
-                    class="btn btn-ghost btn-square btn-xs hover:bg-base-300"
-                    title="New File"
+                    class="btn btn-ghost btn-square btn-xs hover:bg-base-300 disabled:cursor-not-allowed"
+                    title={!$canManageWorkspaceFiles ? "Active workspace subscription required" : "New File"}
+                    disabled={!$canManageWorkspaceFiles}
                 >
                     <Icon icon="material-symbols:note-add-outline-rounded" class="text-lg"/>
                 </button>
@@ -819,3 +890,11 @@
         </div>
     </div>
 {/if}
+
+<style>
+    @reference "../../app.css";
+
+    .dropdown-content button:disabled {
+        @apply opacity-50;
+    }
+</style>

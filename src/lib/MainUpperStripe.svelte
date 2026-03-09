@@ -20,6 +20,7 @@
     import SaveFile from "./components/SaveFile.svelte";
     import { shareFileRequest } from "./files/connections/connections";
     import { File } from "@ravenlens/shared";
+    import { canManageWorkspaceFiles } from "./stores/subscription";
 
     type DropdownName = "model-settings" | "mcp-tools" | "play-settings" | "share";
 
@@ -357,104 +358,109 @@
                         avaiabaleModels={avaiableModels}
                         placeholder="Select model"
                         onChange={onModelChange}
+                        disabled={!$canManageWorkspaceFiles}
                         selectSize="sm"
                     />
 
-                    <details
-                        class="dropdown dropdown-end join-item"
-                        open={openDropdown === "model-settings"}
-                        ontoggle={(event) => onDropdownToggle("model-settings", event)}
-                    >
-                        <summary class="btn btn-sm h-full rounded-l-none bg-primary/95 text-white/70 border-primary px-1" aria-label="Model Settings" title="Model settings">
-                            <Icon icon="material-symbols:settings-outline-rounded" class="w-3 h-3" />
-                        </summary>
+                    {#if $canManageWorkspaceFiles}
+                        <details
+                            class="dropdown dropdown-end join-item"
+                            open={openDropdown === "model-settings"}
+                            ontoggle={(event) => onDropdownToggle("model-settings", event)}
+                        >
+                            <summary class="btn btn-sm h-full rounded-l-none bg-primary/95 text-white/70 border-primary px-1" aria-label="Model Settings" title="Model settings">
+                                <Icon icon="material-symbols:settings-outline-rounded" class="w-3 h-3" />
+                            </summary>
 
-                        <div class="dropdown-content p-3 shadow bg-base-200 rounded-box z-[20] w-80 space-y-2">
-                            <div class="flex items-center justify-between text-sm">
-                                <div class="flex items-center gap-2">
-                                    {#if $selectedModel}
-                                        <Icon icon={getProviderIconifyIcon($selectedModel.provider)} class="w-4 h-4" />
-                                    {/if}
-                                    <span>{$selectedModel?.model ?? "Select model"}</span>
+                            <div class="dropdown-content p-3 shadow bg-base-200 rounded-box z-[20] w-80 space-y-2">
+                                <div class="flex items-center justify-between text-sm">
+                                    <div class="flex items-center gap-2">
+                                        {#if $selectedModel}
+                                            <Icon icon={getProviderIconifyIcon($selectedModel.provider)} class="w-4 h-4" />
+                                        {/if}
+                                        <span>{$selectedModel?.model ?? "Select model"}</span>
+                                    </div>
+                                    <span class="badge badge-outline">Weight: {getCurrentModelWeight().toFixed(2)}</span>
                                 </div>
-                                <span class="badge badge-outline">Weight: {getCurrentModelWeight().toFixed(2)}</span>
-                            </div>
 
-                            <input
-                                type="range"
-                                min="0"
-                                max="1"
-                                step="0.01"
-                                value={getCurrentModelWeight()}
-                                class="range range-primary"
-                                oninput={(event) =>
-                                    updateCurrentModelWeight(Number((event.currentTarget as HTMLInputElement).value))}
-                            />
-                        </div>
-                    </details>
-                </div>
-
-                <details
-                    class="dropdown dropdown-end"
-                    open={openDropdown === "mcp-tools"}
-                    ontoggle={(event) => onDropdownToggle("mcp-tools", event)}
-                >
-                    <summary class="btn btn-sm btn-ghost" title="MCP & tools" aria-label="MCP & tools">
-                        <Icon icon="material-symbols:build-outline-rounded" class="w-5 h-5" />
-                    </summary>
-                    <div class="dropdown-content p-3 shadow bg-base-200 rounded-box z-[20] w-80 space-y-3">
-                        <div>
-                            <p class="text-xs uppercase tracking-wide opacity-70 mb-1">Tools</p>
-                            <div class="flex flex-wrap gap-2">
-                                {#each availableTools as tool (tool)}
-                                    <label class="label cursor-pointer justify-start gap-2">
-                                        <input
-                                            type="checkbox"
-                                            class="checkbox checkbox-primary checkbox-sm"
-                                            checked={$selectedTools.includes(tool)}
-                                            onchange={() => ($selectedTools = toggleValue($selectedTools, tool))}
-                                        />
-                                        <span class="label-text">{tool}</span>
-                                    </label>
-                                {/each}
-                            </div>
-                        </div>
-
-                        <div>
-                            <p class="text-xs uppercase tracking-wide opacity-70 mb-1">MCP servers access</p>
-                            <label class="label cursor-pointer justify-between mb-1 px-0">
-                                <span class="label-text text-xs">Use MCP servers for tasks</span>
-                                <input type="checkbox" class="toggle toggle-primary toggle-sm" bind:checked={useMcpServers} />
-                            </label>
-                            <div class="rounded border border-base-300 bg-base-100 overflow-auto max-h-48">
-                                <CodeMirror
-                                    value={$mcpConfigurationStore}
-                                    lang={json()}
-                                    readonly={true}
-                                    editable={false}
-                                    lineNumbers={true}
-                                    lineWrapping={false}
-                                    styles={{
-                                        "&": {
-                                            minWidth: "36rem",
-                                            height: "12rem"
-                                        }
-                                    }}
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max="1"
+                                    step="0.01"
+                                    value={getCurrentModelWeight()}
+                                    class="range range-primary"
+                                    oninput={(event) =>
+                                        updateCurrentModelWeight(Number((event.currentTarget as HTMLInputElement).value))}
                                 />
                             </div>
-                            <div class="mt-2 flex items-center justify-between">
-                                <span class="text-xs opacity-70">
-                                    {useMcpServers
-                                        ? `${$selectedMcpServers.length} server(s) configured`
-                                        : "MCP servers disabled for tasks"}
-                                </span>
-                                <button class="btn btn-xs btn-primary" onclick={openMcpConfigurationEditor}>Edit</button>
+                        </details>
+                    {/if}
+                </div>
+
+                {#if $canManageWorkspaceFiles}
+                    <details
+                        class="dropdown dropdown-end"
+                        open={openDropdown === "mcp-tools"}
+                        ontoggle={(event) => onDropdownToggle("mcp-tools", event)}
+                    >
+                        <summary class="btn btn-sm btn-ghost" title="MCP & tools" aria-label="MCP & tools">
+                            <Icon icon="material-symbols:build-outline-rounded" class="w-5 h-5" />
+                        </summary>
+                        <div class="dropdown-content p-3 shadow bg-base-200 rounded-box z-[20] w-80 space-y-3">
+                            <div>
+                                <p class="text-xs uppercase tracking-wide opacity-70 mb-1">Tools</p>
+                                <div class="flex flex-wrap gap-2">
+                                    {#each availableTools as tool (tool)}
+                                        <label class="label cursor-pointer justify-start gap-2">
+                                            <input
+                                                type="checkbox"
+                                                class="checkbox checkbox-primary checkbox-sm"
+                                                checked={$selectedTools.includes(tool)}
+                                                onchange={() => ($selectedTools = toggleValue($selectedTools, tool))}
+                                            />
+                                            <span class="label-text">{tool}</span>
+                                        </label>
+                                    {/each}
+                                </div>
+                            </div>
+
+                            <div>
+                                <p class="text-xs uppercase tracking-wide opacity-70 mb-1">MCP servers access</p>
+                                <label class="label cursor-pointer justify-between mb-1 px-0">
+                                    <span class="label-text text-xs">Use MCP servers for tasks</span>
+                                    <input type="checkbox" class="toggle toggle-primary toggle-sm" bind:checked={useMcpServers} />
+                                </label>
+                                <div class="rounded border border-base-300 bg-base-100 overflow-auto max-h-48">
+                                    <CodeMirror
+                                        value={$mcpConfigurationStore}
+                                        lang={json()}
+                                        readonly={true}
+                                        editable={false}
+                                        lineNumbers={true}
+                                        lineWrapping={false}
+                                        styles={{
+                                            "&": {
+                                                minWidth: "36rem",
+                                                height: "12rem"
+                                            }
+                                        }}
+                                    />
+                                </div>
+                                <div class="mt-2 flex items-center justify-between">
+                                    <span class="text-xs opacity-70">
+                                        {useMcpServers
+                                            ? `${$selectedMcpServers.length} server(s) configured`
+                                            : "MCP servers disabled for tasks"}
+                                    </span>
+                                    <button class="btn btn-xs btn-primary" onclick={openMcpConfigurationEditor}>Edit</button>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                </details>
+                    </details>
+                {/if}
 
-                <button class="btn btn-sm btn-ghost" onclick={openContextModal} title="Context specification" aria-label="Context specification">
+                <button class="btn btn-sm btn-ghost" disabled={!$canManageWorkspaceFiles} onclick={openContextModal} title="Context specification" aria-label="Context specification">
                     <Icon icon="material-symbols:note-stack-outline-rounded" class="w-5 h-5" />
                 </button>
 
@@ -481,29 +487,31 @@
                                 <button
                                     class="btn btn-sm join-item btn-primary disabled:cursor-not-allowed"
                                     onclick={onPlay}
-                                    disabled={isPlayingDisabled}
+                                    disabled={isPlayingDisabled || !$canManageWorkspaceFiles}
                                 >
                                     <Icon icon="material-symbols:play-circle-outline-rounded" class="w-5 h-5" />
                                     <span>Play</span>
                                 </button>
                             </div>
 
-                            <details
-                                class="dropdown dropdown-end join-item"
-                                open={openDropdown === "play-settings"}
-                                ontoggle={(event) => onDropdownToggle("play-settings", event)}
-                            >
-                                <summary class="btn btn-sm rounded-l-none bg-primary/95 text-white/70 shadow-xl border-primary px-1" aria-label="Play settings" title="Play settings">
-                                    <Icon icon="material-symbols:settings-outline-rounded" class="w-3 h-3" />
-                                </summary>
+                            {#if $canManageWorkspaceFiles}
+                                <details
+                                    class="dropdown dropdown-end join-item"
+                                    open={openDropdown === "play-settings"}
+                                    ontoggle={(event) => onDropdownToggle("play-settings", event)}
+                                >
+                                    <summary class="btn btn-sm rounded-l-none bg-primary/95 text-white/70 shadow-xl border-primary px-1" aria-label="Play settings" title="Play settings">
+                                        <Icon icon="material-symbols:settings-outline-rounded" class="w-3 h-3" />
+                                    </summary>
 
-                                <div class="dropdown-content z-[20]">
-                                    <PlayModeDropdownContent
-                                        selectedPlayMode={$playMode}
-                                        onSelect={onSelectPlayMode}
-                                    />
-                                </div>
-                            </details>
+                                    <div class="dropdown-content z-[20]">
+                                        <PlayModeDropdownContent
+                                            selectedPlayMode={$playMode}
+                                            onSelect={onSelectPlayMode}
+                                        />
+                                    </div>
+                                </details>
+                            {/if}
                         {/if}
                     {/key}
                 </div>

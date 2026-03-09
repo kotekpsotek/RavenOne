@@ -7,14 +7,12 @@
         DeleteWorkspaceApiKeyRequest,
         DeleteWorkspaceApiKeyResponse,
         GetWorkspaceApiKeysResponse,
-        SaveWorkspaceApiKeyRequest,
-        SaveWorkspaceApiKeyResponse
-    } from "./api/apiKeys/server";
-    import type {
         GetWorkspaceModelsResponse,
+        SaveWorkspaceApiKeyRequest,
+        SaveWorkspaceApiKeyResponse,
         SaveWorkspaceModelRequest,
         SaveWorkspaceModelResponse
-    } from "./api/models/server";
+    } from "$lib/workspace-settings/ai-models/types";
 
     function handleGetJWT() {
         const jwt = JWTAuth.getToken();

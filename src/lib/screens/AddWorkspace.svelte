@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { userHasActiveSubscription, userSubscriptionCheckInProgress } from "$lib/stores/subscription";
     import { userProfile } from "$lib/stores/user";
     import { avaiableWorkspaces, selectedWorkspace } from "$lib/stores/workspace";
     import { alertState } from "$lib/utils/alert";
@@ -8,6 +9,7 @@
     import type { ComponentProps } from "svelte";
 
     let { open = $bindable(false) } = $props();
+    const canCreateWorkspace = $derived(!$userSubscriptionCheckInProgress && $userHasActiveSubscription);
 
     type CreateWorkspaceResponseBody = {
         status?: boolean;
@@ -58,6 +60,11 @@
     
     // Handlers
     const onCreateWorkspace: ComponentProps<UI.Workspace.Management.AddWorkspaceScreen>["onCreate"] = async (workspaceName, workspaceInvitements) => {
+        if (!canCreateWorkspace) {
+            setAlert("warning", "Active subscription required", "Creating a workspace requires an active subscription.");
+            return;
+        }
+
         const normalizedWorkspaceName = workspaceName.trim();
         if (!normalizedWorkspaceName) {
             setAlert("warning", "Workspace name required", "Provide workspace name before creating it.");
@@ -106,13 +113,25 @@
 </script>
 
 {#if open}
-    <UI.Workspace.Management.AddWorkspaceScreen
-        bind:open
-        avaiableWorkspaces={$avaiableWorkspaces}
-        workspaceAdditionName=""
-        currentUser={$userProfile!}
-        onCreate={onCreateWorkspace}
-        isSelectedClassStyle="after:bg-os2-100 after:font-semibold"
-        {fetchAuthenticated}
-    />
+    <div class="relative">
+        <div class={!canCreateWorkspace ? "pointer-events-none opacity-60" : ""}>
+            <UI.Workspace.Management.AddWorkspaceScreen
+                bind:open
+                avaiableWorkspaces={$avaiableWorkspaces}
+                workspaceAdditionName=""
+                currentUser={$userProfile!}
+                onCreate={onCreateWorkspace}
+                isSelectedClassStyle="after:bg-os2-100 after:font-semibold"
+                {fetchAuthenticated}
+            />
+        </div>
+
+        {#if !canCreateWorkspace && !$userSubscriptionCheckInProgress}
+            <div class="absolute inset-0 z-10 flex items-start justify-center p-4">
+                <div class="alert alert-warning max-w-xl text-sm">
+                    Active subscription is required to create a new workspace.
+                </div>
+            </div>
+        {/if}
+    </div>
 {/if}

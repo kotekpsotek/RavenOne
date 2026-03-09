@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { getAuthenticatedPayload } from "$lib/server/auth/request";
 import { prefetchWorkspaceWithMembers } from "$lib/server/db";
+import { getWorkspaceActiveSubscription } from "$lib/server/subscription";
 import { DB_Models } from "@ravenlens/backend";
 import { File } from "@ravenlens/shared";
 import { json } from "@sveltejs/kit";
@@ -17,6 +18,8 @@ type RequireWorkspaceAccessArgs = {
     fetchFn: typeof fetch;
     workspaceId: string;
     requireManageFiles?: boolean;
+    requireActiveWorkspaceSubscription?: boolean;
+    activeWorkspaceSubscriptionFailureMessage?: string;
 };
 
 function buildForwardedAuthHeaders(request: Request): Headers {
@@ -117,6 +120,24 @@ export async function requireWorkspaceAccess(args: RequireWorkspaceAccessArgs): 
         const canManageFiles = isOwner || Boolean(workspaceMember?.permissions.includes("manage_files"));
         if (!canManageFiles) {
             return json({ ok: false, message: "You do not have manage_files permission" }, { status: 403 });
+        }
+    }
+
+    if (args.requireActiveWorkspaceSubscription) {
+        const workspaceSubscription = await getWorkspaceActiveSubscription(args.workspaceId);
+        if (!workspaceSubscription.workspaceFound) {
+            return json({ ok: false, message: "Workspace not found" }, { status: 404 });
+        }
+
+        if (!workspaceSubscription.hasActiveSubscription) {
+            return json(
+                {
+                    ok: false,
+                    message: args.activeWorkspaceSubscriptionFailureMessage
+                        ?? "This workspace has no active subscription for this operation"
+                },
+                { status: 401 }
+            );
         }
     }
 

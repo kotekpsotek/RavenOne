@@ -33,7 +33,9 @@ export const POST: RequestHandler = async ({ request, cookies, fetch }) => {
         cookies,
         fetchFn: fetch,
         workspaceId,
-        requireManageFiles: true
+        requireManageFiles: true,
+        requireActiveWorkspaceSubscription: true,
+        activeWorkspaceSubscriptionFailureMessage: "Cannot create files because this workspace has no active subscription"
     });
 
     if (access instanceof Response) {

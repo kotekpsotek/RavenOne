@@ -6,7 +6,9 @@
 	import IconSelectionModal from "$lib/modals/IconSelectionModal.svelte";
 	import WallpaperSelectionModal from "$lib/modals/WallpaperSelectionModal.svelte";
 	import IconValue from "$lib/IconValue.svelte";
+	import { workspaceHasActiveSubscription, workspaceSubscriptionCheckInProgress } from "$lib/stores/subscription";
     import { entriesList, selectedFile } from "$lib/stores/files";
+	import { setAlert } from "$lib/utils/alert";
     import { renameFileRequest } from "$lib/files/connections/connections";
     import { selectedWorkspace } from "$lib/stores/workspace";
 
@@ -23,6 +25,23 @@
 	let icon = $derived((node.attrs.icon as string | undefined) ?? "");
 	let walper = $derived($selectedFile?.walper ?? (node.attrs.walper as string | undefined) ?? "");
 	let isHeadingEmpty = $state(true);
+	let canEditHeadingAssets = $derived(!$workspaceSubscriptionCheckInProgress && $workspaceHasActiveSubscription);
+
+	function ensureWorkspaceSubscriptionForHeadingAssets(operationName: string): boolean {
+		if (canEditHeadingAssets) {
+			return true;
+		}
+
+		if (!$workspaceSubscriptionCheckInProgress) {
+			setAlert(
+				"warning",
+				"Active workspace subscription required",
+				`Cannot ${operationName} because this workspace has no active subscription.`
+			);
+		}
+
+		return false;
+	}
 
 	function dispatchHeadingTyping(isTyping: boolean, value: string) {
 		document.dispatchEvent(
@@ -202,6 +221,10 @@
 	}
 	
 	function openWallpaperPicker() {
+		if (!ensureWorkspaceSubscriptionForHeadingAssets("change file wallpaper")) {
+			return;
+		}
+
 		isWallpaperPickerOpen = true;
 	}
 
@@ -210,16 +233,28 @@
 	}
 
 	function applyHeadingWallpaper(nextWalper: string) {
+		if (!ensureWorkspaceSubscriptionForHeadingAssets("change file wallpaper")) {
+			return;
+		}
+
 		updateAttributes({ walper: nextWalper.trim() });
 		isWallpaperPickerOpen = false;
 	}
 
 	function removeHeadingWallpaper() {
+		if (!ensureWorkspaceSubscriptionForHeadingAssets("change file wallpaper")) {
+			return;
+		}
+
 		updateAttributes({ walper: "" });
 		isWallpaperPickerOpen = false;
 	}
 
 	function openIconPrompt() {
+		if (!ensureWorkspaceSubscriptionForHeadingAssets("change file icon")) {
+			return;
+		}
+
 		isIconPickerOpen = true;
 	}
 
@@ -228,6 +263,10 @@
 	}
 
 	function applyHeadingIcon(nextIcon: string) {
+		if (!ensureWorkspaceSubscriptionForHeadingAssets("change file icon")) {
+			return;
+		}
+
 		const normalizedIcon = nextIcon.trim();
 		updateAttributes({ icon: normalizedIcon });
 		syncSelectedFileIcon(normalizedIcon);
@@ -235,6 +274,10 @@
 	}
 
 	function removeHeadingIcon() {
+		if (!ensureWorkspaceSubscriptionForHeadingAssets("change file icon")) {
+			return;
+		}
+
 		updateAttributes({ icon: "" });
 		syncSelectedFileIcon("");
 		isIconPickerOpen = false;
@@ -353,6 +396,8 @@
 				class="group/cover relative block h-52 w-full cursor-pointer overflow-hidden rounded-2xl border-0 p-0 leading-none align-top appearance-none"
 				contenteditable="false"
 				onclick={openWallpaperPicker}
+				disabled={!canEditHeadingAssets}
+				title={!canEditHeadingAssets ? "Active workspace subscription required" : "Change cover"}
 			>
 				<img
 					src={walper}
@@ -384,6 +429,8 @@
 					contenteditable="false"
 					onclick={openIconPrompt}
 					aria-label="Change icon"
+					disabled={!canEditHeadingAssets}
+					title={!canEditHeadingAssets ? "Active workspace subscription required" : "Change icon"}
 				>
 					<IconValue
 						iconValue={icon}
@@ -402,6 +449,8 @@
 						class="btn btn-ghost btn-xs"
 						contenteditable="false"
 						onclick={openIconPrompt}
+						disabled={!canEditHeadingAssets}
+						title={!canEditHeadingAssets ? "Active workspace subscription required" : "Add icon"}
 					>
 						<Icon icon="material-symbols:sentiment-satisfied-outline-rounded" class="text-sm" />
 						Add icon
@@ -414,6 +463,8 @@
 						class="btn btn-ghost btn-xs"
 						contenteditable="false"
 						onclick={openWallpaperPicker}
+						disabled={!canEditHeadingAssets}
+						title={!canEditHeadingAssets ? "Active workspace subscription required" : "Add cover"}
 					>
 						<Icon icon="material-symbols:image-outline-rounded" class="text-sm" />
 						Add cover

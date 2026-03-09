@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { env } from "$env/dynamic/private";
 import { getAuthenticatedPayload } from "$lib/server/auth/request";
 import { prefetchWorkspaceWithMembers } from "$lib/server/db";
+import { getWorkspaceActiveSubscription } from "$lib/server/subscription";
 import { DB_Models } from "@ravenlens/backend";
 import { Storage } from "@google-cloud/storage";
 import { json } from "@sveltejs/kit";
@@ -251,6 +252,14 @@ export const POST: RequestHandler = async ({ request, cookies, fetch, url }) => 
 			return json(
 				{ status: false, error: "Only workspace owner or members with manage_workspace_settings can update this workspace" },
 				{ status: 403 }
+			);
+		}
+
+		const workspaceSubscription = await getWorkspaceActiveSubscription(workspaceId);
+		if (!workspaceSubscription.hasActiveSubscription) {
+			return json(
+				{ status: false, error: "Cannot update workspace settings because this workspace has no active subscription" },
+				{ status: 401 }
 			);
 		}
 

@@ -1,8 +1,14 @@
 <script lang=ts>
     import { goto } from "$app/navigation";
-    import { avaiableWorkspaces, isAddNewWorkspaceBtnDisabled, isWorkspaceDownloadInProgress, isWorkspaceInAddition, isWorkspaceSelectionOpen, selectedWorkspace } from "$lib/stores/workspace";
+    import { userHasActiveSubscription, userSubscriptionCheckInProgress } from "$lib/stores/subscription";
+    import { avaiableWorkspaces, isWorkspaceDownloadInProgress, isWorkspaceInAddition, isWorkspaceSelectionOpen, selectedWorkspace } from "$lib/stores/workspace";
+    import { setAlert } from "$lib/utils/alert";
     import { UI } from "@ravenlens/frontend";
     import { Workspace } from "@ravenlens/shared";
+    import type { ComponentProps } from "svelte";
+
+    const canCreateWorkspace = $derived<ComponentProps<UI.Workspace.WorkspaceTray>["newWorkspaceButtonDisabled"]>(!$userSubscriptionCheckInProgress && $userHasActiveSubscription ? { disableReason: "Cannot create workspace since you've inadequate subscription" } : false);
+    const newWorkspaceButtonDisabled = $derived(!canCreateWorkspace);
 
     function onSelectWorkspace(workspace: Workspace.Workspace.WorkspaceUserEntryLoaded) {
         return (ev?: Event) => {
@@ -11,6 +17,14 @@
     }
 
     async function onAddNewWorkspace(ev?: Event) {
+        if (!canCreateWorkspace) {
+            if (!$userSubscriptionCheckInProgress) {
+                setAlert("warning", "Active subscription required", "Creating a workspace requires an active subscription.");
+            }
+
+            return;
+        }
+
         await goto("/");
         $isWorkspaceSelectionOpen = false;
         $isWorkspaceInAddition = true;
@@ -57,7 +71,7 @@
                         avaiableWorkspaces={$avaiableWorkspaces}
                         {onSelectWorkspace}
                         {onAddNewWorkspace}
-                        newWorkspaceButtonDisabled={isAddNewWorkspaceBtnDisabled()}
+                        {newWorkspaceButtonDisabled}
                     />
                 </div>
             {/if}

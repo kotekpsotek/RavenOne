@@ -17,11 +17,13 @@
     let {
         kind,
         onEmptyList = () => {},
+        isReadOnly = false,
         spawnedList
     }: {
         kind: File.File.ListItemKind;
         spawnedList: File.File.SpawnedList
         onEmptyList?: () => void;
+        isReadOnly?: boolean;
     } = $props();
 
     const INDENT_SIZE = 24;
@@ -32,6 +34,7 @@
     let pendingFocusId = $state<string | null>(null);
     let removeTargetItemId = $state<string | null>(null);
     const isSharedRoute = $derived($page.url.pathname.startsWith('/share/'));
+    const isEditingDisabled = $derived(isSharedRoute || isReadOnly);
 
     function createItem(depth: number): File.File.EditableListItem {
         return {
@@ -119,6 +122,10 @@
     }
 
     async function updateItemText(itemId: string, text: string) {
+        if (isReadOnly) {
+            return;
+        }
+
         items = items.map((item) => {
             if (item.id !== itemId) {
                 return item;
@@ -134,6 +141,10 @@
     }
 
     function toggleChecked(itemId: string, checked: boolean) {
+        if (isReadOnly) {
+            return;
+        }
+
         items = items.map((item) => {
             if (item.id !== itemId) {
                 return item;
@@ -147,6 +158,10 @@
     }
 
     function addSiblingItem(itemId: string) {
+        if (isReadOnly) {
+            return;
+        }
+
         const itemIndex = findItemIndex(items, itemId);
         if (itemIndex === -1) {
             return;
@@ -175,6 +190,10 @@
     }
 
     function changeIndent(itemId: string, indentDelta: number) {
+        if (isReadOnly) {
+            return;
+        }
+
         const itemIndex = findItemIndex(items, itemId);
         if (itemIndex === -1) {
             return;
@@ -216,6 +235,10 @@
 
     /** Show alert only when item has some child isn't empty - otherwise remove simply */
     function requestRemoveItem(itemId: string) {
+        if (isReadOnly) {
+            return;
+        }
+
         if (!isPointPlayable(items, itemId)) {
             removeItemWithChildren(itemId);
             return;
@@ -239,6 +262,10 @@
     }
 
     function removeItemWithChildren(itemId: string) {
+        if (isReadOnly) {
+            return;
+        }
+
         const itemIndex = findItemIndex(items, itemId);
         if (itemIndex === -1) {
             closeRemoveModal();
@@ -298,6 +325,10 @@
     }
 
     function onConfirmRemoveItem() {
+        if (isReadOnly) {
+            return;
+        }
+
         if (!removeTargetItemId) {
             return;
         }
@@ -343,7 +374,7 @@
     }
 
     async function onItemInput(event: Event, itemId: string) {
-        if (isSharedRoute) {
+        if (isEditingDisabled) {
             return;
         }
 
@@ -353,7 +384,7 @@
     }
 
     function onItemKeyDown(event: KeyboardEvent, itemId: string) {
-        if (isSharedRoute) {
+        if (isEditingDisabled) {
             event.preventDefault();
             return;
         }
@@ -435,7 +466,7 @@
                 {/if}
 
                 <div class="relative flex w-full min-w-0 items-center gap-2">
-                    {#if !isSharedRoute}
+                    {#if !isEditingDisabled}
                         <AIListItemHoverActions
                             visible={$hoveredListItemId === item.id || $clickedListItemId === item.id}
                             itemId={item.id}
@@ -466,7 +497,7 @@
                                 title="Checkbox is manually interactive. Checkbox is going be checked out when finished"
                                 onclick={e => e.preventDefault()}
                                 onchange={(event) => toggleChecked(item.id, (event.currentTarget as HTMLInputElement).checked)}
-                                disabled={isSharedRoute}
+                                disabled={isSharedRoute || isReadOnly}
                             />
                         </label>
                     {/if}
@@ -476,7 +507,7 @@
                         value={item.text}
                         data-list-item-id={item.id}
                         placeholder="Type and press Enter"
-                        disabled={isPointPlaying || isSharedRoute}
+                        disabled={isPointPlaying || isSharedRoute || isReadOnly}
                         class="w-full min-w-0 resize-none overflow-hidden rounded-md border border-transparent bg-transparent px-1 py-1 text-sm leading-6 outline-none focus:border-base-300 focus:bg-base-100"
                         oninput={(event) => onItemInput(event, item.id)}
                         onkeydown={(event) => onItemKeyDown(event, item.id)}

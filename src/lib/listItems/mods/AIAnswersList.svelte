@@ -6,6 +6,8 @@
     import { selectedFile } from "$lib/stores/files";
     import { hoveredListItemId } from "$lib/stores/hoveredListItem";
     import { File } from "@ravenlens/shared";
+    import { isSharedRoute } from "$lib/stores/share";
+    import { canManageWorkspaceFiles, workspaceHasActiveSubscription, workspaceSubscriptionCheckInProgress } from "$lib/stores/subscription";
 
     let { aiAnswers, itemId = "" }: { aiAnswers: File.FileAI.AIPoint["aiAnswers"]; itemId?: string } = $props();
 
@@ -586,15 +588,17 @@
                                             </span>
                                         </div>
 
-                                        <button
-                                            type="button"
-                                            class="btn btn-error btn-xs h-5 gap-1"
-                                            title="Delete answer"
-                                            aria-label="Delete answer"
-                                            onclick={() => openRemoveAnswer(index)}
-                                        >
-                                            <Icon icon="mdi:trash-can-outline" width="14" height="14" />
-                                        </button>
+                                        {#if !$isSharedRoute && $canManageWorkspaceFiles}
+                                            <button
+                                                type="button"
+                                                class="btn btn-error btn-xs h-5 gap-1"
+                                                title="Delete answer"
+                                                aria-label="Delete answer"
+                                                onclick={() => openRemoveAnswer(index)}
+                                            >
+                                                <Icon icon="mdi:trash-can-outline" width="14" height="14" />
+                                            </button>
+                                        {/if}
                                         
                                         <!-- Info Modal for Answer -->
                                         <button

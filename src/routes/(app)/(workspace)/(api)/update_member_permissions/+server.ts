@@ -1,5 +1,6 @@
 import { extractBearerToken } from "$lib/server/auth/request";
 import { prefetchWorkspaceWithMembers } from "$lib/server/db";
+import { getWorkspaceActiveSubscription } from "$lib/server/subscription";
 import { downloadCurrentUser } from "$lib/utils/auth";
 import { DB_Models } from "@ravenlens/backend";
 import { Permissions } from "@ravenlens/shared";
@@ -101,6 +102,17 @@ export const POST: RequestHandler = async ({ request, url }) => {
             status: 401,
             headers: { "content-type": "application/json" }
         });
+    }
+
+    const workspaceSubscription = await getWorkspaceActiveSubscription(workspaceId);
+    if (!workspaceSubscription.hasActiveSubscription) {
+        return new Response(
+            JSON.stringify({ message: "Cannot update member permissions because this workspace has no active subscription" }),
+            {
+                status: 401,
+                headers: { "content-type": "application/json" }
+            }
+        );
     }
 
     const memberToUpdate = workspace.workspaceMembers.find(member => member.user.id === userId);

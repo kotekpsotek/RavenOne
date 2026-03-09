@@ -4,6 +4,7 @@ import type { AI } from "@ravenlens/shared";
 import { get, writable } from "svelte/store";
 import { File } from "@ravenlens/shared";
 import { selectedWorkspace } from "./workspace";
+import { canManageWorkspaceFiles } from "./subscription";
 
 // Entries
 export const entriesList = writable<File.File.File[]>([]);
@@ -88,6 +89,11 @@ export const selectedFile = (() => {
          * @returns - status of operation
         */
         async function saveFiles(files: UnsavedFile[], options: SaveFilesOptions = {}): Promise<boolean> {
+            const canManageWorkspaceFilesLocal = get(canManageWorkspaceFiles);
+            if (!canManageWorkspaceFilesLocal) {
+                return false;
+            };
+            
             const requestedWorkspaceId = normalizeWorkspaceId(options.workspaceId);
             const filesToSave = dedupeUnsavedFiles(files);
             const filesGroupedByWorkspace = new Map<string, UnsavedFile[]>();

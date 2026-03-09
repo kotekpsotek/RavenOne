@@ -1,5 +1,5 @@
 import { alertState } from './alert';
-import type { AccountType, Profile, SubscriptionResponseCustomer } from "@ravenlens/shared";
+import type { AccountType, Profile } from "@ravenlens/shared";
 import { fetchAuthenticated } from "./fetch";
 import { browser } from "$app/environment";
 import { goto } from "$app/navigation";

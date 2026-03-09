@@ -36,7 +36,9 @@ export const PUT: RequestHandler = async ({ request, cookies, fetch }) => {
         cookies,
         fetchFn: fetch,
         workspaceId,
-        requireManageFiles: true
+        requireManageFiles: true,
+        requireActiveWorkspaceSubscription: true,
+        activeWorkspaceSubscriptionFailureMessage: "Cannot change file wallpaper because this workspace has no active subscription"
     });
 
     if (access instanceof Response) {

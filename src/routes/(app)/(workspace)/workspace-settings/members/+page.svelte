@@ -1,7 +1,8 @@
 <script lang="ts">
+    import { canManageWorkspaceFiles, workspaceHasActiveSubscription, workspaceSubscriptionCheckInProgress } from "$lib/stores/subscription";
     import { theme } from "$lib/stores/theme";
     import { userProfile } from "$lib/stores/user";
-    import { alertState } from "$lib/utils/alert";
+    import { alertState, setAlert } from "$lib/utils/alert";
     import { fetchAuthenticated } from "$lib/utils/fetch";
     import { UI } from "@ravenlens/frontend";
     import { Workspace } from "@ravenlens/shared";
@@ -14,9 +15,33 @@
     let users = $derived<Workspace.Workspace.WorkspaceUser[]>(workspaceLoaded?.workspaceMembers ?? []);
     let invitements = $derived<Workspace.Workspace.WorkspaceMemberInvitement[]>(workspaceLoaded?.workspaceInvitements ?? []);
     let ownerUserId = $derived<Workspace.Workspace.WorkspaceForUser["ownerUserId"] | undefined>(workspaceLoaded?.ownerUserId ?? undefined);
+    const canManageWorkspaceMembers = $derived(!$workspaceSubscriptionCheckInProgress && $workspaceHasActiveSubscription);
+    type WorkspaceMembersScreenProps = ComponentProps<UI.Workspace.Settings.WorkspaceMembersSettingScreen>;
 
     const onSetAlertState: ComponentProps<UI.Workspace.Settings.WorkspaceSettingsScreen>["onSetAlertState"] = (state) => {
         $alertState = state;
+    };
+
+    const inviteMemberRequestGuarded: WorkspaceMembersScreenProps["inviteMemberRequest"] = async (
+        ...args: Parameters<WorkspaceMembersScreenProps["inviteMemberRequest"]>
+    ) => {
+        if (!canManageWorkspaceMembers) {
+            setAlert("warning", "Active workspace subscription required", "Cannot invite members because this workspace has no active subscription.");
+            return false;
+        }
+
+        return inviteMemberRequest(...args);
+    };
+
+    const updateMemberPermissionsGuarded: WorkspaceMembersScreenProps["updateMemberPermissions"] = async (
+        ...args: Parameters<WorkspaceMembersScreenProps["updateMemberPermissions"]>
+    ) => {
+        if (!canManageWorkspaceMembers) {
+            setAlert("warning", "Active workspace subscription required", "Cannot edit workspace member permissions because this workspace has no active subscription.");
+            return false;
+        }
+
+        return updateMemberPermissions(...args);
     };
 
     onMount(async () => {
@@ -46,17 +71,30 @@
     });
 </script>
 
-<UI.Workspace.Settings.WorkspaceMembersSettingScreen
-    bind:users
-    bind:invitements
-    selectedWorkspace={workspaceLoaded!}
-    selectedOption={$selectedOptionItem}
-    theme={$theme}
-    currentUser={$userProfile!}
-    {fetchAuthenticated}
-    {onSetAlertState}
-    {inviteMemberRequest}
-    {deleteInvitementRequest}
-    {deleteMemberRequest}
-    {updateMemberPermissions}
-/>
+<div class="relative">
+    <UI.Workspace.Settings.WorkspaceMembersSettingScreen
+        bind:users
+        bind:invitements
+        selectedWorkspace={workspaceLoaded!}
+        selectedOption={$selectedOptionItem}
+        theme={$theme}
+        currentUser={$userProfile!}
+        {fetchAuthenticated}
+        {onSetAlertState}
+        inviteMemberRequest={inviteMemberRequestGuarded}
+        {deleteInvitementRequest}
+        {deleteMemberRequest}
+        updateMemberPermissions={updateMemberPermissionsGuarded}
+        canUserManageWorkspaceMembers={$canManageWorkspaceFiles}
+        canUserDeleteInvitements={$canManageWorkspaceFiles}
+        canUserInviteMembers={$canManageWorkspaceFiles}
+    />
+
+    {#if !$canManageWorkspaceFiles && !$workspaceSubscriptionCheckInProgress}
+        <div class="absolute top-0 w-full z-10 flex items-center justify-center p-4">
+            <div class="alert alert-warning max-w-2xl text-sm">
+                Active workspace subscription is required to invite members and edit member permissions.
+            </div>
+        </div>
+    {/if}
+</div>

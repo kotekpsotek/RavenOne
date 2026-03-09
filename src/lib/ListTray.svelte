@@ -2,6 +2,7 @@
     import { onMount } from 'svelte';
     import { UI } from '@ravenlens/frontend';
     import { selectedFile } from '$lib/stores/files';
+    import { setAlert } from '$lib/utils/alert';
     import Icon from '@iconify/svelte';
     import type { ElementInsertionItem } from './editorComponents/ui/ElementsListForMenus';
     import OrderedListItem from '$lib/listItems/OrderedListItem.svelte';
@@ -9,6 +10,8 @@
     import TaskListItem from '$lib/listItems/TaskListItem.svelte';
     import { createListId } from './listItems/utils';
     import { File } from "@ravenlens/shared";
+
+    let { isReadOnly = false }: { isReadOnly?: boolean } = $props();
 
     const PANEL_HEIGHT_STORAGE_PREFIX = 'list-tray-height';
     const PANEL_MIN_HEIGHT = 120;
@@ -76,6 +79,15 @@
     }
 
     function onSelectListType(item: ElementInsertionItem, event: MouseEvent) {
+        if (isReadOnly) {
+            setAlert(
+                'warning',
+                'Active workspace subscription required',
+                'Cannot add list points because this workspace has no active subscription.'
+            );
+            return;
+        }
+
         const listKind = resolveListKind(item);
         const listItem: File.File.EditableListItem = listKind === "task" ?
             {
@@ -116,6 +128,10 @@
     }
 
     function removeSpawnedList(spawnedListId: string) {
+        if (isReadOnly) {
+            return;
+        }
+
         selectedFile.update(file => {
             if (!file) {
                 return file;
@@ -246,16 +262,19 @@
             {#if spawnedList.kind === 'ordered'}
                 <OrderedListItem
                     onEmptyList={() => removeSpawnedList(spawnedList.id)}
+                    {isReadOnly}
                     {spawnedList}
                 />
             {:else if spawnedList.kind === 'unordered'}
                 <UnorderedListItem
                     onEmptyList={() => removeSpawnedList(spawnedList.id)}
+                    {isReadOnly}
                     {spawnedList}
                 />
             {:else}
                 <TaskListItem
                     onEmptyList={() => removeSpawnedList(spawnedList.id)}
+                    {isReadOnly}
                     {spawnedList}
                 />
             {/if}
@@ -289,6 +308,18 @@
                 <summary 
                     class="btn btn-xs btn-ghost m-1"
                     title="Select list point to add"
+                    onclick={(event) => {
+                        if (!isReadOnly) {
+                            return;
+                        }
+
+                        event.preventDefault();
+                        setAlert(
+                            'warning',
+                            'Active workspace subscription required',
+                            'Cannot add list points because this workspace has no active subscription.'
+                        );
+                    }}
                 >
                     <Icon icon="material-symbols:add-2-rounded"/>
                 </summary>

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { getAuthenticatedPayload } from "$lib/server/auth/request";
+import { getUserActiveSubscription } from "$lib/server/subscription";
 import { DB_Models } from "@ravenlens/backend";
 import { Permissions, Workspace } from "@ravenlens/shared";
 import { json } from "@sveltejs/kit";
@@ -230,6 +231,14 @@ export const POST: RequestHandler = async ({ request, cookies, fetch }) => {
 	const payload = getAuthenticatedPayload(request, cookies);
 	if (!payload) {
 		return json({ status: false, error: "Invalid or expired token" }, { status: 401 });
+	}
+
+	const userSubscription = await getUserActiveSubscription(payload.userId);
+	if (!userSubscription.hasActiveSubscription) {
+		return json(
+			{ status: false, error: "Cannot create workspace because your account has no active subscription" },
+			{ status: 401 }
+		);
 	}
 
 	let requestBody: CreateWorkspaceRequestBody;

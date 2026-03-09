@@ -10,8 +10,7 @@
     import { getFirstAllowedWorkspaceSettingsPath } from "$lib/workspace-settings/permissions";
     import { isSearchModalOpen } from "$lib/stores/files";
     import { appName } from "$lib/config/app";
-
-    let { isSharedView = false }: { isSharedView?: boolean } = $props();
+    import { isSharedRoute } from "$lib/stores/share";
 
     let isExpanded = $state(false);
     const PANEL_WIDTH_STORAGE_KEY = 'expansion-panel-width';
@@ -54,7 +53,7 @@
     }
 
     function onSearch() {
-        if (isSharedView) {
+        if ($isSharedRoute) {
             return;
         }
 
@@ -62,7 +61,7 @@
     }
 
     function onToggleSidebar() {
-        if (isSharedView) {
+        if ($isSharedRoute) {
             return;
         }
 
@@ -112,7 +111,7 @@
 
     //
     function onToggleWorkspaceSelection() {
-        if (isSharedView) {
+        if ($isSharedRoute) {
             return;
         }
 
@@ -137,7 +136,7 @@
     }
     
     function onKeyDownWindow(ev: KeyboardEvent) {
-        if (isSharedView) {
+        if ($isSharedRoute) {
             return;
         }
 
@@ -158,7 +157,7 @@
 
 <aside 
     class="relative flex h-full flex-col border-r border-base-300 bg-base-100 {isResizing ? '' : 'transition-all duration-300'}"
-    style={`width: ${isSharedView ? COLLAPSED_WIDTH : isExpanded ? panelWidth + COLLAPSED_WIDTH : COLLAPSED_WIDTH}px`}
+    style={`width: ${$isSharedRoute ? COLLAPSED_WIDTH : isExpanded ? panelWidth + COLLAPSED_WIDTH : COLLAPSED_WIDTH}px`}
 >
     <div class="flex flex-1 overflow-hidden">
         <!-- Narrow Stripe (Activity Bar) -->
@@ -166,7 +165,7 @@
             <div class="mb-4 flex flex-col items-center gap-6">
                 <!-- Workspace selection -->
                 <div class="tooltip tooltip-right" data-tip="{appName}">
-                    {#if isSharedView}
+                    {#if $isSharedRoute}
                         <div
                             class="flex h-10 w-10 p-2 items-center justify-center rounded-xl bg-primary/10"
                             aria-label="Shared workspace"
@@ -192,7 +191,7 @@
 
                 <!-- Quick Actions -->
                 <div class="flex flex-col items-center gap-3">
-                    {#if !isSharedView}
+                    {#if !$isSharedRoute}
                         <div class="tooltip tooltip-right" data-tip="Search (Ctrl+P)">
                             <button
                                 onclick={onSearch}
@@ -283,13 +282,13 @@
         </div>
 
         <!-- Expansion Panel (Explorer) -->
-        {#if !isSharedView}
+        {#if !$isSharedRoute}
             <ExpansionPanel 
                 {isExpanded}
             />
         {/if}
 
-        {#if !isSharedView && isExpanded}
+        {#if !$isSharedRoute && isExpanded}
             <div
                 class="absolute right-0 top-0 z-20 h-full w-1.5 cursor-ew-resize transition-colors {isResizing || isResizeHandleHovered ? 'bg-primary/50' : 'bg-transparent hover:bg-primary/30'}"
                 onmouseenter={() => {

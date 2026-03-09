@@ -4,32 +4,13 @@
 	import { fetchAuthenticated } from "$lib/utils/fetch";
 	import { onMount } from "svelte";
 	import { setThemeMode, syncThemeMode, theme, type Themes } from "$lib/stores/theme";
-
-	type BadgeTone = "warm" | "green";
-	type ActionTone = "muted" | "primary" | "contrast";
-
-	type SubscriptionPlan = {
-		name: string;
-		kind: "individual" | "company";
-		stripePlanId?: "starter" | "growth" | "enterprise";
-		contactPath?: string;
-		badge: string;
-		badgeTone: BadgeTone;
-		price: string;
-		billing: string;
-		callToAction: string;
-		actionTone: ActionTone;
-		current?: boolean;
-		featured?: boolean;
-		features: string[];
-	};
+	import type { SubscriptionPlan } from "@ravenlens/shared";
 
 	const themeOptions: Themes[] = ["light", "dark"];
-
 	const plans: SubscriptionPlan[] = [
 		{
 			name: "Starter Plan",
-			kind: "individual",
+			kind: "starter",
 			stripePlanId: "starter",
 			badge: "FREE",
 			badgeTone: "warm",
@@ -48,7 +29,7 @@
 		},
 		{
 			name: "Growth Plan",
-			kind: "individual",
+			kind: "growth",
 			stripePlanId: "growth",
 			badge: "PRO",
 			badgeTone: "warm",
@@ -67,7 +48,7 @@
 		},
 		{
 			name: "Enterprise Plan",
-			kind: "company",
+			kind: "enterprise",
 			contactPath: "/help-materials",
 			badge: "ADVANCE",
 			badgeTone: "green",
@@ -149,7 +130,7 @@
 					body: JSON.stringify({
 						action: "checkout",
 						planId: plan.stripePlanId,
-						kind: plan.kind
+						subscriptionKind: plan.kind
 					})
 				}
 			);

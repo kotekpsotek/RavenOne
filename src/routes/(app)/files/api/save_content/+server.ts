@@ -135,7 +135,9 @@ export const POST: RequestHandler = async ({ request, cookies, fetch }) => {
         request,
         cookies,
         fetchFn: fetch,
-        workspaceId
+        workspaceId,
+        requireActiveWorkspaceSubscription: true,
+        activeWorkspaceSubscriptionFailureMessage: "Cannot change file content because this workspace has no active subscription"
     });
 
     if (access instanceof Response) {

@@ -1,17 +1,20 @@
 import { env } from "$env/dynamic/private";
 import { getAuthenticatedPayload } from "$lib/server/auth/request";
 import { DB_Models } from "@ravenlens/backend";
+import type { SubscriptionKinds } from "@ravenlens/shared";
 import { json } from "@sveltejs/kit";
 import Stripe from "stripe";
 import type { RequestHandler } from "./$types";
 
-type SubscriptionKind = "individual" | "company";
-type CheckoutPlanId = "starter" | "growth" | "enterprise";
+type LegacySubscriptionKind = "individual" | "company";
+type CheckoutPlanId = SubscriptionKinds;
 
 type CheckoutIntentBody = {
 	action?: string;
 	planId?: CheckoutPlanId;
-	kind?: SubscriptionKind;
+	subscriptionKind?: SubscriptionKinds;
+	// Legacy field kept for compatibility with older clients.
+	kind?: LegacySubscriptionKind;
 	successPath?: string;
 	cancelPath?: string;
 };
@@ -31,6 +34,29 @@ type SubscriptionSummary = {
 	cancelAtPeriodEnd?: boolean;
 };
 
+type SubscriptionCustomerPatch = {
+	subscriptionKind?: SubscriptionKinds;
+	stripeCustomerId?: string;
+	stripeSubscriptionId?: string;
+	status?: Stripe.Subscription.Status;
+	priceId?: string;
+	currentPeriodEnd?: Date;
+	cancelAtPeriodEnd?: boolean;
+};
+
+type SubscriptionCustomerRecord = {
+	userId?: string;
+	email?: string;
+	subscriptionKind?: unknown;
+	kind?: unknown;
+	status?: Stripe.Subscription.Status;
+	stripeCustomerId?: string;
+	stripeSubscriptionId?: string;
+	priceId?: string;
+	currentPeriodEnd?: Date;
+	cancelAtPeriodEnd?: boolean;
+};
+
 type SubscriptionCustomerModelLike = {
 	findOne(query: Record<string, unknown>): Promise<any>;
 	updateOne(
@@ -41,7 +67,7 @@ type SubscriptionCustomerModelLike = {
 	create(payload: Record<string, unknown>): Promise<any>;
 };
 
-const PLAN_KIND_BY_ID: Record<CheckoutPlanId, SubscriptionKind> = {
+const LEGACY_KIND_BY_PLAN_ID: Record<CheckoutPlanId, LegacySubscriptionKind> = {
 	starter: "individual",
 	growth: "individual",
 	enterprise: "company"
@@ -117,12 +143,68 @@ function normalizePlanId(value: unknown): CheckoutPlanId | null {
 	return null;
 }
 
-function normalizeSubscriptionKind(value: unknown): SubscriptionKind | null {
+function normalizeSubscriptionKind(value: unknown): SubscriptionKinds | null {
+	if (value === "starter" || value === "growth" || value === "enterprise") {
+		return value;
+	}
+
+	return null;
+}
+
+function normalizeLegacySubscriptionKind(value: unknown): LegacySubscriptionKind | null {
 	if (value === "individual" || value === "company") {
 		return value;
 	}
 
 	return null;
+}
+
+function inferPlanIdFromPriceId(value: unknown): CheckoutPlanId | null {
+	if (typeof value !== "string" || !value.trim()) {
+		return null;
+	}
+
+	for (const [planId, envKey] of Object.entries(PLAN_PRICE_ENV_KEY_BY_ID) as [
+		CheckoutPlanId,
+		string
+	][]) {
+		const configuredPriceId = (env as Record<string, string | undefined>)[envKey]?.trim();
+		if (configuredPriceId && configuredPriceId === value.trim()) {
+			return planId;
+		}
+	}
+
+	return null;
+}
+
+function resolveSubscriptionKind(options: {
+	subscriptionKind?: unknown;
+	planId?: unknown;
+	legacyKind?: unknown;
+	priceId?: unknown;
+	fallback?: SubscriptionKinds;
+}): SubscriptionKinds {
+	const fromSubscriptionKind = normalizeSubscriptionKind(options.subscriptionKind);
+	if (fromSubscriptionKind) {
+		return fromSubscriptionKind;
+	}
+
+	const fromPlanId = normalizePlanId(options.planId);
+	if (fromPlanId) {
+		return fromPlanId;
+	}
+
+	const fromPriceId = inferPlanIdFromPriceId(options.priceId);
+	if (fromPriceId) {
+		return fromPriceId;
+	}
+
+	const fromLegacyKind = normalizeLegacySubscriptionKind(options.legacyKind);
+	if (fromLegacyKind === "company") {
+		return "enterprise";
+	}
+
+	return options.fallback ?? "growth";
 }
 
 function normalizeLocalPath(value: unknown, fallbackPath: string): string {
@@ -172,7 +254,7 @@ async function getAuthenticatedUser(request: Request, cookies: Parameters<Reques
 
 async function upsertSubscriptionFromUser(
 	user: UserProfileRecord,
-	patch: Record<string, unknown>,
+	patch: SubscriptionCustomerPatch,
 	options?: { upsert?: boolean }
 ) {
 	const subscriptionCustomerModel = getSubscriptionCustomerModel();
@@ -192,7 +274,7 @@ async function upsertSubscriptionFromUser(
 
 async function updateSubscriptionByCustomerId(
 	stripeCustomerId: string,
-	patch: Record<string, unknown>,
+	patch: SubscriptionCustomerPatch,
 	options?: { upsert?: boolean }
 ) {
 	const subscriptionCustomerModel = getSubscriptionCustomerModel();
@@ -208,7 +290,7 @@ async function updateSubscriptionByCustomerId(
 	);
 }
 
-async function ensureStripeCustomerForUser(user: UserProfileRecord, kind: SubscriptionKind) {
+async function ensureStripeCustomerForUser(user: UserProfileRecord, subscriptionKind: SubscriptionKinds) {
 	const subscriptionCustomerModel = getSubscriptionCustomerModel();
 	const existing = await subscriptionCustomerModel.findOne({ userId: user.id });
 	const stripe = getStripeClient();
@@ -223,7 +305,8 @@ async function ensureStripeCustomerForUser(user: UserProfileRecord, kind: Subscr
 			email: user.email,
 			metadata: {
 				userId: user.id,
-				kind
+				subscriptionKind,
+				kind: LEGACY_KIND_BY_PLAN_ID[subscriptionKind]
 			}
 		});
 
@@ -233,7 +316,7 @@ async function ensureStripeCustomerForUser(user: UserProfileRecord, kind: Subscr
 	await upsertSubscriptionFromUser(
 		user,
 		{
-			kind,
+			subscriptionKind,
 			stripeCustomerId
 		},
 		{ upsert: true }
@@ -298,15 +381,20 @@ async function handleCheckoutIntent(
 		return json({ status: false, error: "Unsupported subscription plan" }, { status: 400 });
 	}
 
-	const expectedKind = PLAN_KIND_BY_ID[planId];
-	const requestedKind = normalizeSubscriptionKind(requestBody.kind) ?? expectedKind;
-	if (requestedKind !== expectedKind) {
+	const expectedSubscriptionKind = planId;
+	const requestedSubscriptionKind = normalizeSubscriptionKind(requestBody.subscriptionKind);
+	if (requestBody.subscriptionKind && requestedSubscriptionKind !== expectedSubscriptionKind) {
+		return json({ status: false, error: "Plan kind mismatch" }, { status: 400 });
+	}
+
+	const legacyKind = normalizeLegacySubscriptionKind(requestBody.kind);
+	if (legacyKind && legacyKind !== LEGACY_KIND_BY_PLAN_ID[planId]) {
 		return json({ status: false, error: "Plan kind mismatch" }, { status: 400 });
 	}
 
 	const priceId = getRequiredEnv(PLAN_PRICE_ENV_KEY_BY_ID[planId]);
 	const stripe = getStripeClient();
-	const stripeCustomerId = await ensureStripeCustomerForUser(user, expectedKind);
+	const stripeCustomerId = await ensureStripeCustomerForUser(user, expectedSubscriptionKind);
 
 	const successUrl = toAbsoluteLocalUrl(
 		event.url,
@@ -327,7 +415,8 @@ async function handleCheckoutIntent(
 		client_reference_id: user.id,
 		metadata: {
 			userId: user.id,
-			kind: expectedKind,
+			subscriptionKind: expectedSubscriptionKind,
+			kind: LEGACY_KIND_BY_PLAN_ID[expectedSubscriptionKind],
 			planId
 		}
 	});
@@ -349,7 +438,9 @@ async function handleCancelIntent(event: Parameters<RequestHandler>[0]) {
 	}
 
 	const subscriptionCustomerModel = getSubscriptionCustomerModel();
-	const customer = await subscriptionCustomerModel.findOne({ userId: user.id });
+	const customer = (await subscriptionCustomerModel.findOne({
+		userId: user.id
+	})) as SubscriptionCustomerRecord | null;
 	const stripeSubscriptionId =
 		typeof customer?.stripeSubscriptionId === "string" ? customer.stripeSubscriptionId.trim() : "";
 
@@ -366,10 +457,23 @@ async function handleCancelIntent(event: Parameters<RequestHandler>[0]) {
 	const stripeCustomerId =
 		getStripeCustomerId(updatedSubscription.customer) ??
 		(typeof customer?.stripeCustomerId === "string" ? customer.stripeCustomerId : undefined);
+	const subscriptionKind = resolveSubscriptionKind({
+		subscriptionKind: updatedSubscription.metadata?.subscriptionKind,
+		planId: updatedSubscription.metadata?.planId,
+		legacyKind: updatedSubscription.metadata?.kind,
+		priceId: summary.priceId,
+		fallback: resolveSubscriptionKind({
+			subscriptionKind: customer?.subscriptionKind,
+			legacyKind: customer?.kind,
+			priceId: customer?.priceId,
+			fallback: "growth"
+		})
+	});
 
 	await upsertSubscriptionFromUser(
 		user,
 		{
+			subscriptionKind,
 			...(stripeCustomerId ? { stripeCustomerId } : {}),
 			...summary
 		},
@@ -377,7 +481,14 @@ async function handleCancelIntent(event: Parameters<RequestHandler>[0]) {
 	);
 
 	if (stripeCustomerId) {
-		await updateSubscriptionByCustomerId(stripeCustomerId, summary, { upsert: false });
+		await updateSubscriptionByCustomerId(
+			stripeCustomerId,
+			{
+				subscriptionKind,
+				...summary
+			},
+			{ upsert: false }
+		);
 	}
 
 	return json(
@@ -385,6 +496,7 @@ async function handleCancelIntent(event: Parameters<RequestHandler>[0]) {
 			status: true,
 			message: "Subscription cancellation scheduled",
 			subscription: {
+				subscriptionKind,
 				...summary,
 				stripeCustomerId
 			}
@@ -407,15 +519,20 @@ async function handleWebhookEvent(stripeEvent: Stripe.Event) {
 						: null;
 			const stripeCustomerId = getStripeCustomerId(session.customer);
 			const stripeSubscriptionId = getStripeSubscriptionId(session.subscription);
-			const kind = normalizeSubscriptionKind(session.metadata?.kind) ?? "individual";
+			const subscriptionKind = resolveSubscriptionKind({
+				subscriptionKind: session.metadata?.subscriptionKind,
+				planId: session.metadata?.planId,
+				legacyKind: session.metadata?.kind,
+				fallback: "growth"
+			});
 
-			if (userId) {
+			if (userId && stripeCustomerId) {
 				const user = await findUserById(userId);
 				if (user) {
 					await upsertSubscriptionFromUser(user, {
-						kind,
+						subscriptionKind,
 						stripeCustomerId,
-						stripeSubscriptionId
+						...(stripeSubscriptionId ? { stripeSubscriptionId } : {})
 					});
 				}
 			}
@@ -435,12 +552,18 @@ async function handleWebhookEvent(stripeEvent: Stripe.Event) {
 			const subscription = stripeEvent.data.object as Stripe.Subscription;
 			const stripeCustomerId = getStripeCustomerId(subscription.customer);
 			const summary = getSubscriptionSummary(subscription);
-			const kind = normalizeSubscriptionKind(subscription.metadata?.kind);
+			const subscriptionKind = resolveSubscriptionKind({
+				subscriptionKind: subscription.metadata?.subscriptionKind,
+				planId: subscription.metadata?.planId,
+				legacyKind: subscription.metadata?.kind,
+				priceId: summary.priceId,
+				fallback: "growth"
+			});
 
 			if (stripeCustomerId) {
 				await updateSubscriptionByCustomerId(stripeCustomerId, {
 					...summary,
-					...(kind ? { kind } : {})
+					subscriptionKind
 				});
 			}
 
@@ -449,11 +572,11 @@ async function handleWebhookEvent(stripeEvent: Stripe.Event) {
 					? subscription.metadata.userId
 					: null;
 
-			if (userId) {
+			if (userId && stripeCustomerId) {
 				const user = await findUserById(userId);
 				if (user) {
 					await upsertSubscriptionFromUser(user, {
-						kind: kind ?? PLAN_KIND_BY_ID.growth,
+						subscriptionKind,
 						stripeCustomerId,
 						...summary
 					});
@@ -472,9 +595,17 @@ async function handleWebhookEvent(stripeEvent: Stripe.Event) {
 			if (stripeCustomerId && stripeSubscriptionId) {
 				const subscription = await stripe.subscriptions.retrieve(stripeSubscriptionId);
 				const summary = getSubscriptionSummary(subscription);
+				const subscriptionKind = resolveSubscriptionKind({
+					subscriptionKind: subscription.metadata?.subscriptionKind,
+					planId: subscription.metadata?.planId,
+					legacyKind: subscription.metadata?.kind,
+					priceId: summary.priceId,
+					fallback: "growth"
+				});
 
 				await updateSubscriptionByCustomerId(stripeCustomerId, {
 					...summary,
+					subscriptionKind,
 					...(stripeEvent.type === "invoice.payment_failed"
 						? { status: "past_due" as Stripe.Subscription.Status }
 						: {})
@@ -525,7 +656,9 @@ export const GET: RequestHandler = async ({ request, cookies }) => {
 		}
 
 		const subscriptionCustomerModel = getSubscriptionCustomerModel();
-		const customer = await subscriptionCustomerModel.findOne({ userId: user.id });
+		const customer = (await subscriptionCustomerModel.findOne({
+			userId: user.id
+		})) as SubscriptionCustomerRecord | null;
 
 		if (!customer) {
 			return json(
@@ -538,13 +671,23 @@ export const GET: RequestHandler = async ({ request, cookies }) => {
 			);
 		}
 
+		const subscriptionKind = resolveSubscriptionKind({
+			subscriptionKind: customer.subscriptionKind,
+			legacyKind: customer.kind,
+			priceId: customer.priceId,
+			fallback: "growth"
+		});
+
 		return json(
 			{
 				status: true,
-				subscribed: ACTIVE_SUBSCRIPTION_STATUSES.has(customer.status),
+				subscribed: customer.status
+					? ACTIVE_SUBSCRIPTION_STATUSES.has(customer.status)
+					: false,
 				subscription: {
 					userId: customer.userId,
-					kind: customer.kind,
+					subscriptionKind,
+					kind: subscriptionKind,
 					status: customer.status,
 					stripeCustomerId: customer.stripeCustomerId,
 					stripeSubscriptionId: customer.stripeSubscriptionId,
