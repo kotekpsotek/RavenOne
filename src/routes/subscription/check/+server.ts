@@ -3,6 +3,7 @@ import { getWorkspaceActiveSubscription } from "$lib/server/subscription";
 import { DB_Models } from "@ravenlens/backend";
 import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
+import { asNonEmptyString } from "../common";
 
 type SubscriptionCheckRequestBody = {
 	workspaceId?: unknown;
@@ -11,15 +12,6 @@ type SubscriptionCheckRequestBody = {
 type WorkspaceDocumentRaw = {
 	ownerUserId?: unknown;
 };
-
-function asNonEmptyString(value: unknown): string | undefined {
-	if (typeof value !== "string") {
-		return undefined;
-	}
-
-	const trimmed = value.trim();
-	return trimmed.length ? trimmed : undefined;
-}
 
 export const POST: RequestHandler = async ({ request, cookies }) => {
 	let requestBody: SubscriptionCheckRequestBody;

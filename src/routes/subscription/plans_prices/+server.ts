@@ -3,14 +3,16 @@ import { getStripeClient } from "$lib/server/stripe";
 import type { SubscriptionKinds } from "@ravenlens/shared";
 import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
+import { PLAN_PRICE_ENV_KEY_BY_ID } from "../common";
 
 /**
  * WARNING: Price on Stripe have to be defined in dolars currency
 */
 
 const planPrices: Record<Exclude<SubscriptionKinds, "enterprise">, string> = {
-    starter: getRequiredEnv("STRIPE_STARTER_PRICE_ID"),
-    growth: getRequiredEnv("STRIPE_GROWTH_PRICE_ID"),
+    starter: getRequiredEnv(PLAN_PRICE_ENV_KEY_BY_ID.starter),
+    growth: getRequiredEnv(PLAN_PRICE_ENV_KEY_BY_ID.growth),
+    /// Enterprise is commented since enterprises gets the unique price
     // enterprise: getRequiredEnv("STRIPE_ENTERPRISE_PRICE_ID")
 }
 
