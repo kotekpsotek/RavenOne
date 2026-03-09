@@ -11,11 +11,12 @@ type WorkspaceDocumentRaw = {
     ownerUserId?: unknown;
 };
 
-type SubscriptionCustomerModelLike = {
-    findOne(query: Record<string, unknown>): Promise<SubscriptionCustomerRecord | null>;
-};
-
 const ACTIVE_SUBSCRIPTION_STATUSES = new Set(["active", "trialing"]);
+const SUBSCRIPTION_KIND_STRENGTH: Record<SubscriptionKinds, number> = {
+    starter: 1,
+    growth: 2,
+    enterprise: 3
+};
 
 function asNonEmptyString(value: unknown): string | undefined {
     if (typeof value !== "string") {
@@ -60,20 +61,13 @@ function resolveSubscriptionKind(options: {
     return options.fallback ?? "growth";
 }
 
-function getSubscriptionCustomerModel(): SubscriptionCustomerModelLike {
-    const models = DB_Models as unknown as {
-        Subscriptions?: { subscriptionCustomerModel?: SubscriptionCustomerModelLike };
-        Subscription?: { subscriptionCustomerModel?: SubscriptionCustomerModelLike };
-    };
+function isActiveSubscriptionStatus(status: unknown): boolean {
+    const normalizedStatus = asNonEmptyString(status)?.toLowerCase();
+    return Boolean(normalizedStatus && ACTIVE_SUBSCRIPTION_STATUSES.has(normalizedStatus));
+}
 
-    const model =
-        models.Subscriptions?.subscriptionCustomerModel ?? models.Subscription?.subscriptionCustomerModel;
-
-    if (!model) {
-        throw new Error("DB_Models.Subscription.subscriptionCustomerModel is not available");
-    }
-
-    return model;
+function getSubscriptionStrength(subscriptionKind: SubscriptionKinds): number {
+    return SUBSCRIPTION_KIND_STRENGTH[subscriptionKind];
 }
 
 export type ActiveSubscriptionState = {
@@ -94,23 +88,37 @@ export async function getUserActiveSubscription(userId: string): Promise<ActiveS
         };
     }
 
-    const subscriptionCustomerModel = getSubscriptionCustomerModel();
-    const subscriptionCustomer = await subscriptionCustomerModel.findOne({ userId: normalizedUserId });
+    const subscriptionCustomers = (await DB_Models.Subscription.subscriptionCustomerModel.find({
+        userId: normalizedUserId
+    }));
 
-    const subscriptionStatus = asNonEmptyString(subscriptionCustomer?.status)?.toLowerCase();
-    const hasActiveSubscription = Boolean(
-        subscriptionStatus && ACTIVE_SUBSCRIPTION_STATUSES.has(subscriptionStatus)
+    // 1) Download subscriptions, 2) keep only active subscriptions.
+    const activeSubscriptionKinds = (Array.isArray(subscriptionCustomers) ? subscriptionCustomers : [])
+        .filter((subscriptionCustomer) => isActiveSubscriptionStatus(subscriptionCustomer.status) && (!subscriptionCustomer.currentPeriodEnd || Date.now() < subscriptionCustomer.currentPeriodEnd.getTime()))
+        .map((subscriptionCustomer) =>
+            resolveSubscriptionKind({
+                subscriptionKind: subscriptionCustomer.subscriptionKind,
+                legacyKind: subscriptionCustomer.subscriptionKind,
+                fallback: "growth"
+            })
+        );
+
+    if (!activeSubscriptionKinds.length) {
+        return {
+            hasActiveSubscription: false
+        };
+    }
+
+    // 3) Return the strongest active subscription by plan strength.
+    const strongestActiveSubscriptionKind = activeSubscriptionKinds.reduce((strongestKind, currentKind) =>
+        getSubscriptionStrength(currentKind) > getSubscriptionStrength(strongestKind)
+            ? currentKind
+            : strongestKind
     );
 
     return {
-        hasActiveSubscription,
-        subscriptionKind: hasActiveSubscription
-            ? resolveSubscriptionKind({
-                subscriptionKind: subscriptionCustomer?.subscriptionKind,
-                legacyKind: subscriptionCustomer?.kind,
-                fallback: "growth"
-            })
-            : undefined
+        hasActiveSubscription: true,
+        subscriptionKind: strongestActiveSubscriptionKind
     };
 }
 

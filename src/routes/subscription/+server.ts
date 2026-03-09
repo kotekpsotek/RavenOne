@@ -1,9 +1,9 @@
 import { env } from "$env/dynamic/private";
 import { getAuthenticatedPayload } from "$lib/server/auth/request";
 import { DB_Models } from "@ravenlens/backend";
-import type { SubscriptionKinds } from "@ravenlens/shared";
 import { json } from "@sveltejs/kit";
 import Stripe from "stripe";
+import type { SubscriptionKinds } from "@ravenlens/shared";
 import type { RequestHandler } from "./$types";
 
 type LegacySubscriptionKind = "individual" | "company";
@@ -229,11 +229,6 @@ function toAbsoluteLocalUrl(baseUrl: URL, path: string): string {
 	return resolved.toString();
 }
 
-async function findUserById(userId: string): Promise<UserProfileRecord | null> {
-	const user = await DB_Models.UserAccount.profileModel.findOne({ id: userId });
-	return (user as UserProfileRecord | null) ?? null;
-}
-
 async function getAuthenticatedUser(request: Request, cookies: Parameters<RequestHandler>[0]["cookies"]) {
 	const payload = getAuthenticatedPayload(request, cookies);
 	if (!payload) {
@@ -351,20 +346,6 @@ function getStripeCustomerId(
 	}
 
 	return customer.id ?? null;
-}
-
-function getStripeSubscriptionId(
-	subscription: string | Stripe.Subscription | null | undefined
-): string | null {
-	if (!subscription) {
-		return null;
-	}
-
-	if (typeof subscription === "string") {
-		return subscription;
-	}
-
-	return subscription.id ?? null;
 }
 
 async function handleCheckoutIntent(
@@ -505,149 +486,7 @@ async function handleCancelIntent(event: Parameters<RequestHandler>[0]) {
 	);
 }
 
-async function handleWebhookEvent(stripeEvent: Stripe.Event) {
-	const stripe = getStripeClient();
-
-	switch (stripeEvent.type) {
-		case "checkout.session.completed": {
-			const session = stripeEvent.data.object as Stripe.Checkout.Session;
-			const userId =
-				typeof session.metadata?.userId === "string" && session.metadata.userId.trim()
-					? session.metadata.userId
-					: typeof session.client_reference_id === "string" && session.client_reference_id.trim()
-						? session.client_reference_id
-						: null;
-			const stripeCustomerId = getStripeCustomerId(session.customer);
-			const stripeSubscriptionId = getStripeSubscriptionId(session.subscription);
-			const subscriptionKind = resolveSubscriptionKind({
-				subscriptionKind: session.metadata?.subscriptionKind,
-				planId: session.metadata?.planId,
-				legacyKind: session.metadata?.kind,
-				fallback: "growth"
-			});
-
-			if (userId && stripeCustomerId) {
-				const user = await findUserById(userId);
-				if (user) {
-					await upsertSubscriptionFromUser(user, {
-						subscriptionKind,
-						stripeCustomerId,
-						...(stripeSubscriptionId ? { stripeSubscriptionId } : {})
-					});
-				}
-			}
-
-			if (stripeCustomerId && stripeSubscriptionId) {
-				await updateSubscriptionByCustomerId(stripeCustomerId, {
-					stripeSubscriptionId
-				});
-			}
-
-			break;
-		}
-
-		case "customer.subscription.created":
-		case "customer.subscription.updated":
-		case "customer.subscription.deleted": {
-			const subscription = stripeEvent.data.object as Stripe.Subscription;
-			const stripeCustomerId = getStripeCustomerId(subscription.customer);
-			const summary = getSubscriptionSummary(subscription);
-			const subscriptionKind = resolveSubscriptionKind({
-				subscriptionKind: subscription.metadata?.subscriptionKind,
-				planId: subscription.metadata?.planId,
-				legacyKind: subscription.metadata?.kind,
-				priceId: summary.priceId,
-				fallback: "growth"
-			});
-
-			if (stripeCustomerId) {
-				await updateSubscriptionByCustomerId(stripeCustomerId, {
-					...summary,
-					subscriptionKind
-				});
-			}
-
-			const userId =
-				typeof subscription.metadata?.userId === "string" && subscription.metadata.userId.trim()
-					? subscription.metadata.userId
-					: null;
-
-			if (userId && stripeCustomerId) {
-				const user = await findUserById(userId);
-				if (user) {
-					await upsertSubscriptionFromUser(user, {
-						subscriptionKind,
-						stripeCustomerId,
-						...summary
-					});
-				}
-			}
-
-			break;
-		}
-
-		case "invoice.payment_succeeded":
-		case "invoice.payment_failed": {
-			const invoice = stripeEvent.data.object as Stripe.Invoice;
-			const stripeCustomerId = getStripeCustomerId(invoice.customer);
-			const stripeSubscriptionId = getStripeSubscriptionId(invoice.subscription);
-
-			if (stripeCustomerId && stripeSubscriptionId) {
-				const subscription = await stripe.subscriptions.retrieve(stripeSubscriptionId);
-				const summary = getSubscriptionSummary(subscription);
-				const subscriptionKind = resolveSubscriptionKind({
-					subscriptionKind: subscription.metadata?.subscriptionKind,
-					planId: subscription.metadata?.planId,
-					legacyKind: subscription.metadata?.kind,
-					priceId: summary.priceId,
-					fallback: "growth"
-				});
-
-				await updateSubscriptionByCustomerId(stripeCustomerId, {
-					...summary,
-					subscriptionKind,
-					...(stripeEvent.type === "invoice.payment_failed"
-						? { status: "past_due" as Stripe.Subscription.Status }
-						: {})
-				});
-			} else if (stripeCustomerId && stripeEvent.type === "invoice.payment_failed") {
-				await updateSubscriptionByCustomerId(stripeCustomerId, {
-					status: "past_due" as Stripe.Subscription.Status
-				});
-			}
-
-			break;
-		}
-
-		default:
-			break;
-	}
-}
-
-async function handleStripeWebhook(request: Request) {
-	const stripeSignature = request.headers.get("stripe-signature");
-	if (!stripeSignature) {
-		return new Response("Missing Stripe signature", { status: 400 });
-	}
-
-	const webhookSecret = getRequiredEnv("STRIPE_WEBHOOK_SECRET");
-	const payload = await request.text();
-
-	let stripeEvent: Stripe.Event;
-	try {
-		stripeEvent = getStripeClient().webhooks.constructEvent(payload, stripeSignature, webhookSecret);
-	} catch (error) {
-		return new Response(`Webhook Error: ${toErrorMessage(error)}`, { status: 400 });
-	}
-
-	try {
-		await handleWebhookEvent(stripeEvent);
-		return json({ received: true }, { status: 200 });
-	} catch (error) {
-		return new Response(`Webhook Processing Error: ${toErrorMessage(error)}`, { status: 400 });
-	}
-}
-
+// Downloading the active subscription
 export const GET: RequestHandler = async ({ request, cookies }) => {
 	try {
 		const user = await getAuthenticatedUser(request, cookies);
@@ -709,12 +548,9 @@ export const GET: RequestHandler = async ({ request, cookies }) => {
 	}
 };
 
+// Starting / canceling checkout intent 
 export const POST: RequestHandler = async (event) => {
 	try {
-		if (event.request.headers.has("stripe-signature")) {
-			return handleStripeWebhook(event.request);
-		}
-
 		let requestBody: CheckoutIntentBody;
 		try {
 			requestBody = (await event.request.json()) as CheckoutIntentBody;
