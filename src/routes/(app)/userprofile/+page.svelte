@@ -1,7 +1,6 @@
 ﻿<script lang="ts">
     import { goto } from "$app/navigation";
     import { page } from "$app/stores";
-    import ProfileLoader from "$lib/screens/ProfileLoader.svelte";
     import { theme } from "$lib/stores/theme";
     import { userProfile } from "$lib/stores/user";
     import { isUserAuthenticated, JWTAuth } from "$lib/utils/auth";

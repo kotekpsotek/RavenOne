@@ -1,3 +1,4 @@
+import { dev } from "$app/environment";
 import { env } from "$env/dynamic/private";
 import { DB_Models } from "@ravenlens/backend";
 import type { SubscriptionKinds } from "@ravenlens/shared";
@@ -374,15 +375,34 @@ async function handleWebhookEvent(event: Stripe.Event) {
 }
 
 export const POST: RequestHandler = async ({ request }) => {
-	const stripeSignature = request.headers.get("stripe-signature");
-	if (!stripeSignature) {
-		return new Response("Missing Stripe signature", { status: 400 });
+	const payload = await request.text();
+	let event: Stripe.Event;
+
+	if (dev) {
+		try {
+			event = JSON.parse(payload) as Stripe.Event;
+		} catch (error) {
+			return new Response(`Invalid webhook payload: ${toErrorMessage(error)}`, { status: 400 });
+		}
+	} else {
+		const stripeSignature = request.headers.get("stripe-signature");
+		if (!stripeSignature) {
+			return new Response("Missing Stripe signature", { status: 400 });
+		}
+
+		try {
+			event = getStripeClient().webhooks.constructEvent(
+				payload,
+				stripeSignature,
+				getRequiredEnv("STRIPE_WEBHOOK_SECRET")
+			);
+		} catch (error) {
+			return new Response(`Invalid Stripe signature: ${toErrorMessage(error)}`, { status: 400 });
+		}
 	}
 
-	const payload = await request.json() as Stripe.Event;
-
 	try {
-		await handleWebhookEvent(payload);
+		await handleWebhookEvent(event);
 		return json({ received: true }, { status: 200 });
 	} catch (error) {
 		return new Response(`Webhook Processing Error: ${toErrorMessage(error)}`, { status: 400 });

@@ -277,6 +277,7 @@ async function handleDeleteCodeRequest(request: Request, cookies: Parameters<Req
     }
 }
 
+/** Update user profile */
 export const POST: RequestHandler = async ({ request, cookies, fetch }) => {
     const contentType = request.headers.get("content-type") ?? "";
 
@@ -367,6 +368,7 @@ export const POST: RequestHandler = async ({ request, cookies, fetch }) => {
     }
 };
 
+/** Delete user profile */
 export const DELETE: RequestHandler = async ({ request, cookies, fetch }) => {
     const authStatusResponse = await ensureAuthenticatedViaRoute(request, fetch);
     if (!authStatusResponse) {

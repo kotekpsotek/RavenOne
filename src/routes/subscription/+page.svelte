@@ -9,8 +9,17 @@
 	const themeOptions: Themes[] = ["light", "dark"];
 
 	type StripeCheckoutPlan = NonNullable<SubscriptionPlan["stripePlanId"]>;
+	type PlanPricesResponse = Record<StripeCheckoutPlan, number>;
+
+	const usdCurrencyFormatter = new Intl.NumberFormat("en-US", {
+		style: "currency",
+		currency: "USD",
+		maximumFractionDigits: 2
+	});
 
 	let hasMounted = $state(false);
+	let isLoadingPlanPrices = $state(true);
+	let livePlanPrices = $state<Partial<PlanPricesResponse>>({});
 	let checkoutPlanInProgress = $state<StripeCheckoutPlan | null>(null);
 	let checkoutError = $state<string | null>(null);
 
@@ -19,6 +28,7 @@
 
 	onMount(() => {
 		syncThemeMode();
+		void loadLivePlanPrices();
 		hasMounted = true;
 	});
 
@@ -43,6 +53,40 @@
 			return JSON.stringify(error);
 		} catch {
 			return String(error);
+		}
+	}
+
+	function getDisplayPrice(plan: SubscriptionPlan): string {
+		if (!plan.stripePlanId) {
+			return plan.price;
+		}
+
+		const livePrice = livePlanPrices[plan.stripePlanId];
+		if (typeof livePrice !== "number" || Number.isNaN(livePrice)) {
+			return plan.price;
+		}
+
+		return usdCurrencyFormatter.format(livePrice);
+	}
+
+	async function loadLivePlanPrices() {
+		isLoadingPlanPrices = true;
+
+		try {
+			const response = await fetchAuthenticated("/subscription/plans_prices", {
+				method: "GET"
+			});
+
+			if (!response.ok) {
+				return;
+			}
+
+			const responseBody = (await response.json()) as Partial<PlanPricesResponse>;
+			livePlanPrices = responseBody;
+		} catch {
+			// Keep static plan.price labels when live Stripe prices are unavailable.
+		} finally {
+			isLoadingPlanPrices = false;
 		}
 	}
 
@@ -130,6 +174,14 @@
 				: "border-[rgba(148,163,184,0.18)] bg-white/[0.62] shadow-[0_28px_80px_rgba(15,23,42,0.08)]"
 		}`}
 	>
+		{#if isLoadingPlanPrices}
+			<div class="flex min-h-[60vh] w-full items-center justify-center" aria-live="polite" aria-busy="true">
+				<span
+					class={`loading loading-spinner loading-lg ${isDarkMode ? "text-[#f8fafc]" : "text-[#1f2937]"}`}
+					aria-label="Loading subscription prices"
+				></span>
+			</div>
+		{:else}
 		<header class="mb-7 flex items-end justify-between gap-4 max-[960px]:flex-col max-[960px]:items-stretch">
 			<div>
 				<h1
@@ -218,7 +270,7 @@
 
 					<div class="relative z-10 flex items-end gap-[0.4rem]">
 						<span class={`text-[clamp(2rem,3vw,3rem)] font-semibold leading-none tracking-[-0.05em] max-[640px]:text-[2.4rem] ${plan.featured || isDarkMode ? "text-[#f8fafc]" : "text-[#111827]"}`}>
-							{plan.price}
+							{getDisplayPrice(plan)}
 						</span>
 						<span
 							class={`pb-[0.3rem] text-base ${
@@ -289,5 +341,6 @@
 				</article>
 			{/each}
 		</div>
+		{/if}
 	</div>
 </section>

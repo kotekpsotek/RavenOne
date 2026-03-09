@@ -2,9 +2,11 @@ import { env } from "$env/dynamic/private";
 import { getAuthenticatedPayload } from "$lib/server/auth/request";
 import { DB_Models } from "@ravenlens/backend";
 import { json } from "@sveltejs/kit";
-import Stripe from "stripe";
 import type { SubscriptionKinds } from "@ravenlens/shared";
 import type { RequestHandler } from "./$types";
+import { getRequiredEnv } from "$lib/server/env";
+import type Stripe from "stripe";
+import { getStripeClient } from "$lib/server/stripe";
 
 type LegacySubscriptionKind = "individual" | "company";
 type CheckoutPlanId = SubscriptionKinds;
@@ -81,8 +83,6 @@ const PLAN_PRICE_ENV_KEY_BY_ID: Record<CheckoutPlanId, string> = {
 
 const ACTIVE_SUBSCRIPTION_STATUSES = new Set<Stripe.Subscription.Status>(["active", "trialing"]);
 
-let stripeClient: Stripe | undefined;
-
 function toErrorMessage(error: unknown): string {
 	if (error instanceof Error) {
 		return error.message;
@@ -97,26 +97,6 @@ function toErrorMessage(error: unknown): string {
 	} catch {
 		return String(error);
 	}
-}
-
-function getRequiredEnv(name: string): string {
-	const value = (env as Record<string, string | undefined>)[name]?.trim();
-	if (!value) {
-		throw new Error(`${name} is not configured`);
-	}
-
-	return value;
-}
-
-function getStripeClient() {
-	if (!stripeClient) {
-		stripeClient = new Stripe(getRequiredEnv("STRIPE_SECRET_KEY"), {
-			apiVersion: "2023-10-16",
-			typescript: true
-		});
-	}
-
-	return stripeClient;
 }
 
 function getSubscriptionCustomerModel(): SubscriptionCustomerModelLike {
@@ -486,7 +466,7 @@ async function handleCancelIntent(event: Parameters<RequestHandler>[0]) {
 	);
 }
 
-// Downloading the active subscription
+// Downloading the subscription and its status
 export const GET: RequestHandler = async ({ request, cookies }) => {
 	try {
 		const user = await getAuthenticatedUser(request, cookies);

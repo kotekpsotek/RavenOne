@@ -141,6 +141,7 @@ function mapSubscriptionFromRoute(
     };
 }
 
+// TODO: Add handling for showing the canceled subscription
 export const load: PageServerLoad = async ({ fetch }) => {
     const meResponse = await fetch("/auth/me", {
         method: "GET"
