@@ -244,14 +244,31 @@ export const inviteMemberRequest: ComponentProps<UI.Workspace.Settings.Workspace
     }
 
     if (!response.ok) {
-        let message: string | undefined = undefined;
+        let responseBody: WorkspaceMembersMutationResponse | undefined = undefined;
         try {
-            const { message: messageLocal } = await response.json();
-            message = messageLocal;
+            responseBody = await response.json() as WorkspaceMembersMutationResponse;
         }
         catch {}
+
+        if (response.status === 402) {
+            setAlert(
+                "warning",
+                "Plan upgrade required",
+                buildWorkspaceMembersError(
+                    response,
+                    responseBody,
+                    "This workspace reached your current plan member limit. Upgrade your plan to invite more members."
+                )
+            );
+
+            return false;
+        }
         
-        setAlert("error", "Invitation failed", message ?? response.status.toString());
+        setAlert(
+            "error",
+            "Invitation failed",
+            buildWorkspaceMembersError(response, responseBody, "Cannot invite members")
+        );
         return false;
     }
     

@@ -34,6 +34,32 @@ function asSubscriptionKind(value: unknown): SubscriptionKinds | undefined {
     return undefined;
 }
 
+function asLegacySubscriptionKind(value: unknown): "individual" | "company" | undefined {
+    if (value === "individual" || value === "company") {
+        return value;
+    }
+
+    return undefined;
+}
+
+function resolveSubscriptionKind(options: {
+    subscriptionKind?: unknown;
+    legacyKind?: unknown;
+    fallback?: SubscriptionKinds;
+}): SubscriptionKinds {
+    const normalizedSubscriptionKind = asSubscriptionKind(options.subscriptionKind);
+    if (normalizedSubscriptionKind) {
+        return normalizedSubscriptionKind;
+    }
+
+    const legacyKind = asLegacySubscriptionKind(options.legacyKind);
+    if (legacyKind === "company") {
+        return "enterprise";
+    }
+
+    return options.fallback ?? "growth";
+}
+
 function getSubscriptionCustomerModel(): SubscriptionCustomerModelLike {
     const models = DB_Models as unknown as {
         Subscriptions?: { subscriptionCustomerModel?: SubscriptionCustomerModelLike };
@@ -79,7 +105,11 @@ export async function getUserActiveSubscription(userId: string): Promise<ActiveS
     return {
         hasActiveSubscription,
         subscriptionKind: hasActiveSubscription
-            ? asSubscriptionKind(subscriptionCustomer?.subscriptionKind ?? subscriptionCustomer?.kind)
+            ? resolveSubscriptionKind({
+                subscriptionKind: subscriptionCustomer?.subscriptionKind,
+                legacyKind: subscriptionCustomer?.kind,
+                fallback: "growth"
+            })
             : undefined
     };
 }

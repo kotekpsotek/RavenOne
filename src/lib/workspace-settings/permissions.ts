@@ -28,7 +28,6 @@ export function workspaceCanAccessPermission(workspace: WorkspaceEntry, permissi
     if (!workspace) {
         return false;
     }
-    console.log(workspace)
 
     if (workspace.isOwner) {
         return true;

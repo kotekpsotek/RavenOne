@@ -16,6 +16,7 @@ type WorkspaceSubscriptionState = {
 type UserSubscriptionState = {
     checking: boolean;
     hasActiveSubscription: boolean;
+    subscriptionKind?: SubscriptionKinds;
 };
 
 const workspaceSubscriptionState = writable<WorkspaceSubscriptionState>({
@@ -38,6 +39,14 @@ function normalizeIdentifier(value: string | null | undefined): string | undefin
 
     const normalized = value.trim();
     return normalized.length ? normalized : undefined;
+}
+
+function asSubscriptionKind(value: unknown): SubscriptionKinds | undefined {
+    if (value === "starter" || value === "growth" || value === "enterprise") {
+        return value;
+    }
+
+    return undefined;
 }
 
 export async function refreshSelectedWorkspaceSubscriptionState(workspaceIdCandidate?: string): Promise<void> {
@@ -89,15 +98,30 @@ export async function refreshUserSubscriptionState(): Promise<void> {
     }));
 
     let hasActiveSubscription = false;
+    let subscriptionKind: SubscriptionKinds | undefined;
 
     try {
         const response = await fetchAuthenticated("/subscription", {
             method: "GET"
         });
 
-        let responseBody: { status?: boolean; subscribed?: boolean } | null = null;
+        let responseBody: {
+            status?: boolean;
+            subscribed?: boolean;
+            subscription?: {
+                subscriptionKind?: unknown;
+                kind?: unknown;
+            } | null;
+        } | null = null;
         try {
-            responseBody = (await response.json()) as { status?: boolean; subscribed?: boolean };
+            responseBody = (await response.json()) as {
+                status?: boolean;
+                subscribed?: boolean;
+                subscription?: {
+                    subscriptionKind?: unknown;
+                    kind?: unknown;
+                } | null;
+            };
         } catch {
             responseBody = null;
         }
@@ -107,8 +131,15 @@ export async function refreshUserSubscriptionState(): Promise<void> {
             && responseBody?.status
             && responseBody.subscribed
         );
+
+        if (hasActiveSubscription) {
+            subscriptionKind = asSubscriptionKind(responseBody?.subscription?.subscriptionKind)
+                ?? asSubscriptionKind(responseBody?.subscription?.kind)
+                ?? "growth";
+        }
     } catch {
         hasActiveSubscription = false;
+        subscriptionKind = undefined;
     }
 
     if (currentRequestId !== userSubscriptionRequestId) {
@@ -117,7 +148,8 @@ export async function refreshUserSubscriptionState(): Promise<void> {
 
     userSubscriptionState.set({
         checking: false,
-        hasActiveSubscription
+        hasActiveSubscription,
+        subscriptionKind
     });
 }
 
@@ -134,6 +166,7 @@ export const canManageWorkspaceFiles = derived([workspaceSubscriptionCheckInProg
 
 export const userSubscriptionCheckInProgress = derived(userSubscriptionState, state => state.checking);
 export const userHasActiveSubscription = derived(userSubscriptionState, state => state.hasActiveSubscription);
+export const userSubscriptionKind = derived(userSubscriptionState, state => state.subscriptionKind);
 
 if (browser) {
     selectedWorkspace.subscribe(workspace => {

@@ -4,67 +4,9 @@
 	import { fetchAuthenticated } from "$lib/utils/fetch";
 	import { onMount } from "svelte";
 	import { setThemeMode, syncThemeMode, theme, type Themes } from "$lib/stores/theme";
-	import type { SubscriptionPlan } from "@ravenlens/shared";
+	import { type SubscriptionPlan, plans } from "@ravenlens/shared";
 
 	const themeOptions: Themes[] = ["light", "dark"];
-	const plans: SubscriptionPlan[] = [
-		{
-			name: "Starter Plan",
-			kind: "starter",
-			stripePlanId: "starter",
-			badge: "FREE",
-			badgeTone: "warm",
-			price: "$10.00",
-			billing: "/month",
-			callToAction: "Current Plan",
-			actionTone: "muted",
-			current: true,
-			features: [
-				"Manage up to 1,000 contacts",
-				"Basic customer management tools",
-				"Task and workflow automation",
-				"Integration with third-party apps (limited)",
-				"Customizable dashboards"
-			]
-		},
-		{
-			name: "Growth Plan",
-			kind: "growth",
-			stripePlanId: "growth",
-			badge: "PRO",
-			badgeTone: "warm",
-			price: "$79.00",
-			billing: "/month",
-			callToAction: "Upgrade Plan",
-			actionTone: "primary",
-			featured: true,
-			features: [
-				"Manage up to 10,000 contacts",
-				"Advanced customer management",
-				"Full workflow automation",
-				"Real-time reporting and analytics",
-				"Collaborative team features"
-			]
-		},
-		{
-			name: "Enterprise Plan",
-			kind: "enterprise",
-			contactPath: "/help-materials",
-			badge: "ADVANCE",
-			badgeTone: "green",
-			price: "Custom",
-			billing: "/month",
-			callToAction: "Contact Us",
-			actionTone: "contrast",
-			features: [
-				"Unlimited contacts and data storage",
-				"Custom workflow and automation setups",
-				"Dedicated account manager",
-				"Advanced analytics and reporting",
-				"Full API access and custom integrations"
-			]
-		}
-	];
 
 	type StripeCheckoutPlan = NonNullable<SubscriptionPlan["stripePlanId"]>;
 
@@ -261,15 +203,17 @@
 						<p class={`m-0 text-[1.35rem] font-semibold ${plan.featured || isDarkMode ? "text-[#f8fafc]" : "text-[#111827]"}`}>
 							{plan.name}
 						</p>
-						<span
-							class={`inline-flex items-center gap-[0.45rem] whitespace-nowrap rounded-full border px-[0.72rem] py-[0.38rem] text-[0.76rem] font-extrabold uppercase tracking-[0.08em] before:h-[0.48rem] before:w-[0.48rem] before:rounded-full before:bg-current before:content-[''] ${
-								plan.badgeTone === "warm"
-									? "border-[rgba(255,146,60,0.2)] bg-[rgba(255,146,60,0.14)] text-[#ff922c]"
-									: "border-[rgba(16,185,129,0.22)] bg-[rgba(16,185,129,0.12)] text-[#10b981]"
-							}`}
-						>
-							{plan.badge}
-						</span>
+						{#if plan.badge}
+							<span
+								class={`inline-flex items-center gap-[0.45rem] whitespace-nowrap rounded-full border px-[0.72rem] py-[0.38rem] text-[0.76rem] font-extrabold uppercase tracking-[0.08em] before:h-[0.48rem] before:w-[0.48rem] before:rounded-full before:bg-current before:content-[''] ${
+									plan.badgeTone === "warm"
+										? "border-[rgba(255,146,60,0.2)] bg-[rgba(255,146,60,0.14)] text-[#ff922c]"
+										: "border-[rgba(16,185,129,0.22)] bg-[rgba(16,185,129,0.12)] text-[#10b981]"
+								}`}
+							>
+								{plan.badge}
+							</span>
+						{/if}
 					</div>
 
 					<div class="relative z-10 flex items-end gap-[0.4rem]">

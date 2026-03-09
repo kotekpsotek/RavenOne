@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { extractBearerToken } from "$lib/server/auth/request";
 import { prefetchWorkspaceWithMembers } from "$lib/server/db";
 import { getWorkspaceActiveSubscription } from "$lib/server/subscription";
+import { getWorkspaceMembersLimit } from "$lib/subscription/limits";
 import { Permissions, type Workspace } from "@ravenlens/shared";
 import type { RequestHandler } from "@sveltejs/kit";
 import { env } from "$env/dynamic/private";
@@ -493,6 +494,9 @@ export const POST: RequestHandler = async ({ request, url }) => {
         );
     }
 
+    const subscriptionKind = workspaceSubscription.subscriptionKind ?? "growth";
+    const maxWorkspaceMembers = getWorkspaceMembersLimit(subscriptionKind);
+
     const workspaceInvitementsFromDb: WorkspaceInvitement[] = Array.isArray(userWorkspacesQuota.workspaceInvitements)
         ? userWorkspacesQuota.workspaceInvitements
         : [];
@@ -526,6 +530,23 @@ export const POST: RequestHandler = async ({ request, url }) => {
             existingInvitedEmails: existingWorkspaceIdentity.invitedEmails,
             existingInvitedExternalUserIds: existingWorkspaceIdentity.invitedExternalUserIds
         });
+
+        if (typeof maxWorkspaceMembers === "number") {
+            const currentWorkspaceSeats = userWorkspacesQuota.workspaceMembers.length + workspaceInvitementsFromDb.length;
+            const nextWorkspaceSeats = currentWorkspaceSeats + invitationsToPersist.length + membersToJoin.length;
+
+            if (nextWorkspaceSeats > maxWorkspaceMembers) {
+                return new Response(
+                    JSON.stringify({
+                        message: `This workspace reached the ${maxWorkspaceMembers}-member limit for the ${subscriptionKind} plan. Upgrade your plan to invite more members.`
+                    }),
+                    {
+                        status: 402,
+                        headers: { "content-type": "application/json" }
+                    }
+                );
+            }
+        }
 
         if (invitationsToPersist.length > 0) {
             // Send email only for invitations that will actually be stored.

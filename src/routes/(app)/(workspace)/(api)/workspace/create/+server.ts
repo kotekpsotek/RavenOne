@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { getAuthenticatedPayload } from "$lib/server/auth/request";
 import { getUserActiveSubscription } from "$lib/server/subscription";
+import { getWorkspaceMembersLimit, getWorkspaceOwnershipLimit } from "$lib/subscription/limits";
 import { DB_Models } from "@ravenlens/backend";
 import { Permissions, Workspace } from "@ravenlens/shared";
 import { json } from "@sveltejs/kit";
@@ -241,6 +242,10 @@ export const POST: RequestHandler = async ({ request, cookies, fetch }) => {
 		);
 	}
 
+	const subscriptionKind = userSubscription.subscriptionKind ?? "growth";
+	const maxOwnedWorkspaces = getWorkspaceOwnershipLimit(subscriptionKind);
+	const maxWorkspaceMembers = getWorkspaceMembersLimit(subscriptionKind);
+
 	let requestBody: CreateWorkspaceRequestBody;
 	try {
 		requestBody = (await request.json()) as CreateWorkspaceRequestBody;
@@ -281,6 +286,36 @@ export const POST: RequestHandler = async ({ request, cookies, fetch }) => {
 			invitedBy,
 			now
 		});
+
+		if (typeof maxWorkspaceMembers === "number" && workspaceInvitements.length + 1 > maxWorkspaceMembers) {
+			return json(
+				{
+					status: false,
+					error: `Your ${subscriptionKind} plan allows up to ${maxWorkspaceMembers} workspace members. Remove some invitations or upgrade your plan.`,
+					subscriptionKind,
+					limit: maxWorkspaceMembers
+				},
+				{ status: 402 }
+			);
+		}
+
+		if (typeof maxOwnedWorkspaces === "number") {
+			const ownedWorkspacesCount = await DB_Models.Workspace.Workspace.workspaceModel.countDocuments({
+				ownerUserId: payload.userId
+			});
+
+			if (ownedWorkspacesCount >= maxOwnedWorkspaces) {
+				return json(
+					{
+						status: false,
+						error: `Your ${subscriptionKind} plan allows up to ${maxOwnedWorkspaces} owned workspace${maxOwnedWorkspaces === 1 ? "" : "s"}. Upgrade your plan to create more workspaces.`,
+						subscriptionKind,
+						limit: maxOwnedWorkspaces
+					},
+					{ status: 402 }
+				);
+			}
+		}
 
 		const duplicateWorkspace = await DB_Models.Workspace.Workspace.workspaceModel
 			.findOne({

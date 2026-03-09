@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { canManageWorkspaceFiles, workspaceHasActiveSubscription, workspaceSubscriptionCheckInProgress } from "$lib/stores/subscription";
+    import { getWorkspaceMembersLimit } from "$lib/subscription/limits";
+    import { canManageWorkspaceFiles, workspaceHasActiveSubscription, workspaceSubscriptionCheckInProgress, workspaceSubscriptionKind } from "$lib/stores/subscription";
     import { theme } from "$lib/stores/theme";
     import { userProfile } from "$lib/stores/user";
     import { alertState, setAlert } from "$lib/utils/alert";
@@ -16,6 +17,8 @@
     let invitements = $derived<Workspace.Workspace.WorkspaceMemberInvitement[]>(workspaceLoaded?.workspaceInvitements ?? []);
     let ownerUserId = $derived<Workspace.Workspace.WorkspaceForUser["ownerUserId"] | undefined>(workspaceLoaded?.ownerUserId ?? undefined);
     const canManageWorkspaceMembers = $derived(!$workspaceSubscriptionCheckInProgress && $workspaceHasActiveSubscription);
+    const maxWorkspaceMembers = $derived($workspaceSubscriptionKind ? getWorkspaceMembersLimit($workspaceSubscriptionKind) : null);
+    const reachedWorkspaceMemberLimit = $derived(typeof maxWorkspaceMembers === "number" && users.length >= maxWorkspaceMembers);
     type WorkspaceMembersScreenProps = ComponentProps<UI.Workspace.Settings.WorkspaceMembersSettingScreen>;
 
     const onSetAlertState: ComponentProps<UI.Workspace.Settings.WorkspaceSettingsScreen>["onSetAlertState"] = (state) => {
@@ -27,6 +30,16 @@
     ) => {
         if (!canManageWorkspaceMembers) {
             setAlert("warning", "Active workspace subscription required", "Cannot invite members because this workspace has no active subscription.");
+            return false;
+        }
+
+        if (reachedWorkspaceMemberLimit && typeof maxWorkspaceMembers === "number") {
+            setAlert(
+                "warning",
+                "Plan upgrade required",
+                `This workspace already has ${users.length} members. The ${$workspaceSubscriptionKind ?? "current"} plan allows up to ${maxWorkspaceMembers} members. Upgrade your plan to invite more members.`
+            );
+
             return false;
         }
 

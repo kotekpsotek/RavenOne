@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { userHasActiveSubscription, userSubscriptionCheckInProgress } from "$lib/stores/subscription";
+    import { getWorkspaceOwnershipLimit } from "$lib/subscription/limits";
+    import { userHasActiveSubscription, userSubscriptionCheckInProgress, userSubscriptionKind } from "$lib/stores/subscription";
     import { userProfile } from "$lib/stores/user";
     import { avaiableWorkspaces, selectedWorkspace } from "$lib/stores/workspace";
     import { alertState } from "$lib/utils/alert";
@@ -9,7 +10,18 @@
     import type { ComponentProps } from "svelte";
 
     let { open = $bindable(false) } = $props();
-    const canCreateWorkspace = $derived(!$userSubscriptionCheckInProgress && $userHasActiveSubscription);
+    const ownedWorkspaceCount = $derived($avaiableWorkspaces.filter(workspace => workspace.isOwner).length);
+    const maxOwnedWorkspaces = $derived($userHasActiveSubscription && $userSubscriptionKind
+        ? getWorkspaceOwnershipLimit($userSubscriptionKind)
+        : null);
+    const reachedWorkspaceOwnershipLimit = $derived(
+        typeof maxOwnedWorkspaces === "number" && ownedWorkspaceCount >= maxOwnedWorkspaces
+    );
+    const canCreateWorkspace = $derived(
+        !$userSubscriptionCheckInProgress
+        && $userHasActiveSubscription
+        && !reachedWorkspaceOwnershipLimit
+    );
 
     type CreateWorkspaceResponseBody = {
         status?: boolean;
@@ -57,11 +69,24 @@
             return nextWorkspaces;
         });
     }
+
+    function getWorkspaceLimitUpgradeMessage(): string {
+        if (typeof maxOwnedWorkspaces !== "number") {
+            return "Your current plan reached its workspace creation limit. Upgrade your plan to create more workspaces.";
+        }
+
+        return `Your ${$userSubscriptionKind ?? "current"} plan allows up to ${maxOwnedWorkspaces} owned workspace${maxOwnedWorkspaces === 1 ? "" : "s"}. Upgrade your plan to create more.`;
+    }
     
     // Handlers
     const onCreateWorkspace: ComponentProps<UI.Workspace.Management.AddWorkspaceScreen>["onCreate"] = async (workspaceName, workspaceInvitements) => {
         if (!canCreateWorkspace) {
-            setAlert("warning", "Active subscription required", "Creating a workspace requires an active subscription.");
+            if (!$userSubscriptionCheckInProgress && reachedWorkspaceOwnershipLimit) {
+                setAlert("warning", "Workspace limit reached", getWorkspaceLimitUpgradeMessage());
+            } else {
+                setAlert("warning", "Active subscription required", "Creating a workspace requires an active subscription.");
+            }
+
             return;
         }
 
@@ -97,7 +122,12 @@
 
         if (!response.ok || !responseBody?.status) {
             const errorMessage = responseBody?.error ?? `Cannot create workspace (${response.status})`;
-            setAlert("error", "Workspace creation failed", errorMessage);
+            if (response.status === 402) {
+                setAlert("warning", "Plan upgrade required", errorMessage);
+            } else {
+                setAlert("error", "Workspace creation failed", errorMessage);
+            }
+
             return;
         }
 
@@ -129,7 +159,11 @@
         {#if !canCreateWorkspace && !$userSubscriptionCheckInProgress}
             <div class="absolute inset-0 z-10 flex items-start justify-center p-4">
                 <div class="alert alert-warning max-w-xl text-sm">
-                    Active subscription is required to create a new workspace.
+                    {#if reachedWorkspaceOwnershipLimit}
+                        {getWorkspaceLimitUpgradeMessage()}
+                    {:else}
+                        Active subscription is required to create a new workspace.
+                    {/if}
                 </div>
             </div>
         {/if}
