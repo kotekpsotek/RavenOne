@@ -7,6 +7,7 @@ import type { RequestHandler } from "./$types";
 import { getRequiredEnv } from "$lib/server/env";
 import type Stripe from "stripe";
 import { getStripeClient } from "$lib/server/stripe";
+import type { SubscriptionResponse } from "./universal.types";
 
 type LegacySubscriptionKind = "individual" | "company";
 type CheckoutPlanId = SubscriptionKinds;
@@ -46,29 +47,6 @@ type SubscriptionCustomerPatch = {
 	cancelAtPeriodEnd?: boolean;
 };
 
-type SubscriptionCustomerRecord = {
-	userId?: string;
-	email?: string;
-	subscriptionKind?: unknown;
-	kind?: unknown;
-	status?: Stripe.Subscription.Status;
-	stripeCustomerId?: string;
-	stripeSubscriptionId?: string;
-	priceId?: string;
-	currentPeriodEnd?: Date;
-	cancelAtPeriodEnd?: boolean;
-};
-
-type SubscriptionCustomerModelLike = {
-	findOne(query: Record<string, unknown>): Promise<any>;
-	updateOne(
-		query: Record<string, unknown>,
-		update: Record<string, unknown>,
-		options?: Record<string, unknown>
-	): Promise<{ matchedCount?: number } | any>;
-	create(payload: Record<string, unknown>): Promise<any>;
-};
-
 const LEGACY_KIND_BY_PLAN_ID: Record<CheckoutPlanId, LegacySubscriptionKind> = {
 	starter: "individual",
 	growth: "individual",
@@ -97,22 +75,6 @@ function toErrorMessage(error: unknown): string {
 	} catch {
 		return String(error);
 	}
-}
-
-function getSubscriptionCustomerModel(): SubscriptionCustomerModelLike {
-	const models = DB_Models as unknown as {
-		Subscriptions?: { subscriptionCustomerModel?: SubscriptionCustomerModelLike };
-		Subscription?: { subscriptionCustomerModel?: SubscriptionCustomerModelLike };
-	};
-
-	const model =
-		models.Subscriptions?.subscriptionCustomerModel ?? models.Subscription?.subscriptionCustomerModel;
-
-	if (!model) {
-		throw new Error("DB_Models.Subscription.subscriptionCustomerModel is not available");
-	}
-
-	return model;
 }
 
 function normalizePlanId(value: unknown): CheckoutPlanId | null {
@@ -160,7 +122,6 @@ function inferPlanIdFromPriceId(value: unknown): CheckoutPlanId | null {
 function resolveSubscriptionKind(options: {
 	subscriptionKind?: unknown;
 	planId?: unknown;
-	legacyKind?: unknown;
 	priceId?: unknown;
 	fallback?: SubscriptionKinds;
 }): SubscriptionKinds {
@@ -177,11 +138,6 @@ function resolveSubscriptionKind(options: {
 	const fromPriceId = inferPlanIdFromPriceId(options.priceId);
 	if (fromPriceId) {
 		return fromPriceId;
-	}
-
-	const fromLegacyKind = normalizeLegacySubscriptionKind(options.legacyKind);
-	if (fromLegacyKind === "company") {
-		return "enterprise";
 	}
 
 	return options.fallback ?? "growth";
@@ -232,8 +188,7 @@ async function upsertSubscriptionFromUser(
 	patch: SubscriptionCustomerPatch,
 	options?: { upsert?: boolean }
 ) {
-	const subscriptionCustomerModel = getSubscriptionCustomerModel();
-	await subscriptionCustomerModel.updateOne(
+	await DB_Models.Subscription.subscriptionCustomerModel.updateOne(
 		{ userId: user.id },
 		{
 			$set: {
@@ -252,8 +207,7 @@ async function updateSubscriptionByCustomerId(
 	patch: SubscriptionCustomerPatch,
 	options?: { upsert?: boolean }
 ) {
-	const subscriptionCustomerModel = getSubscriptionCustomerModel();
-	await subscriptionCustomerModel.updateOne(
+	await DB_Models.Subscription.subscriptionCustomerModel.updateOne(
 		{ stripeCustomerId },
 		{
 			$set: {
@@ -266,8 +220,7 @@ async function updateSubscriptionByCustomerId(
 }
 
 async function ensureStripeCustomerForUser(user: UserProfileRecord, subscriptionKind: SubscriptionKinds) {
-	const subscriptionCustomerModel = getSubscriptionCustomerModel();
-	const existing = await subscriptionCustomerModel.findOne({ userId: user.id });
+	const existing = await DB_Models.Subscription.subscriptionCustomerModel.findOne({ userId: user.id });
 	const stripe = getStripeClient();
 
 	let stripeCustomerId: string | null =
@@ -398,10 +351,9 @@ async function handleCancelIntent(event: Parameters<RequestHandler>[0]) {
 		return json({ status: false, error: "Unauthorized" }, { status: 401 });
 	}
 
-	const subscriptionCustomerModel = getSubscriptionCustomerModel();
-	const customer = (await subscriptionCustomerModel.findOne({
+	const customer = (await DB_Models.Subscription.subscriptionCustomerModel.findOne({
 		userId: user.id
-	})) as SubscriptionCustomerRecord | null;
+	}));
 	const stripeSubscriptionId =
 		typeof customer?.stripeSubscriptionId === "string" ? customer.stripeSubscriptionId.trim() : "";
 
@@ -409,11 +361,13 @@ async function handleCancelIntent(event: Parameters<RequestHandler>[0]) {
 		return json({ status: false, error: "No active subscription" }, { status: 400 });
 	}
 
+	// Update at stripe
 	const stripe = getStripeClient();
 	const updatedSubscription = await stripe.subscriptions.update(stripeSubscriptionId, {
 		cancel_at_period_end: true
 	});
 
+	// Prepare the subscription
 	const summary = getSubscriptionSummary(updatedSubscription);
 	const stripeCustomerId =
 		getStripeCustomerId(updatedSubscription.customer) ??
@@ -421,16 +375,15 @@ async function handleCancelIntent(event: Parameters<RequestHandler>[0]) {
 	const subscriptionKind = resolveSubscriptionKind({
 		subscriptionKind: updatedSubscription.metadata?.subscriptionKind,
 		planId: updatedSubscription.metadata?.planId,
-		legacyKind: updatedSubscription.metadata?.kind,
 		priceId: summary.priceId,
 		fallback: resolveSubscriptionKind({
 			subscriptionKind: customer?.subscriptionKind,
-			legacyKind: customer?.kind,
 			priceId: customer?.priceId,
 			fallback: "growth"
 		})
 	});
 
+	// Update the subscription in database
 	await upsertSubscriptionFromUser(
 		user,
 		{
@@ -474,10 +427,9 @@ export const GET: RequestHandler = async ({ request, cookies }) => {
 			return json({ status: false, error: "Unauthorized" }, { status: 401 });
 		}
 
-		const subscriptionCustomerModel = getSubscriptionCustomerModel();
-		const customer = (await subscriptionCustomerModel.findOne({
+		const customer = (await DB_Models.Subscription.subscriptionCustomerModel.findOne({
 			userId: user.id
-		})) as SubscriptionCustomerRecord | null;
+		}));
 
 		if (!customer) {
 			return json(
@@ -492,7 +444,6 @@ export const GET: RequestHandler = async ({ request, cookies }) => {
 
 		const subscriptionKind = resolveSubscriptionKind({
 			subscriptionKind: customer.subscriptionKind,
-			legacyKind: customer.kind,
 			priceId: customer.priceId,
 			fallback: "growth"
 		});
@@ -504,9 +455,10 @@ export const GET: RequestHandler = async ({ request, cookies }) => {
 					? ACTIVE_SUBSCRIPTION_STATUSES.has(customer.status)
 					: false,
 				subscription: {
+					createdAt: customer.createdAt,
+					updatedAt: customer.updatedAt,
 					userId: customer.userId,
 					subscriptionKind,
-					kind: subscriptionKind,
 					status: customer.status,
 					stripeCustomerId: customer.stripeCustomerId,
 					stripeSubscriptionId: customer.stripeSubscriptionId,
@@ -514,7 +466,7 @@ export const GET: RequestHandler = async ({ request, cookies }) => {
 					currentPeriodEnd: customer.currentPeriodEnd,
 					cancelAtPeriodEnd: customer.cancelAtPeriodEnd
 				}
-			},
+			} satisfies SubscriptionResponse,
 			{ status: 200 }
 		);
 	} catch (error) {
@@ -522,7 +474,7 @@ export const GET: RequestHandler = async ({ request, cookies }) => {
 			{
 				status: false,
 				error: toErrorMessage(error)
-			},
+			} satisfies SubscriptionResponse,
 			{ status: 500 }
 		);
 	}

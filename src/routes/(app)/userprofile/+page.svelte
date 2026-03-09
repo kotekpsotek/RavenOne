@@ -1,5 +1,5 @@
 ﻿<script lang="ts">
-    import { goto } from "$app/navigation";
+    import { goto, invalidateAll } from "$app/navigation";
     import { page } from "$app/stores";
     import { theme } from "$lib/stores/theme";
     import { userProfile } from "$lib/stores/user";
@@ -48,6 +48,10 @@
     function dismissBadge() {
         clearHideBadgeTimeout();
         profileSaveBadge = undefined;
+    }
+
+    async function refreshProfilePageData() {
+        await invalidateAll();
     }
 
     async function toErrorMessageFromResponse(response: Response): Promise<string> {
@@ -349,7 +353,9 @@
             };
             scheduleBadgeHide(6000);
 
-            await goto("/subscription?cancellation=scheduled");
+            await refreshProfilePageData();
+
+            // await goto("/subscription?cancellation=scheduled");
         } catch (err) {
             profileSaveBadge = {
                 kind: "error",
@@ -357,6 +363,24 @@
             };
             scheduleBadgeHide(7000);
         }
+    }
+
+    /** Restore subscription */
+    async function onRestoreSubscription() {
+        const restoreResponse = await fetchAuthenticated(
+            "/subscription/restore",
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                }
+            },
+        );
+
+        if (restoreResponse.status === 200) {
+            await refreshProfilePageData();
+        }
+        else alert("Cannot restore subscription") 
     }
 
     /** Starts two-step account deletion */
@@ -466,133 +490,137 @@
 <PageWrapper
     additionalClass="h-full overflow-y-auto p-10"
 >
-    {#if $userProfile}
-        <UI.Pages.ProfilePage
-            theme={$theme}
-            pageData={data}
-            user={$userProfile}
-            {onBuySubscription}
-            {onCancelSubscription}
-            {onDeleteAccount}
-            {onLogout}
-            onChangePassword={async (newPasswordForm) => {
-                profileSaveBadge = {
-                    kind: "saving",
-                    message: "Changing password..."
-                };
-                clearHideBadgeTimeout();
+    {#key data}
+        {#if $userProfile}
+            {@debug data}
+            <UI.Pages.ProfilePage
+                theme={$theme}
+                pageData={data}
+                user={$userProfile}
+                {onRestoreSubscription}
+                {onBuySubscription}
+                {onCancelSubscription}
+                {onDeleteAccount}
+                {onLogout}
+                onChangePassword={async (newPasswordForm) => {
+                    profileSaveBadge = {
+                        kind: "saving",
+                        message: "Changing password..."
+                    };
+                    clearHideBadgeTimeout();
 
-                const token = await ensureAuthenticatedToken();
-                if (!token) {
-                    profileSaveBadge = undefined;
-                    return false;
-                }
-
-                try {
-                    const changePasswordResponse = await fetchAuthenticated(
-                        `${$page.url.pathname.replace(/\/$/, "")}/password-change`,
-                        {
-                            method: "POST",
-                            headers: {
-                                "Content-Type": "application/json"
-                            },
-                            body: JSON.stringify(newPasswordForm)
-                        },
-                        token
-                    );
-
-                    if (changePasswordResponse.status === 401) {
-                        JWTAuth.deleteToken();
-                        await goto("/auth/login");
+                    const token = await ensureAuthenticatedToken();
+                    if (!token) {
+                        profileSaveBadge = undefined;
                         return false;
                     }
 
-                    if (!changePasswordResponse.ok) {
-                        throw new Error(await toErrorMessageFromResponse(changePasswordResponse));
+                    try {
+                        const changePasswordResponse = await fetchAuthenticated(
+                            `${$page.url.pathname.replace(/\/$/, "")}/password-change`,
+                            {
+                                method: "POST",
+                                headers: {
+                                    "Content-Type": "application/json"
+                                },
+                                body: JSON.stringify(newPasswordForm)
+                            },
+                            token
+                        );
+
+                        if (changePasswordResponse.status === 401) {
+                            JWTAuth.deleteToken();
+                            await goto("/auth/login");
+                            return false;
+                        }
+
+                        if (!changePasswordResponse.ok) {
+                            throw new Error(await toErrorMessageFromResponse(changePasswordResponse));
+                        }
+
+                        const responseBody = (await changePasswordResponse.json()) as {
+                            status?: boolean;
+                            message?: string;
+                            error?: string;
+                        };
+
+                        if (!responseBody.status) {
+                            throw new Error(responseBody.error ?? "Failed to change password");
+                        }
+
+                        profileSaveBadge = {
+                            kind: "success",
+                            message: responseBody.message ?? "Password changed successfully."
+                        };
+                        scheduleBadgeHide(5000);
+
+                        return true;
+                    } catch (err) {
+                        profileSaveBadge = {
+                            kind: "error",
+                            message: `Could not change password: ${toErrorMessage(err)}`
+                        };
+                        scheduleBadgeHide(7000);
+
+                        return false;
                     }
-
-                    const responseBody = (await changePasswordResponse.json()) as {
-                        status?: boolean;
-                        message?: string;
-                        error?: string;
-                    };
-
-                    if (!responseBody.status) {
-                        throw new Error(responseBody.error ?? "Failed to change password");
-                    }
-
+                }}
+                onProfileChange={async (name, image) => {
                     profileSaveBadge = {
-                        kind: "success",
-                        message: responseBody.message ?? "Password changed successfully."
+                        kind: "saving",
+                        message: "Saving profile..."
                     };
-                    scheduleBadgeHide(5000);
+                    clearHideBadgeTimeout();
 
-                    return true;
-                } catch (err) {
-                    profileSaveBadge = {
-                        kind: "error",
-                        message: `Could not change password: ${toErrorMessage(err)}`
-                    };
-                    scheduleBadgeHide(7000);
+                    try {
+                        const formData = new FormData();
+                        formData.set("name", name.trim());
 
-                    return false;
-                }
-            }}
-            onProfileChange={async (name, image) => {
-                profileSaveBadge = {
-                    kind: "saving",
-                    message: "Saving profile..."
-                };
-                clearHideBadgeTimeout();
+                        if (image?.imageFile instanceof File) {
+                            formData.set("image", image.imageFile, image.imageFile.name || "profile-image");
+                        }
 
-                try {
-                    const formData = new FormData();
-                    formData.set("name", name.trim());
-
-                    if (image?.imageFile instanceof File) {
-                        formData.set("image", image.imageFile, image.imageFile.name || "profile-image");
-                    }
-
-                    const authenticatedCallBackend = await fetchAuthenticated($page.url.pathname, {
-                        method: "POST",
-                        body: formData
-                    });
-
-                    if (!authenticatedCallBackend.ok) {
-                        throw new Error(await toErrorMessageFromResponse(authenticatedCallBackend));
-                    }
-
-                    const responseBody = (await authenticatedCallBackend.json()) as {
-                        user?: Profile;
-                    };
-
-                    if (responseBody.user) {
-                        userProfile.set(responseBody.user);
-                    } else {
-                        userProfile.update((currentProfile) => {
-                            if (!currentProfile) return currentProfile;
-
-                            return {
-                                ...currentProfile,
-                                name,
-                                profileImgURL: image?.previewURL ?? currentProfile.profileImgURL
-                            };
+                        const authenticatedCallBackend = await fetchAuthenticated($page.url.pathname, {
+                            method: "POST",
+                            body: formData
                         });
-                    }
 
-                    profileSaveBadge = {
-                        kind: "success",
-                        message: "Profile saved successfully."
-                    };
-                    scheduleBadgeHide();
-                } catch (err) {
-                    profileSaveBadge = {
-                        kind: "error",
-                        message: `Could not save profile: ${toErrorMessage(err)}`
-                    };
-                    scheduleBadgeHide(7000);
-                }
-            }}
-        />
-    {/if}
+                        if (!authenticatedCallBackend.ok) {
+                            throw new Error(await toErrorMessageFromResponse(authenticatedCallBackend));
+                        }
+
+                        const responseBody = (await authenticatedCallBackend.json()) as {
+                            user?: Profile;
+                        };
+
+                        if (responseBody.user) {
+                            userProfile.set(responseBody.user);
+                        } else {
+                            userProfile.update((currentProfile) => {
+                                if (!currentProfile) return currentProfile;
+
+                                return {
+                                    ...currentProfile,
+                                    name,
+                                    profileImgURL: image?.previewURL ?? currentProfile.profileImgURL
+                                };
+                            });
+                        }
+
+                        profileSaveBadge = {
+                            kind: "success",
+                            message: "Profile saved successfully."
+                        };
+                        scheduleBadgeHide();
+                    } catch (err) {
+                        profileSaveBadge = {
+                            kind: "error",
+                            message: `Could not save profile: ${toErrorMessage(err)}`
+                        };
+                        scheduleBadgeHide(7000);
+                    }
+                }}
+            />
+        {/if}
+    {/key}
 </PageWrapper>
