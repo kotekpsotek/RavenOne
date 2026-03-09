@@ -391,8 +391,7 @@ export const selectedFile = (() => {
     };
 })();
 
-export type BrowserToolsUnion = "Web search" | "Current Document" | "RavenOne Documents";
-export const availableTools = ["Web search", "Current Document", "RavenOne Documents"] as BrowserToolsUnion[];
+export const availableTools = ["Web search", "Current Document", "RavenOne Documents"] as File.FileAI.BrowserToolsUnion[];
 
 // File config
 export const selectedModel = writable<AI.RavenLensAvaiableAIModel | undefined>(undefined);
@@ -403,7 +402,7 @@ const initialTools = (typeof window !== 'undefined' && localStorage.getItem(STOR
     ? JSON.parse(localStorage.getItem(STORAGE_KEY)!) 
     : [];
 
-export const selectedTools = writable<BrowserToolsUnion[]>(initialTools);
+export const selectedTools = writable<File.FileAI.BrowserToolsUnion[]>(initialTools);
 
 if (typeof window !== 'undefined') {
     selectedTools.subscribe(tools => {

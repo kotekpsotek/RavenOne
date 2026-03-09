@@ -3,7 +3,7 @@
     import CodeMirror from "svelte-codemirror-editor";
     import { json } from "@codemirror/lang-json";
     import { avaiableModels, getProviderIconifyIcon } from "./config/models";
-    import { availableTools, playMode, selectedFile, selectedTools, type BrowserToolsUnion } from "./stores/files";
+    import { availableTools, playMode, selectedFile, selectedTools } from "./stores/files";
     import { selectedModel } from "./stores/files";
     import { selectedWorkspace } from "./stores/workspace";
     import { contextSpecification } from "./stores/contextSpec";
@@ -86,7 +86,7 @@
         ensureModelWeight(nextModelKey);
     }
 
-    function toggleValue(state: BrowserToolsUnion[], value: BrowserToolsUnion): BrowserToolsUnion[] {
+    function toggleValue(state: File.FileAI.BrowserToolsUnion[], value: File.FileAI.BrowserToolsUnion): File.FileAI.BrowserToolsUnion[] {
         if (state.includes(value)) {
             return state.filter((entry) => entry !== value) as any;
         }
@@ -313,7 +313,7 @@
             model: selectedModelLocal,
             tools: $selectedTools,
             context: $contextSpecification,
-            selectedItemMcpServers: useMcpServers ? $selectedMcpServers : [],
+            // selectedItemMcpServers: useMcpServers ? $selectedMcpServers : [],
             selectedItemPlayMode: $playMode
         });
     }

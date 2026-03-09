@@ -66,7 +66,7 @@
             model: $selectedModel,
             tools: $selectedTools ?? [],
             context: item.context ?? $contextSpecification ?? [],
-            selectedItemMcpServers: $selectedMcpServers ?? [],
+            // selectedItemMcpServers: $selectedMcpServers ?? [],
             selectedItemPlayMode: item.playMode ?? $playMode
         });
     }

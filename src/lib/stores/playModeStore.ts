@@ -1,7 +1,8 @@
 import { get, writable, type Updater } from "svelte/store";
-import { availableTools, selectedFile, type BrowserToolsUnion } from "./files";
+import { selectedFile } from "./files";
 import { findItemDirectSubitems } from "$lib/listItems/utils";
-import type { AI, File } from "@ravenlens/shared";
+import { playInFile } from "$lib/play/connections";
+import type { AI, File, Play } from "@ravenlens/shared";
 
 interface PlayableListItem extends Omit<File.File.EditableListItem, "answers"> {
     /** Is attached once starts playing -> means point was started */
@@ -22,9 +23,8 @@ export interface PlayableList {
     scopePointIds: string[];
     config: {
         model: AI.RavenLensAvaiableAIModel;
-        tools: BrowserToolsUnion[];
+        tools: File.FileAI.BrowserToolsUnion[];
         context: File.FileAI.ContextSpecificationPayload;
-        selectedItemMcpServers: string[];
         selectedItemPlayMode: File.FileAI.PlayMode;
     }
 }
@@ -116,10 +116,14 @@ interface StopPointEvent {
     pointId: string;
 }
 
+type PlayInvocationSource = "document" | "point";
+
 interface PlayPointOptions {
     waitForSubtreeCompletion?: boolean;
     /** Optional UI scope override. Defaults to the played point subtree. */
     scopePointIds?: string[];
+    /** Distinguishes standalone point runs from document-driven point runs. */
+    playInvocationSource?: PlayInvocationSource;
 }
 
 export class StopPlayEvent {
@@ -289,6 +293,45 @@ export const playableDocumentsAndListsWithPoints = (() => {
         return playableList.scopePointIds?.length
             ? playableList.scopePointIds
             : playableList.list.items.map(item => item.id);
+    };
+
+    const createCommonPlayTargetPayload = (
+        selectedDocumentLocal: File.File.File,
+        config: PlayableList["config"],
+        playModeLaunch: PlayInvocationSource
+    ) => ({
+        playModeLaunch,
+        workspaceId: selectedDocumentLocal.createdByAuthorId,
+        model: config.model,
+        playMode: config.selectedItemPlayMode,
+        llm: config.model,
+        file: selectedDocumentLocal,
+        fileContext: config.context,
+        fileMcpConfigJson: "{}",
+        tools: config.tools,
+    });
+
+    const createPlayFileTarget = (
+        selectedDocumentLocal: File.File.File,
+        config: PlayableList["config"]
+    ) => {
+        return {
+            playFor: "play-document",
+            ...createCommonPlayTargetPayload(selectedDocumentLocal, config, "document"),
+        } as unknown as Play.PlayFile;
+    };
+
+    const createPlayPointTarget = (
+        selectedDocumentLocal: File.File.File,
+        point: File.File.EditableListItem,
+        config: PlayableList["config"]
+    ) => {
+        return {
+            playFor: "play-point",
+            ...createCommonPlayTargetPayload(selectedDocumentLocal, config, "point"),
+            pointId: point.id,
+            pointContext: point.context ?? config.context,
+        } as unknown as Play.PlayPoint;
     };
 
     return {
@@ -591,7 +634,8 @@ export const playableDocumentsAndListsWithPoints = (() => {
                     for (const rootPoint of rootPoints) {
                         const result = await playRootPoint(list.id, rootPoint, {
                             waitForSubtreeCompletion: false,
-                            scopePointIds: listScopePointIds
+                            scopePointIds: listScopePointIds,
+                            playInvocationSource: "document"
                         });
 
                         if (!isCurrentDocumentRun(selectedDocumentLocal.id, playDocumentRunVersion)) {
@@ -608,7 +652,8 @@ export const playableDocumentsAndListsWithPoints = (() => {
 
                 const results = await Promise.all(
                     rootPoints.map(rootPoint => playRootPoint(list.id, rootPoint, {
-                        scopePointIds: listScopePointIds
+                        scopePointIds: listScopePointIds,
+                        playInvocationSource: "document"
                     }))
                 );
 
@@ -633,6 +678,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
         ) {
             const fileList = selectedDocumentLocal?.lists.find(list => list.id === listId);
             const waitForSubtreeCompletion = options?.waitForSubtreeCompletion ?? true;
+            const playInvocationSource = options?.playInvocationSource ?? "point";
 
             if (!fileList?.items.length) {
                 return false;
@@ -750,6 +796,12 @@ export const playableDocumentsAndListsWithPoints = (() => {
                     listId,
                     pointId: point.id
                 });
+
+                const playTarget = playInvocationSource === "document"
+                    ? createPlayFileTarget(selectedDocumentLocal, config)
+                    : createPlayPointTarget(selectedDocumentLocal, point, config);
+
+                await get(playInFile)?.play(playTarget);
                 
                 // FIXME: Make real backend request
                 await new Promise<void>(res => setTimeout(res, 5000));
@@ -772,7 +824,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
                 checkPointStateUpdate(point, true);
                 
                 // Add answer to spawned list from file
-                selectedFile.update(sf => {
+                /* selectedFile.update(sf => {
                     if (!sf || sf.id !== selectedDocumentLocal.id) {
                         return sf;
                     }
@@ -794,8 +846,8 @@ export const playableDocumentsAndListsWithPoints = (() => {
                             const toolsSetExistsing = config.tools.filter(tool => availableTools.includes(tool));
                             const toolsSetNotExistsing = config.tools.filter(tool => !availableTools.includes(tool));
                             
-                            const existsingToolsMap: [BrowserToolsUnion, true][] = toolsSetExistsing.map(tool => [tool, true]);
-                            const nonExistsingToolsMap: [BrowserToolsUnion, false][] = toolsSetNotExistsing.map(tool => [tool, false]);
+                            const existsingToolsMap: [File.FileAI.BrowserToolsUnion, true][] = toolsSetExistsing.map(tool => [tool, true]);
+                            const nonExistsingToolsMap: [File.FileAI.BrowserToolsUnion, false][] = toolsSetNotExistsing.map(tool => [tool, false]);
 
                             return Object.fromEntries([...existsingToolsMap, ...nonExistsingToolsMap])
                         })(),
@@ -826,7 +878,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
                             };
                         })
                     };
-                })
+                }) */
 
                 return true;
             }
@@ -988,7 +1040,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
                                     model: config.model,
                                     tools: config.tools,
                                     context: config.context,
-                                    selectedItemMcpServers: config.selectedItemMcpServers,
+                                    // selectedItemMcpServers: config.selectedItemMcpServers,
                                     selectedItemPlayMode: config.selectedItemPlayMode
                                 },
                                 scopePointIds: runScopePointIds
