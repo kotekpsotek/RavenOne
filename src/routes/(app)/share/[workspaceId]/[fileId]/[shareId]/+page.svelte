@@ -15,18 +15,11 @@
         isWorkspaceSelectionOpen.set(false);
     });
 
-    $effect(() => {
-        const editorInstance = $editor;
-        if (!editorInstance) {
-            return;
+    editor.subscribe(ed => {
+        if (ed) {
+            ed.setEditable(false);
         }
-
-        editorInstance.setEditable(false);
-
-        return () => {
-            editorInstance.setEditable(true);
-        };
-    });
+    })
 </script>
 
 <div class="flex h-full min-h-0 w-full flex-col">

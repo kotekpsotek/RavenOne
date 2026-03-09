@@ -2,7 +2,7 @@ import { createEditor } from "svelte-tiptap";
 import type { Editor as SvelteEditor } from "svelte-tiptap";
 import { Document } from "@tiptap/extension-document";
 import { Placeholder } from "@tiptap/extension-placeholder";
-import { writable } from "svelte/store";
+import { get, writable } from "svelte/store";
 import { StarterKit } from "@tiptap/starter-kit"
 import { patchFileById, selectedFile } from "./files";
 import { isWorkspaceInAddition, isWorkspaceSelectionOpen } from "./workspace";
@@ -12,6 +12,7 @@ import { StandardTaskList } from "../editorComponents/components/StandardTaskLis
 import { StandardTaskItem } from "../editorComponents/components/StandardTaskItem.js";
 import { CodeSnippet } from "../editorComponents/components/CodeSnippet.js";
 import { File } from "@ravenlens/shared";
+import { workspaceHasActiveSubscription } from "./subscription.js";
 
 function normalizeContent(content?: string): string {
     if (!content || !content.trim()) {

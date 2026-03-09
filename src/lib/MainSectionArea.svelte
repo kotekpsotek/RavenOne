@@ -11,6 +11,12 @@
     import { isSharedRoute } from "./stores/share";
 
     let canEditWorkspaceContent = $derived(!$workspaceSubscriptionCheckInProgress && $workspaceHasActiveSubscription);
+
+    editor.subscribe(ed => {
+        if (ed) {
+            ed.setEditable(canEditWorkspaceContent);
+        }
+    })
 </script>
 
 

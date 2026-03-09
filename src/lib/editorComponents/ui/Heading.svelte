@@ -11,6 +11,7 @@
 	import { setAlert } from "$lib/utils/alert";
     import { renameFileRequest } from "$lib/files/connections/connections";
     import { selectedWorkspace } from "$lib/stores/workspace";
+    import { isSharingModeOn } from "$lib/stores/share";
 
 	let { node, updateAttributes, editor, getPos }: NodeViewProps = $props();
 
@@ -442,7 +443,10 @@
 				</button>
 			{/if}
 
-			<div class="py-1 flex items-center gap-2 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+			<div 
+				class="py-1 flex items-center gap-2 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+				hidden={$isSharingModeOn}
+			>
 				{#if !icon}
 					<button
 						type="button"

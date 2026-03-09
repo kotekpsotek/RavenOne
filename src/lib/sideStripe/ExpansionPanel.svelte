@@ -2,14 +2,14 @@
     import { goto } from "$app/navigation";
     import { UI } from "@ravenlens/frontend";
     import { entriesList, moveEntry, selectedFile } from "$lib/stores/files";
-    import { canManageWorkspaceFiles, workspaceSubscriptionCheckInProgress } from "$lib/stores/subscription";
+    import { canManageWorkspaceFiles, workspaceHasActiveSubscription, workspaceSubscriptionCheckInProgress } from "$lib/stores/subscription";
     import { selectedWorkspace } from "$lib/stores/workspace";
     import Icon from "@iconify/svelte";
     import IconSelectionModal from "$lib/modals/IconSelectionModal.svelte";
     import WallpaperSelectionModal from "$lib/modals/WallpaperSelectionModal.svelte";
     import IconValue from "$lib/IconValue.svelte";
     import { setAlert } from "$lib/utils/alert";
-    import { onMount } from "svelte";
+    import { onMount, tick } from "svelte";
     import { get } from "svelte/store";
     import { File } from "@ravenlens/shared";
     import { changeFilePositionRequest, changeIconFileRequest, changeWalperFileRequest, deleteFileRequest, downloadFilesRequest, newFileRequest, renameFileRequest } from "$lib/files/connections/connections";
