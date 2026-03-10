@@ -6,6 +6,7 @@ import { File } from "@ravenlens/shared";
 import { selectedWorkspace } from "./workspace";
 import { canManageWorkspaceFiles } from "./subscription";
 import { collaborationInterface, setSelectedFileIdInCollaboration } from "./collaboration";
+import type { Collab } from "../../../../../packages/shared/dist/collaboration/collab";
 
 /** Entries */
 export const entriesList = (() => {
@@ -57,7 +58,10 @@ export const entriesList = (() => {
             });
 
             interfaceCollab.onFileChanged((file) => {
-                patchFileById(file.id, file);
+                patchFileById(file.id, file, {
+                    queueUnsaved: false,
+                    emitFileChanged: false
+                });
             });
         };
 
@@ -90,6 +94,11 @@ export const selectedFile = (() => {
     type FileType = File.File.File | undefined;
     type UnsavedFile = { file: NonNullable<File.File.File>; date: number };
     type SaveFilesOptions = { keepalive?: boolean; workspaceId?: string };
+    type UpdateOptions = {
+        queueUnsaved?: boolean;
+        emitFileChanged?: boolean;
+        emitPresenceOnFileSwitch?: boolean;
+    };
 
     const AUTO_SAVE_INTERVAL_MS = 30_000;
 
@@ -320,11 +329,35 @@ export const selectedFile = (() => {
             unsavedFiles.flushPendingFilesOnExit(get(store));
         };
 
-        window.addEventListener("pagehide", flushPendingOnPageLeave);
-        window.addEventListener("beforeunload", flushPendingOnPageLeave);
+        const sendUnsavedFilesChangedToAllClients = (collab: Collab | undefined) => {
+            const unsavedFilesListLocal = get(unsavedFiles);
+            for (const { file } of unsavedFilesListLocal) {
+                collab?.sendFileChanged(file);
+            }
+        };
+
+        function onPageHide() {
+            //
+            const collaborationInterfaceLocal = collaborationInterface.getInterface();
+
+            // Emit all files as changed before flushing the event
+            sendUnsavedFilesChangedToAllClients(collaborationInterfaceLocal);
+            
+            // Save the queued file
+            flushPendingOnPageLeave();
+
+            // Leave file -> if was selected
+            const selectedFileLocal = get(selectedFile);
+            if (selectedFileLocal) {
+                collaborationInterfaceLocal?.sendLeaveFile(selectedFileLocal);
+            }
+        }
+        
+        window.addEventListener("pagehide", onPageHide);
+        window.addEventListener("beforeunload", onPageHide);
         document.addEventListener("visibilitychange", () => {
             if (document.visibilityState === "hidden") {
-                flushPendingOnPageLeave();
+                onPageHide();
             }
         });
 
@@ -339,6 +372,13 @@ export const selectedFile = (() => {
                     ? currentFile
                     : undefined;
 
+                // Collab obtain
+                const collaborationInterfaceLocal = collaborationInterface.getInterface();
+                    
+                // Emit all files as changed before flushing the event
+                sendUnsavedFilesChangedToAllClients(collaborationInterfaceLocal);
+
+                // Clears unsaved files
                 void unsavedFiles
                     .flushPendingFiles({ keepalive: true, workspaceId: activeWorkspaceId }, currentFileFromPreviousWorkspace)
                     .finally(() => {
@@ -375,8 +415,15 @@ export const selectedFile = (() => {
         /** Set file */
         set(file: FileType) {
             const priorFile = get(store);
-            const shouldFlushPreviousFile = Boolean(priorFile && (!file || priorFile.id !== file.id));
+            const didSwitchFile = priorFile?.id !== file?.id;
+            const shouldFlushPreviousFile = Boolean(priorFile && didSwitchFile);
+            const collab = collaborationInterface.getInterface();
 
+            // User leaves the prior file
+            if (didSwitchFile && priorFile) {
+                collab?.sendLeaveFile(priorFile);
+            }
+            
             if (shouldFlushPreviousFile && priorFile) {
                 // Ensure old file is included and flushed before focus moves away.
                 unsavedFiles.addNew([constructUnsavedFile(priorFile, Date.now())]);
@@ -385,17 +432,36 @@ export const selectedFile = (() => {
                     priorFile
                 );
             }
+            
+            // Emit user join to file
+            if (didSwitchFile && file) {
+                collab?.sendJoinFile(file);
+            }
 
             // Setup new file version
             store.set(file);
         },
-        update(updater: (file: FileType) => FileType) {
+        update(updater: (file: FileType) => FileType, options: UpdateOptions = {}) {
             const priorFile = get(store);
             const priorPersistedState = getPersistedStateSignature(priorFile);
+            const collab = collaborationInterface.getInterface();
             
+            // Updater
             store.update(updater);
 
             const afterFile = get(store);
+            const didSwitchFile = priorFile?.id !== afterFile?.id;
+
+            if (didSwitchFile && options.emitPresenceOnFileSwitch !== false) {
+                if (priorFile) {
+                    collab?.sendLeaveFile(priorFile);
+                }
+
+                if (afterFile) {
+                    collab?.sendJoinFile(afterFile);
+                }
+            }
+
             if (afterFile) {
                 // Keep explorer tree in sync with selected file changes (also nested entries).
                 syncEntryListWithFile(afterFile);
@@ -410,12 +476,19 @@ export const selectedFile = (() => {
                 return;
             }
 
-            // Schedule only persisted changes (content/lists) for autosave.
-            unsavedFiles.addNew([constructUnsavedFile(afterFile, Date.now())]);
+            if (options.queueUnsaved !== false) {
+                // Schedule only persisted changes (content/lists) for autosave.
+                unsavedFiles.addNew([constructUnsavedFile(afterFile, Date.now())]);
+            }
+
+            if (options.emitFileChanged !== false) {
+                collab?.sendFileChanged(afterFile);
+            }
         },
         updateFileListItems(spawnedListId: string, items: File.File.EditableListItem[]): Promise<boolean> {
             const priorFile = get(store);
             const priorPersistedState = getPersistedStateSignature(priorFile);
+            const collab = collaborationInterface.getInterface();
             let wasUpdated = false;
 
             store.update(file => {
@@ -458,6 +531,7 @@ export const selectedFile = (() => {
 
             if (afterFile && priorPersistedState !== afterPersistedState) {
                 unsavedFiles.addNew([constructUnsavedFile(afterFile, Date.now())]);
+                collab?.sendFileChanged(afterFile);
             }
 
             return Promise.resolve(true);
@@ -508,15 +582,29 @@ function updateEntryById(items: File.File.File[], fileId: string, patch: Partial
     });
 }
 
-export function patchFileById(fileId: string, patch: Partial<File.File.File>) {
+export function patchFileById(
+    fileId: string,
+    patch: Partial<File.File.File>,
+    options: {
+        queueUnsaved?: boolean;
+        emitFileChanged?: boolean;
+    } = {}
+) {
     entriesList.update(entries => updateEntryById(entries, fileId, patch));
-    selectedFile.update(file => {
-        if (!file || file.id !== fileId) {
-            return file;
-        }
+    selectedFile.update(
+        file => {
+            if (!file || file.id !== fileId) {
+                return file;
+            }
 
-        return { ...file, ...patch };
-    });
+            return { ...file, ...patch };
+        },
+        {
+            queueUnsaved: options.queueUnsaved,
+            emitFileChanged: options.emitFileChanged,
+            emitPresenceOnFileSwitch: false
+        }
+    );
 }
 
 /**

@@ -83,7 +83,7 @@
             setAlert(
                 'warning',
                 'File is read-only',
-                'Cannot add list points because you do not have edit access for this file.'
+                'Cannot add list points because other user is editting this file.'
             );
             return;
         }
@@ -317,7 +317,7 @@
                         setAlert(
                             'warning',
                             'File is read-only',
-                            'Cannot add list points because you do not have edit access for this file.'
+                            'Cannot add list points because other user is editting this file.'
                         );
                     }}
                 >

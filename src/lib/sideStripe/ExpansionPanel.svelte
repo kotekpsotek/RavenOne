@@ -2,17 +2,18 @@
     import { goto } from "$app/navigation";
     import { UI } from "@ravenlens/frontend";
     import { entriesList, moveEntry, selectedFile } from "$lib/stores/files";
-    import { canManageWorkspaceFiles, workspaceHasActiveSubscription, workspaceSubscriptionCheckInProgress } from "$lib/stores/subscription";
+    import { canManageWorkspaceFiles, workspaceSubscriptionCheckInProgress } from "$lib/stores/subscription";
     import { selectedWorkspace } from "$lib/stores/workspace";
     import Icon from "@iconify/svelte";
     import IconSelectionModal from "$lib/modals/IconSelectionModal.svelte";
     import WallpaperSelectionModal from "$lib/modals/WallpaperSelectionModal.svelte";
     import IconValue from "$lib/IconValue.svelte";
     import { setAlert } from "$lib/utils/alert";
-    import { onMount, tick } from "svelte";
+    import { onMount } from "svelte";
     import { get } from "svelte/store";
-    import { File } from "@ravenlens/shared";
-    import { entriesCollaborators } from "$lib/stores/collaboration";
+    import { Collabortation, File } from "@ravenlens/shared";
+    import { collaborationInterface, entriesCollaborators } from "$lib/stores/collaboration";
+    import { userProfile } from "$lib/stores/user";
     import { changeFilePositionRequest, changeIconFileRequest, changeWalperFileRequest, deleteFileRequest, downloadFilesRequest, newFileRequest, renameFileRequest } from "$lib/files/connections/connections";
     import type { DropPosition } from "$lib/files/utils";
  
@@ -67,6 +68,7 @@
                 return;
             }
 
+            releaseContextMenuFileJoin(true);
             activeWorkspaceId = selectedWorkspaceId;
             entriesList.set([]);
             selectedFile.set(undefined);
@@ -93,8 +95,60 @@
     let walperPickerEntryId = $state<string | null>(null);
     let walperPickerInitialValue = $state("");
     let expandedEntries = $state<Record<string, boolean>>({});
+    let contextMenuJoinedFileId = $state<string | null>(null);
+    let contextMenuElement = $state<HTMLDivElement | null>(null);
     let contextMenuEntry = $derived(contextMenu ? findFileById($entriesList, contextMenu.entryId) : null);
     let contextMenuEntryIsEditor = $derived(contextMenuEntry ? isCurrentUserFileEditor(contextMenuEntry.id) : false);
+
+    function isFileEditorLockedByAnotherUser(fileId: string): boolean {
+        const currentUserId = get(userProfile)?.id;
+        const fileCollaboratorsEntry = get(entriesCollaborators).find((entry) => entry.fileId === fileId);
+        if (!fileCollaboratorsEntry) {
+            return false;
+        }
+
+        return fileCollaboratorsEntry.collaborators.some((collaborator) => {
+            return collaborator.id !== currentUserId && Collabortation.isCollaboratorEditor(collaborator);
+        });
+    }
+
+    function tryJoinFileFromContextMenu(entry: File.File.File) {
+        if (get(selectedFile)?.id === entry.id) {
+            return;
+        }
+
+        if (isFileEditorLockedByAnotherUser(entry.id)) {
+            return;
+        }
+
+        const collab = collaborationInterface.getInterface();
+        if (!collab) {
+            return;
+        }
+
+        collab.sendJoinFile(entry);
+        contextMenuJoinedFileId = entry.id;
+    }
+
+    function releaseContextMenuFileJoin(force = false) {
+        if (!contextMenuJoinedFileId) {
+            return;
+        }
+
+        const joinedFileId = contextMenuJoinedFileId;
+        contextMenuJoinedFileId = null;
+
+        if (!force && get(selectedFile)?.id === joinedFileId) {
+            return;
+        }
+
+        const joinedFile = findFileById(get(entriesList), joinedFileId);
+        if (!joinedFile) {
+            return;
+        }
+
+        collaborationInterface.getInterface()?.sendLeaveFile(joinedFile);
+    }
 
     function ensureActiveWorkspaceSubscription(operationName: string): boolean {
         if ($canManageWorkspaceFiles) {
@@ -288,6 +342,14 @@
                 );
                 if (moveResult) {
                     moveEntry(sourceId, targetId, nextDropPosition);
+
+                    if (targetId) {
+                        const relocatedFile = findFileById(get(entriesList), sourceId);
+                        const targetFile = findFileById(get(entriesList), targetId);
+                        if (relocatedFile && targetFile) {
+                            collaborationInterface.getInterface()?.sendRelocateFile(relocatedFile, targetFile);
+                        }
+                    }
                 }
             }
         }
@@ -373,6 +435,13 @@
     function onEntryContextMenu(e: MouseEvent, entry: File.File.File) {
         e.preventDefault();
         e.stopPropagation();
+
+        if (contextMenuJoinedFileId && contextMenuJoinedFileId !== entry.id) {
+            releaseContextMenuFileJoin(true);
+        }
+
+        tryJoinFileFromContextMenu(entry);
+
         contextMenu = {
             entryId: entry.id,
             x: e.clientX,
@@ -380,11 +449,26 @@
         };
     }
 
-    function closeContextMenu() {
+    function closeContextMenu(options: { keepJoinedFile?: boolean } = {}) {
+        const hadContextMenu = contextMenu !== null;
         contextMenu = null;
+
+        if (!hadContextMenu) {
+            return;
+        }
+
+        if (options.keepJoinedFile) {
+            return;
+        }
+
+        releaseContextMenuFileJoin();
     }
 
-    function onWindowClick() {
+    function onWindowClick(event: MouseEvent) {
+        if (contextMenuElement && event.target instanceof Node && contextMenuElement.contains(event.target)) {
+            return;
+        }
+
         closeContextMenu();
     }
 
@@ -395,6 +479,7 @@
             deleteTarget = null;
             closeIconPicker();
             closeWalperPicker();
+            releaseContextMenuFileJoin();
         }
         else if (e.ctrlKey && e.key === "r" && $selectedFile) {
             e.preventDefault();
@@ -409,7 +494,7 @@
 
         renamingId = entry.id;
         renameValue = entry.name;
-        closeContextMenu();
+        closeContextMenu({ keepJoinedFile: true });
     }
 
     async function submitRename(fileId: string) {
@@ -437,12 +522,19 @@
             name: nextName
         })));
 
+        const renamedFile = findFileById(get(entriesList), fileId);
+        if (renamedFile) {
+            collaborationInterface.getInterface()?.sendRenameFile(renamedFile, nextName);
+        }
+
         renamingId = null;
+        releaseContextMenuFileJoin();
     }
 
     function cancelRename() {
         renamingId = null;
         renameValue = '';
+        releaseContextMenuFileJoin();
     }
 
     function openIconPicker(entry: File.File.File) {
@@ -456,12 +548,13 @@
 
         iconPickerEntryId = entry.id;
         iconPickerInitialValue = entry.icon ?? "";
-        closeContextMenu();
+        closeContextMenu({ keepJoinedFile: true });
     }
 
     function closeIconPicker() {
         iconPickerEntryId = null;
         iconPickerInitialValue = "";
+        releaseContextMenuFileJoin();
     }
 
     async function applyPickedIcon(iconValue: string) {
@@ -495,6 +588,11 @@
             ...entry,
             icon: normalizedIconValue
         })));
+
+        const updatedFile = findFileById(get(entriesList), entryId);
+        if (updatedFile) {
+            collaborationInterface.getInterface()?.sendIconChangeFile(updatedFile, normalizedIconValue || null);
+        }
 
         if ($selectedFile?.id === entryId) {
             document.dispatchEvent(new CustomEvent("file-icon-change:leftstripe", {
@@ -538,6 +636,11 @@
             icon: undefined
         })));
 
+        const updatedFile = findFileById(get(entriesList), entryId);
+        if (updatedFile) {
+            collaborationInterface.getInterface()?.sendIconChangeFile(updatedFile, null);
+        }
+
         if ($selectedFile?.id === entryId) {
             document.dispatchEvent(new CustomEvent("file-icon-change:leftstripe", {
                 detail: {
@@ -561,12 +664,13 @@
 
         walperPickerEntryId = entry.id;
         walperPickerInitialValue = entry.walper ?? "";
-        closeContextMenu();
+        closeContextMenu({ keepJoinedFile: true });
     }
 
     function closeWalperPicker() {
         walperPickerEntryId = null;
         walperPickerInitialValue = "";
+        releaseContextMenuFileJoin();
     }
 
     async function applyWalperToFile(walperValue: string) {
@@ -598,6 +702,11 @@
             ...entry,
             walper: walperValue
         })));
+
+        const updatedFile = findFileById(get(entriesList), entryId);
+        if (updatedFile) {
+            collaborationInterface.getInterface()?.sendWallperChangeFile(updatedFile, walperValue || null);
+        }
 
         if ($selectedFile?.id === entryId) {
             $selectedFile = {
@@ -639,6 +748,11 @@
             walper: undefined
         })));
 
+        const updatedFile = findFileById(get(entriesList), entryId);
+        if (updatedFile) {
+            collaborationInterface.getInterface()?.sendWallperChangeFile(updatedFile, null);
+        }
+
         if ($selectedFile?.id === entryId) {
             $selectedFile = {
                 ...$selectedFile,
@@ -655,11 +769,12 @@
         }
 
         deleteTarget = entry;
-        closeContextMenu();
+        closeContextMenu({ keepJoinedFile: true });
     }
 
     function closeDeleteModal() {
         deleteTarget = null;
+        releaseContextMenuFileJoin();
     }
 
     async function confirmDelete() {
@@ -682,6 +797,8 @@
             return;
         }
 
+        collaborationInterface.getInterface()?.sendDeleteFile(target);
+
         entriesList.update((list) => removeFileById(list, target.id));
 
         if ($selectedFile?.id === target.id) {
@@ -690,12 +807,18 @@
 
         // playableDocumentsWithPoints.unsetFullDocumentPlaying(target);
         deleteTarget = null;
+        releaseContextMenuFileJoin();
     }
 
     function onEntryClick(entry: File.File.File) {
         return async () => {
             await goto("/");
+            closeContextMenu({ keepJoinedFile: true });
             $selectedFile = entry;
+
+            if (contextMenuJoinedFileId === entry.id) {
+                contextMenuJoinedFileId = null;
+            }
         }
     }
 
@@ -722,7 +845,12 @@
         if (e.key === 'Enter' || e.key === ' ') {
             await goto("/");
             e.preventDefault();
+            closeContextMenu({ keepJoinedFile: true });
             $selectedFile = entry;
+
+            if (contextMenuJoinedFileId === entry.id) {
+                contextMenuJoinedFileId = null;
+            }
         }
     }
 </script>
@@ -851,6 +979,7 @@
 
 {#if contextMenu}
     <div
+        bind:this={contextMenuElement}
         class="dropdown dropdown-open fixed z-50"
         style={`left: ${contextMenu.x}px; top: ${contextMenu.y}px;`}
     >
@@ -969,11 +1098,11 @@
                 open={deleteTarget !== null}
                 closeOnBackdrop={true}
                 size="md"
-                on:close={_ => deleteTarget = null}
+                on:close={closeDeleteModal}
             >
                 <UI.Modals.ModalWrapperHeading
                     headingName="Delete file"
-                    on:close={_ => deleteTarget = null}
+                    on:close={closeDeleteModal}
                 />
 
                 <div class="pt-2">
