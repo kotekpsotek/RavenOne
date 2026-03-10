@@ -1,9 +1,12 @@
 import {
     asNonEmptyString,
+    createFileCollaboration,
+    findFileById,
     loadWorkspaceEntries,
     parseJsonBody,
     persistWorkspaceEntries,
     removeFileById,
+    requireFileEditorCollaborator,
     requireWorkspaceAccess
 } from "../server-utils";
 import { json } from "@sveltejs/kit";
@@ -39,6 +42,30 @@ export const DELETE: RequestHandler = async ({ request, cookies, fetch }) => {
     }
 
     const workspaceEntries = await loadWorkspaceEntries(workspaceId);
+    const fileEntry = findFileById(workspaceEntries, fileId);
+    if (!fileEntry) {
+        return json({ ok: false, message: "File was not found" }, { status: 404 });
+    }
+
+    const collaboration = createFileCollaboration(access);
+    if (collaboration instanceof Response) {
+        return collaboration;
+    }
+
+    try {
+        const editorAccessFailure = await requireFileEditorCollaborator(
+            collaboration,
+            fileEntry,
+            "delete this file"
+        );
+
+        if (editorAccessFailure) {
+            return editorAccessFailure;
+        }
+    } finally {
+        collaboration.io.disconnect();
+    }
+
     const removalResult = removeFileById(workspaceEntries, fileId);
     if (!removalResult.removed) {
         return json({ ok: false, message: "File was not found" }, { status: 404 });

@@ -1,10 +1,12 @@
 import {
     asNullableString,
     asNonEmptyString,
+    createFileCollaboration,
     findFileById,
     loadWorkspaceEntries,
     parseJsonBody,
     persistWorkspaceEntries,
+    requireFileEditorCollaborator,
     requireWorkspaceAccess,
     updateFileById
 } from "../server-utils";
@@ -46,6 +48,30 @@ export const PUT: RequestHandler = async ({ request, cookies, fetch }) => {
     }
 
     const workspaceEntries = await loadWorkspaceEntries(workspaceId);
+    const fileEntry = findFileById(workspaceEntries, fileId);
+    if (!fileEntry) {
+        return json({ ok: false, message: "File was not found" }, { status: 404 });
+    }
+
+    const collaboration = createFileCollaboration(access);
+    if (collaboration instanceof Response) {
+        return collaboration;
+    }
+
+    try {
+        const editorAccessFailure = await requireFileEditorCollaborator(
+            collaboration,
+            fileEntry,
+            "change file icon"
+        );
+
+        if (editorAccessFailure) {
+            return editorAccessFailure;
+        }
+    } finally {
+        collaboration.io.disconnect();
+    }
+
     const normalizedIcon = iconCandidate?.trim() || undefined;
 
     const updateResult = updateFileById(workspaceEntries, fileId, (entry) => {

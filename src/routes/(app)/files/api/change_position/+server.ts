@@ -1,10 +1,13 @@
 import {
     asNullableString,
     asNonEmptyString,
+    createFileCollaboration,
+    findFileById,
     loadWorkspaceEntries,
     moveFileEntry,
     parseJsonBody,
     persistWorkspaceEntries,
+    requireFileEditorCollaborator,
     requireWorkspaceAccess,
     type MovePosition
 } from "../server-utils";
@@ -59,6 +62,30 @@ export const PUT: RequestHandler = async ({ request, cookies, fetch }) => {
     }
 
     const workspaceEntries = await loadWorkspaceEntries(workspaceId);
+    const sourceFile = findFileById(workspaceEntries, sourceId);
+    if (!sourceFile) {
+        return json({ ok: false, message: "Source file was not found" }, { status: 404 });
+    }
+
+    const collaboration = createFileCollaboration(access);
+    if (collaboration instanceof Response) {
+        return collaboration;
+    }
+
+    try {
+        const editorAccessFailure = await requireFileEditorCollaborator(
+            collaboration,
+            sourceFile,
+            "change file position"
+        );
+
+        if (editorAccessFailure) {
+            return editorAccessFailure;
+        }
+    } finally {
+        collaboration.io.disconnect();
+    }
+
     const moveResult = moveFileEntry(workspaceEntries, sourceId, targetId, requestBody.position);
 
     if (!moveResult.moved) {

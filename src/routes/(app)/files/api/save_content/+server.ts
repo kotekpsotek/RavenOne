@@ -1,8 +1,11 @@
 import {
     asNonEmptyString,
+    createFileCollaboration,
+    findFileById,
     loadWorkspaceEntries,
     parseJsonBody,
     persistWorkspaceEntries,
+    requireFileEditorCollaborator,
     requireWorkspaceAccess,
     updateFileById
 } from "../server-utils";
@@ -144,12 +147,32 @@ export const POST: RequestHandler = async ({ request, cookies, fetch }) => {
         return access;
     }
 
+    const collaboration = createFileCollaboration(access);
+    if (collaboration instanceof Response) {
+        return collaboration;
+    }
+
     try {
         let workspaceEntries = await loadWorkspaceEntries(workspaceId);
         const acknowledgedFileIds: string[] = [];
         let hasPersistedChanges = false;
 
         for (const update of updates) {
+            const fileEntry = findFileById(workspaceEntries, update.fileId);
+            if (!fileEntry) {
+                acknowledgedFileIds.push(update.fileId);
+                continue;
+            }
+
+            const editorAccessFailure = await requireFileEditorCollaborator(
+                collaboration,
+                fileEntry,
+                "save file content"
+            );
+            if (editorAccessFailure) {
+                return editorAccessFailure;
+            }
+
             const updateResult = updateFileById(workspaceEntries, update.fileId, (entry) => {
                 return {
                     ...entry,
@@ -157,12 +180,6 @@ export const POST: RequestHandler = async ({ request, cookies, fetch }) => {
                     lists: update.lists
                 };
             });
-
-            // File may already be removed by delete operation; acknowledge to avoid stuck retries.
-            if (!updateResult.updated) {
-                acknowledgedFileIds.push(update.fileId);
-                continue;
-            }
 
             hasPersistedChanges = true;
             workspaceEntries = updateResult.entries;
@@ -177,5 +194,7 @@ export const POST: RequestHandler = async ({ request, cookies, fetch }) => {
     } catch (error) {
         console.error("Cannot persist file content", error);
         return json({ ok: false, message: "Cannot save file content" }, { status: 500 });
+    } finally {
+        collaboration.io.disconnect();
     }
 };

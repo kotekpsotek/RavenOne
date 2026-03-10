@@ -1,14 +1,21 @@
 import { randomUUID } from "node:crypto";
-import { getAuthenticatedPayload } from "$lib/server/auth/request";
+import { extractBearerToken, getAuthenticatedPayload } from "$lib/server/auth/request";
 import { prefetchWorkspaceWithMembers } from "$lib/server/db";
 import { getWorkspaceActiveSubscription } from "$lib/server/subscription";
 import { DB_Models } from "@ravenlens/backend";
-import { File } from "@ravenlens/shared";
+import { Collabortation, File } from "@ravenlens/shared";
+import { env } from "$env/dynamic/public";
 import { json } from "@sveltejs/kit";
 import type { Cookies } from "@sveltejs/kit";
 
 export type FileEntry = File.File.File;
 export type MovePosition = "before" | "after" | "inside";
+
+export type WorkspaceAccess = {
+    userId: string;
+    authToken: string;
+    collabProfile: ConstructorParameters<typeof Collabortation.Collab>[1];
+};
 
 const EMPTY_FILE_CONTENT = "<p></p>";
 
@@ -88,7 +95,98 @@ export async function parseJsonBody<T>(request: Request): Promise<T | null> {
     }
 }
 
-export async function requireWorkspaceAccess(args: RequireWorkspaceAccessArgs): Promise<{ userId: string } | Response> {
+function toCollabProfile(
+    profileCandidate: unknown,
+    fallbackUserId: string
+): ConstructorParameters<typeof Collabortation.Collab>[1] {
+    if (!profileCandidate || typeof profileCandidate !== "object") {
+        return {
+            id: fallbackUserId,
+            name: "Unknown collaborator",
+            profileImgURL: undefined,
+            mainAccountType: "email",
+            createdAt: new Date()
+        };
+    }
+
+    const profile = profileCandidate as {
+        id?: unknown;
+        name?: unknown;
+        profileImgURL?: unknown;
+        mainAccountType?: unknown;
+        createdAt?: unknown;
+    };
+
+    const mainAccountTypeCandidate = profile.mainAccountType;
+    const mainAccountType = mainAccountTypeCandidate === "email"
+        || mainAccountTypeCandidate === "github"
+        || mainAccountTypeCandidate === "google"
+        || mainAccountTypeCandidate === "linkedin"
+        ? mainAccountTypeCandidate
+        : "email";
+
+    return {
+        id: asNonEmptyString(profile.id) ?? fallbackUserId,
+        name: asNonEmptyString(profile.name) ?? "Unknown collaborator",
+        profileImgURL: asNonEmptyString(profile.profileImgURL),
+        mainAccountType,
+        createdAt: toDate(profile.createdAt)
+    };
+}
+
+export function createFileCollaboration(access: WorkspaceAccess): Collabortation.Collab | Response {
+    const collaborationServiceUrl = asNonEmptyString(env.PUBLIC_SOCKET_IO_COLLABORATION_SERVICE_URL);
+    if (!collaborationServiceUrl) {
+        return json(
+            {
+                ok: false,
+                message: "Cannot verify file editor collaborator because collaboration service URL is not configured"
+            },
+            { status: 500 }
+        );
+    }
+
+    return new Collabortation.Collab(
+        access.authToken,
+        access.collabProfile,
+        collaborationServiceUrl
+    );
+}
+
+export async function requireFileEditorCollaborator(
+    collaboration: Collabortation.Collab,
+    file: FileEntry,
+    operationName: string
+): Promise<Response | null> {
+    let isEditor = false;
+
+    try {
+        isEditor = await collaboration.amIEditorOfFile(file);
+    } catch (error) {
+        console.error("Cannot validate file editor collaborator", error);
+        return json(
+            {
+                ok: false,
+                message: "Cannot validate file editor collaborator access right now"
+            },
+            { status: 503 }
+        );
+    }
+
+    if (isEditor) {
+        return null;
+    }
+
+    return json(
+        {
+            ok: false,
+            message: `Cannot ${operationName} because you are not a file editor collaborator for this file.`
+        },
+        { status: 403 }
+    );
+}
+
+export async function requireWorkspaceAccess(args: RequireWorkspaceAccessArgs): Promise<WorkspaceAccess | Response> {
     const authStatusResponse = await ensureAuthenticatedViaRoute(args.request, args.fetchFn);
     if (!authStatusResponse) {
         return json({ ok: false, message: "Failed to validate authentication" }, { status: 500 });
@@ -103,6 +201,11 @@ export async function requireWorkspaceAccess(args: RequireWorkspaceAccessArgs): 
         return json({ ok: false, message: "Invalid or expired token" }, { status: 401 });
     }
 
+    const authToken = extractBearerToken(args.request, args.cookies);
+    if (!authToken) {
+        return json({ ok: false, message: "Invalid or expired token" }, { status: 401 });
+    }
+
     const workspace = await prefetchWorkspaceWithMembers(args.workspaceId);
     if (!workspace) {
         return json({ ok: false, message: "Workspace not found" }, { status: 404 });
@@ -110,6 +213,7 @@ export async function requireWorkspaceAccess(args: RequireWorkspaceAccessArgs): 
 
     const workspaceMembers = Array.isArray(workspace.workspaceMembers) ? workspace.workspaceMembers : [];
     const workspaceMember = workspaceMembers.find((member) => member.user.id === payload.userId);
+    const ownerWorkspaceMember = workspaceMembers.find((member) => member.user.id === workspace.ownerUserId);
 
     const isOwner = workspace.ownerUserId === payload.userId;
     if (!isOwner && !workspaceMember) {
@@ -142,7 +246,12 @@ export async function requireWorkspaceAccess(args: RequireWorkspaceAccessArgs): 
     }
 
     return {
-        userId: payload.userId
+        userId: payload.userId,
+        authToken,
+        collabProfile: toCollabProfile(
+            workspaceMember?.user ?? (isOwner ? ownerWorkspaceMember?.user : undefined),
+            payload.userId
+        )
     };
 }
 
