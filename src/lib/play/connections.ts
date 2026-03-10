@@ -5,6 +5,49 @@ import type { File, Play } from "@ravenlens/shared";
 import io, { Socket } from "socket.io-client";
 import { writable } from "svelte/store";
 
+export type PointResultEventPayload = {
+    answer: File.FileAI.AIAnswer;
+    pointId?: string;
+    fileId?: string;
+};
+
+const isNonEmptyString = (value: unknown): value is string => {
+    return typeof value === "string" && value.trim().length > 0;
+};
+
+const normalizePointResultPayload = (
+    payload: unknown,
+    pointIdArg?: unknown,
+    fileIdArg?: unknown
+): PointResultEventPayload | undefined => {
+    if (!payload || typeof payload !== "object") {
+        return undefined;
+    }
+
+    const payloadRecord = payload as Record<string, unknown>;
+    const answer = (payloadRecord.answer ?? payloadRecord.aiAnswer ?? payload) as File.FileAI.AIAnswer | undefined;
+    if (answer === undefined || answer === null) {
+        return undefined;
+    }
+
+    const answerRecord = typeof answer === "object" && answer !== null
+        ? (answer as any as Record<string, unknown>)
+        : undefined;
+
+    const pointIdRaw = payloadRecord.pointId ?? answerRecord?.pointId ?? pointIdArg;
+    const fileIdRaw = payloadRecord.fileId
+        ?? payloadRecord.documentId
+        ?? answerRecord?.fileId
+        ?? answerRecord?.documentId
+        ?? fileIdArg;
+
+    return {
+        answer,
+        pointId: isNonEmptyString(pointIdRaw) ? pointIdRaw : undefined,
+        fileId: isNonEmptyString(fileIdRaw) ? fileIdRaw : undefined,
+    };
+};
+
 class FilePlayConnections {
     file: File.File.File | undefined = undefined;
     connection: Socket;
@@ -53,8 +96,21 @@ class FilePlayConnections {
         this.connection.emit("play", this.file, playTarget);
     }
 
-    onPointResult(handler: (answer: File.FileAI.AIAnswer) => void) {
-        this.connection.on("point-result", handler);
+    onPointResult(handler: (payload: PointResultEventPayload) => void) {
+        const listener = (payload: unknown, pointIdArg?: unknown, fileIdArg?: unknown) => {
+            const normalizedPayload = normalizePointResultPayload(payload, pointIdArg, fileIdArg);
+            if (!normalizedPayload) {
+                return;
+            }
+
+            handler(normalizedPayload);
+        };
+
+        this.connection.on("point-result", listener);
+
+        return () => {
+            this.connection.off("point-result", listener);
+        };
     }
 }
 

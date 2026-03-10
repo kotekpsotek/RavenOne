@@ -1,7 +1,8 @@
+import { browser } from "$app/environment";
 import { get, writable, type Updater } from "svelte/store";
 import { selectedFile } from "./files";
 import { findItemDirectSubitems } from "$lib/listItems/utils";
-import { playInFile } from "$lib/play/connections";
+import { playInFile, type PointResultEventPayload } from "$lib/play/connections";
 import type { AI, File, Play } from "@ravenlens/shared";
 
 interface PlayableListItem extends Omit<File.File.EditableListItem, "answers"> {
@@ -152,6 +153,8 @@ export const playableDocumentsAndListsWithPoints = (() => {
     /** Is a has document and set of lists are playing */
     const playableStore = writable<PlayableDocumentsWithListsAndPoints[]>([]);
     const playDocumentRunVersions = new Map<string, number>();
+    const pointResultWaiters = new Map<string, () => void>();
+    const POINT_RESULT_TIMEOUT_MS = 5_000;
     let lastPlayStartTimestamp = 0;
 
     const beginDocumentRun = (documentId: string) => {
@@ -169,6 +172,204 @@ export const playableDocumentsAndListsWithPoints = (() => {
         lastPlayStartTimestamp = now > lastPlayStartTimestamp ? now : lastPlayStartTimestamp + 1;
         return lastPlayStartTimestamp;
     };
+
+    // Here is experiment listening the points idk whether does it work or not
+
+    const createPointResultKey = (fileId: string, pointId: string) => {
+        return `${fileId}:${pointId}`;
+    };
+
+    const parsePointResultKey = (waitKey: string) => {
+        const separatorIndex = waitKey.indexOf(":");
+        if (separatorIndex < 0) {
+            return undefined;
+        }
+
+        const fileId = waitKey.slice(0, separatorIndex);
+        const pointId = waitKey.slice(separatorIndex + 1);
+        if (!fileId || !pointId) {
+            return undefined;
+        }
+
+        return {
+            fileId,
+            pointId,
+        };
+    };
+
+    const settlePointResultWaiter = (fileId: string, pointId: string) => {
+        const waitKey = createPointResultKey(fileId, pointId);
+        const waiter = pointResultWaiters.get(waitKey);
+        if (!waiter) {
+            return;
+        }
+
+        waiter();
+    };
+
+    const waitForPointResult = (fileId: string, pointId: string, timeoutMs: number = POINT_RESULT_TIMEOUT_MS) => {
+        return new Promise<void>(resolve => {
+            const waitKey = createPointResultKey(fileId, pointId);
+            const oldWaiter = pointResultWaiters.get(waitKey);
+            if (oldWaiter) {
+                oldWaiter();
+            }
+
+            let isSettled = false;
+            const settle = () => {
+                if (isSettled) {
+                    return;
+                }
+
+                isSettled = true;
+                if (pointResultWaiters.get(waitKey) === settle) {
+                    pointResultWaiters.delete(waitKey);
+                }
+
+                clearTimeout(timeoutId);
+                resolve();
+            };
+
+            const timeoutId = setTimeout(() => {
+                settle();
+            }, timeoutMs);
+
+            pointResultWaiters.set(waitKey, settle);
+        });
+    };
+
+    const attachPointAnswerToSelectedFile = (
+        fileId: string,
+        pointId: string,
+        answer: File.FileAI.AIAnswer
+    ) => {
+        selectedFile.update(file => {
+            if (!file || file.id !== fileId) {
+                return file;
+            }
+
+            let pointFound = false;
+            const nextLists = file.lists.map(list => {
+                let listChanged = false;
+
+                const nextItems = list.items.map(item => {
+                    if (item.id !== pointId) {
+                        return item;
+                    }
+
+                    pointFound = true;
+                    listChanged = true;
+
+                    return {
+                        ...item,
+                        answers: [...(item.answers ?? []), answer],
+                    };
+                });
+
+                if (!listChanged) {
+                    return list;
+                }
+
+                return {
+                    ...list,
+                    items: nextItems,
+                };
+            });
+
+            if (!pointFound) {
+                return file;
+            }
+
+            return {
+                ...file,
+                lists: nextLists,
+            };
+        });
+    };
+
+    const getPointResultIdentifiers = (payload: PointResultEventPayload) => {
+        const selectedFileLocal = get(selectedFile);
+        const answerRecord = payload.answer as unknown as Record<string, unknown>;
+
+        const pointId = payload.pointId
+            ?? (typeof answerRecord?.pointId === "string" ? answerRecord.pointId : undefined);
+
+        const fileId = payload.fileId
+            ?? (typeof answerRecord?.fileId === "string" ? answerRecord.fileId : undefined)
+            ?? selectedFileLocal?.id;
+
+        return {
+            pointId,
+            fileId,
+        };
+    };
+
+    const resolvePendingPointResultIdentifiers = (partialIds: {
+        fileId?: string;
+        pointId?: string;
+    }) => {
+        if (partialIds.fileId && partialIds.pointId) {
+            return partialIds;
+        }
+
+        const matches: { fileId: string; pointId: string }[] = [];
+
+        for (const waitKey of pointResultWaiters.keys()) {
+            const ids = parsePointResultKey(waitKey);
+            if (!ids) {
+                continue;
+            }
+
+            if (partialIds.fileId && ids.fileId !== partialIds.fileId) {
+                continue;
+            }
+
+            if (partialIds.pointId && ids.pointId !== partialIds.pointId) {
+                continue;
+            }
+
+            matches.push(ids);
+        }
+
+        if (matches.length !== 1) {
+            return partialIds;
+        }
+
+        return {
+            fileId: partialIds.fileId ?? matches[0].fileId,
+            pointId: partialIds.pointId ?? matches[0].pointId,
+        };
+    };
+
+    if (browser) {
+        let disconnectPointResultListener: (() => void) | undefined;
+
+        playInFile.subscribe(connection => {
+            disconnectPointResultListener?.();
+            disconnectPointResultListener = undefined;
+
+            if (!connection) {
+                return;
+            }
+
+            disconnectPointResultListener = connection.onPointResult(payload => {
+                const ids = resolvePendingPointResultIdentifiers(getPointResultIdentifiers(payload));
+                if (!ids.fileId) {
+                    console.warn("Received point-result without file identifier.");
+                    return;
+                }
+
+                if (!ids.pointId) {
+                    console.warn(`Received point-result for file \"${ids.fileId}\" without point identifier.`);
+                    return;
+                }
+
+                attachPointAnswerToSelectedFile(ids.fileId, ids.pointId, payload.answer);
+                settlePointResultWaiter(ids.fileId, ids.pointId);
+            });
+        });
+    }
+    /// experiment end
 
     // Some persisted documents may store checklist kinds other than literal "task".
     const isTaskLikeListKind = (kind: string) => {
@@ -313,11 +514,13 @@ export const playableDocumentsAndListsWithPoints = (() => {
 
     const createPlayFileTarget = (
         selectedDocumentLocal: File.File.File,
-        config: PlayableList["config"]
+        config: PlayableList["config"],
+        pointId?: string
     ) => {
         return {
             playFor: "play-document",
             ...createCommonPlayTargetPayload(selectedDocumentLocal, config, "document"),
+            pointId,
         } as unknown as Play.PlayFile;
     };
 
@@ -798,13 +1001,18 @@ export const playableDocumentsAndListsWithPoints = (() => {
                 });
 
                 const playTarget = playInvocationSource === "document"
-                    ? createPlayFileTarget(selectedDocumentLocal, config)
+                    ? createPlayFileTarget(selectedDocumentLocal, config, point.id)
                     : createPlayPointTarget(selectedDocumentLocal, point, config);
 
-                await get(playInFile)?.play(playTarget);
-                
-                // FIXME: Make real backend request
-                await new Promise<void>(res => setTimeout(res, 5000));
+                const playConnection = get(playInFile);
+                if (!playConnection) {
+                    console.warn(`Cannot play point \"${point.id}\" because play connection is unavailable.`);
+                }
+                else {
+                    const waitForPointResultTask = waitForPointResult(selectedDocumentLocal.id, point.id);
+                    await playConnection.play(playTarget);
+                    await waitForPointResultTask;
+                }
 
                 if (!isPointPlayingInCurrentRun(point.id)) {
                     return "don-not-allow-to-play-childs";
@@ -1125,6 +1333,10 @@ export const playableDocumentsAndListsWithPoints = (() => {
             }
 
             let hasChanges = false;
+            for (const pointToStop of pointsToStop) {
+                settlePointResultWaiter(selectedDocumentLocal.id, pointToStop);
+            }
+
             playableStore.update(store => {
                 const updatedStore = store
                     .map(documentState => {
@@ -1194,6 +1406,21 @@ export const playableDocumentsAndListsWithPoints = (() => {
         stopPlayingDocument(document: File.File.File) {
             let hasChanges = false;
             beginDocumentRun(document.id);
+
+            const pointsPlayingInDocument = new Set<string>();
+            for (const documentState of get(playableStore)) {
+                if (documentState.document.id !== document.id) {
+                    continue;
+                }
+
+                for (const point of documentState.lists.flatMap(playableList => playableList.list.items)) {
+                    pointsPlayingInDocument.add(point.id);
+                }
+            }
+
+            for (const pointId of pointsPlayingInDocument) {
+                settlePointResultWaiter(document.id, pointId);
+            }
 
             playableStore.update(store => {
                 const updatedStore = store.filter(documentState => documentState.document.id !== document.id);
