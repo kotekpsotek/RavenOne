@@ -5,6 +5,7 @@ import type { ComponentProps } from "svelte";
 import type { UI } from "@ravenlens/frontend";
 import { browser } from "$app/environment";
 import { fetchAuthenticated } from "$lib/utils/fetch";
+import { collaborationInterface, workspaceCollabs } from "./collaboration";
 
 type WorkspaceEntry = Workspace.Workspace.WorkspaceUserEntryLoaded;
 
@@ -236,14 +237,67 @@ function onWorkspaceSelectionStateChange(isOpen: boolean) {
 }
 
 export const selectedWorkspace = (() => {
-    const { subscribe, set, update } = writable<WorkspaceEntry | undefined>(undefined);
+    const store = writable<WorkspaceEntry | undefined>(undefined);
+    const { set, update, subscribe } = store;
 
+    /** Helps to 'ingore members are joining to differnet workspace then selected' */
+    function isSelectedWorkspaceEvent(workspaceId: string) {
+        const selectedWorkspaceState = get(store);
+        return Boolean(selectedWorkspaceState && selectedWorkspaceState.id === workspaceId);
+    }
+
+    if (browser) {
+        const interfaceCollab = get(collaborationInterface);
+
+        interfaceCollab?.onJoinWorkspace((workspaceId, user) => {
+            if (!isSelectedWorkspaceEvent(workspaceId)) {
+                return;
+            }
+
+            workspaceCollabs.update((collaborators) => {
+                if (collaborators.some((collaborator) => collaborator.id === user.id)) {
+                    return collaborators;
+                }
+
+                return [...collaborators, user];
+            });
+        });
+
+        interfaceCollab?.onLeaveWorkspace((workspaceId, user) => {
+            if (!isSelectedWorkspaceEvent(workspaceId)) {
+                return;
+            }
+
+            workspaceCollabs.update((collaborators) =>
+                collaborators.filter((collaborator) => collaborator.id !== user.id)
+            );
+        });
+    }
+    
     return {
         subscribe,
         set: (value: WorkspaceEntry | undefined) => {
+            // Before workspace state
+            const workspaceStateBefore = get(store);
+            const interfaceCollab = collaborationInterface.getInterface();
+
+            // Collaborators list is scoped to currently selected workspace.
+            workspaceCollabs.set([]);
+
+            // Setup workspace and set to `localStorage`
             storedSelectedWorkspaceId = value?.id;
             persistSelectedWorkspaceId(storedSelectedWorkspaceId);
             set(value);
+
+            if (workspaceStateBefore) {
+                // Leave old workspace
+                interfaceCollab?.sendLeaveWorkspace(workspaceStateBefore.id);
+            }
+
+            if (value) {
+                // Join new workspace
+                interfaceCollab?.sendJoinWorkspace(value.id);
+            }
         },
         update: (updater: (currentWorkspace: WorkspaceEntry | undefined) => WorkspaceEntry | undefined) => {
             update(currentWorkspace => {

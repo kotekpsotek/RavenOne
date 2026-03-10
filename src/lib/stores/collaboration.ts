@@ -5,44 +5,48 @@ import { JWTAuth } from "$lib/utils/auth";
 import { userProfile } from "./user";
 import { env } from "$env/dynamic/public";
 
-export const fileCollaborators = writable<(Collabortation.CollabEditor | Collabortation.CollabUser)[]>([
-    {
-        id: '1',
-        name: 'Collab 1',
-        profileImgURL: "",
-    },
-    {
-        id: '2',
-        name: 'Collab 2',
-        profileImgURL: ""
-    },
-    {
-        id: '3',
-        name: 'Collab 3',
-        profileImgURL: "",
-        isEditor: true,
-    },
-]);
+/** Is the list of collaborators from currently selected workspace */
+export const workspaceCollabs = writable<Collabortation.CollabUser[]>([]);
+export const fileCollaborators = (() => {
+    const store = writable<(Collabortation.CollabEditor | Collabortation.CollabUser)[]>([]);
+
+    return {
+        ...store,
+        /** Check is user editor by checking current collaborators of store -> doesn't make the connection to service. What differs it from `Collab` method */
+        isCurrentUserEditor() {
+            const storeState = get(store);
+            const currentUser = get(userProfile);
+            
+            return storeState.some(collaborator => collaborator.id === currentUser?.id && Collabortation.isCollaboratorEditor(collaborator));
+        }
+    }
+})();
 export const collaborationInterface = (() => {
     const store = writable<Collabortation.Collab | undefined>(undefined);
+    const storeSetup = {
+        ...store,
+        getInterface() {
+            return get(store);
+        }
+    };
 
     if (browser) {
         // Preset of requirements
         const tokenJwt = JWTAuth.getToken();
         if (!tokenJwt) {
             console.error('Cannot setup collaboration interface since JWT token isn\'t specified!');
-            return store;
+            return storeSetup;
         }
         
         const userProfileLocal = get(userProfile);
         if (!userProfileLocal) {
             console.error(`Cannot setup collaboration interface since user profile isn't specified`);
-            return store;
+            return storeSetup;
         }
 
         if (!env.PUBLIC_SOCKET_IO_COLLABORATION_SERVICE_URL) {
             console.error("Cannot setup collaboration service due to: Connection env variable isn't specified");
-            return store;
+            return storeSetup;
         }
 
         // Prepare collab
@@ -61,5 +65,5 @@ export const collaborationInterface = (() => {
         store.set(collabInstance);
     }
 
-    return store;
+    return storeSetup;
 })();
