@@ -5,9 +5,65 @@ import { get, writable } from "svelte/store";
 import { File } from "@ravenlens/shared";
 import { selectedWorkspace } from "./workspace";
 import { canManageWorkspaceFiles } from "./subscription";
+import { collaborationInterface } from "./collaboration";
 
-// Entries
-export const entriesList = writable<File.File.File[]>([]);
+/** Entries */
+export const entriesList = (() => {
+    const entriesStore = writable<File.File.File[]>([]);
+
+    if (browser) {
+        const interfaceCollab = collaborationInterface.getInterface();
+
+        interfaceCollab?.onNewFile((file) => {
+            entriesStore.update(entries => [...entries, file]);
+        });
+
+        interfaceCollab?.onRemovedFile((file) => {
+            entriesStore.update(entries => {
+                const removeById = (items: File.File.File[]): File.File.File[] => {
+                    return items
+                        .filter(item => item.id !== file.id)
+                        .map(item => ({
+                            ...item,
+                            subentries: item.subentries ? removeById(item.subentries) : undefined
+                        }));
+                };
+                return removeById(entries);
+            });
+        });
+
+        interfaceCollab?.onRelocatedFile((file, target, relocatedByUser) => {
+            moveEntry(file.id, target.id, "inside");
+        });
+
+        interfaceCollab?.onRenamedFile((file, renambedByUser, newName) => {
+            patchFileById(file.id, {
+                ...file,
+                name: newName
+            });
+        });
+
+        interfaceCollab?.onWalperChangedFile((file, wallpaperUrl) => {
+            patchFileById(file.id, {
+                ...file,
+                walper: wallpaperUrl ?? undefined
+            });
+        });
+
+        interfaceCollab?.onIconChangedFile((file, icon) => {
+            patchFileById(file.id, {
+                ...file,
+                icon: icon ?? undefined
+            });
+        });
+
+        interfaceCollab?.onFileChanged((file) => {
+            patchFileById(file.id, file);
+        });
+    }
+
+    return entriesStore;
+})();
 /** Access saving state -> 'true' when file is actually saving, 'false' when is not */
 export const isFileSaving = writable<boolean>(false);
 
