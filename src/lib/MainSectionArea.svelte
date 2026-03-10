@@ -1,4 +1,6 @@
 <script lang=ts>
+    import { onDestroy } from "svelte";
+    import { derived } from "svelte/store";
     import { EditorContent } from "svelte-tiptap";
     import { editor } from "./stores/editor";
     import { selectedFile } from "./stores/files";
@@ -11,16 +13,37 @@
     import { isSharedRoute } from "./stores/share";
     import "./Editor.css";
 
-    let canEditWorkspaceContent = $derived(!$workspaceSubscriptionCheckInProgress && $workspaceHasActiveSubscription);
-    let canEditSelectedFileContent = $derived(canEditWorkspaceContent && $isCurrentUserSelectedFileEditor);
+    const canEditWorkspaceContent = derived(
+        [workspaceSubscriptionCheckInProgress, workspaceHasActiveSubscription],
+        ([$workspaceSubscriptionCheckInProgress, $workspaceHasActiveSubscription]) => {
+            return !$workspaceSubscriptionCheckInProgress && $workspaceHasActiveSubscription;
+        }
+    );
 
-    editor.update(ed => {
-        if (ed) {
-            ed.setEditable(canEditSelectedFileContent);
+    const canEditSelectedFileContent = derived(
+        [selectedFile, canEditWorkspaceContent, isCurrentUserSelectedFileEditor],
+        ([$selectedFile, $canEditWorkspaceContent, $isCurrentUserSelectedFileEditor]) => {
+            return Boolean($selectedFile && $canEditWorkspaceContent && $isCurrentUserSelectedFileEditor);
+        }
+    );
+
+    const unsubscribeEditabilitySync = derived(
+        [editor, canEditSelectedFileContent],
+        ([$editor, $canEditSelectedFileContent]) => ({
+            activeEditor: $editor,
+            canEdit: $canEditSelectedFileContent
+        })
+    ).subscribe(({ activeEditor, canEdit }) => {
+        if (!activeEditor || activeEditor.isEditable === canEdit) {
+            return;
         }
 
-        return ed;
-    })
+        activeEditor.setEditable(canEdit);
+    });
+
+    onDestroy(() => {
+        unsubscribeEditabilitySync();
+    });
 </script>
 
 
@@ -34,18 +57,14 @@
     {#if $selectedFile}
         {#if $editor}
             <div class="editor-container">
-                {#if !canEditWorkspaceContent && !$workspaceSubscriptionCheckInProgress && !$isSharedRoute}
+                {#if !$canEditWorkspaceContent && !$workspaceSubscriptionCheckInProgress && !$isSharedRoute}
                     <div class="mx-4 mt-3 alert alert-warning text-sm">
                         This workspace has no active subscription. File content and points are read-only.
-                    </div>
-                {:else if !$isCurrentUserSelectedFileEditor && !$isSharedRoute}
-                    <div class="mx-4 mt-3 alert alert-warning text-sm">
-                        You are not a file editor collaborator for this file. File content and points are read-only.
                     </div>
                 {/if}
 
                 <EditorContent editor={$editor} class="tiptap-editor" />
-                <ListTray isReadOnly={!canEditSelectedFileContent}/>
+                <ListTray isReadOnly={!$canEditSelectedFileContent}/>
             </div>
         {/if}
     {:else}

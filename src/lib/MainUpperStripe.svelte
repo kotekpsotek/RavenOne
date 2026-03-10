@@ -22,6 +22,7 @@
     import { shareFileRequest } from "./files/connections/connections";
     import { File } from "@ravenlens/shared";
     import { canManageWorkspaceFiles } from "./stores/subscription";
+    import UserNotCollaborator from "./collaboration/UserNotCollaborator.svelte";
 
     type DropdownName = "model-settings" | "mcp-tools" | "play-settings" | "share";
 
@@ -348,6 +349,7 @@
         <div class="right-side flex items-center gap-2">
             <SaveFile/>
             <CollaboratorsOfFile />
+            <UserNotCollaborator/>
         </div>
 
         <div 
