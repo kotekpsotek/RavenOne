@@ -1,18 +1,12 @@
 import { JWTAuth } from "./auth";
+import { Fetch } from "@ravenlens/shared";
 
 /** Call backend services with JWT attached to each request */
 export function fetchAuthenticated(url: string | URL, requestInit: RequestInit, jwt?: string) {
-    const headers = new Headers(requestInit.headers ?? {});
-    if (!headers.has("Authorization")) {
-        const token = jwt ?? JWTAuth.getToken();
-        if (token) {
-            headers.set("Authorization", `Bearer ${token}`);
-        }
+    const token = jwt ?? JWTAuth.getToken();
+    if (!token) {
+        throw("Cannot make connection since JWT isn't specified");
     }
 
-    return fetch(url, {
-        ...requestInit,
-        headers,
-        credentials: requestInit.credentials ?? "same-origin"
-    });
+    return Fetch.universalFetchAuthenticated(url, requestInit, token);
 }
