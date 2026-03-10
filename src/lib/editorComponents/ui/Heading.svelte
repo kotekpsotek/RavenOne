@@ -7,6 +7,7 @@
 	import WallpaperSelectionModal from "$lib/modals/WallpaperSelectionModal.svelte";
 	import IconValue from "$lib/IconValue.svelte";
 	import { workspaceHasActiveSubscription, workspaceSubscriptionCheckInProgress } from "$lib/stores/subscription";
+	import { isCurrentUserSelectedFileEditor } from "$lib/stores/collaboration";
     import { entriesList, selectedFile } from "$lib/stores/files";
 	import { setAlert } from "$lib/utils/alert";
     import { renameFileRequest } from "$lib/files/connections/connections";
@@ -26,9 +27,28 @@
 	let icon = $derived((node.attrs.icon as string | undefined) ?? "");
 	let walper = $derived($selectedFile?.walper ?? (node.attrs.walper as string | undefined) ?? "");
 	let isHeadingEmpty = $state(true);
-	let canEditHeadingAssets = $derived(!$workspaceSubscriptionCheckInProgress && $workspaceHasActiveSubscription);
+	let canEditHeadingContent = $derived($isCurrentUserSelectedFileEditor);
+	let canEditHeadingAssets = $derived(canEditHeadingContent && !$workspaceSubscriptionCheckInProgress && $workspaceHasActiveSubscription);
+
+	function ensureFileEditorForHeading(operationName: string): boolean {
+		if (canEditHeadingContent) {
+			return true;
+		}
+
+		setAlert(
+			"warning",
+			"Editor access required",
+			`Cannot ${operationName} because you are not a file editor collaborator for this file.`
+		);
+
+		return false;
+	}
 
 	function ensureWorkspaceSubscriptionForHeadingAssets(operationName: string): boolean {
+		if (!ensureFileEditorForHeading(operationName)) {
+			return false;
+		}
+
 		if (canEditHeadingAssets) {
 			return true;
 		}
@@ -164,6 +184,14 @@
 
 	function onHeadingInput() {
 		const nextHeading = getCurrentHeadingText();
+
+		if (!canEditHeadingContent) {
+			const selectedFileHeading = ($selectedFile?.name ?? "").trim();
+			syncHeadingFromSelectedFile(selectedFileHeading);
+			dispatchHeadingTyping(false, selectedFileHeading);
+			return;
+		}
+
 		isHeadingEmpty = nextHeading.length === 0;
 		dispatchHeadingTyping(true, nextHeading);
 
@@ -207,6 +235,13 @@
 		if (typingDebounceTimer) {
 			clearTimeout(typingDebounceTimer);
 			typingDebounceTimer = null;
+		}
+
+		if (!canEditHeadingContent) {
+			const selectedFileHeading = ($selectedFile?.name ?? "").trim();
+			syncHeadingFromSelectedFile(selectedFileHeading);
+			dispatchHeadingTyping(false, selectedFileHeading);
+			return;
 		}
 
 		const nextHeading = getCurrentHeadingText();

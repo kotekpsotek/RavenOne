@@ -5,60 +5,78 @@ import { get, writable } from "svelte/store";
 import { File } from "@ravenlens/shared";
 import { selectedWorkspace } from "./workspace";
 import { canManageWorkspaceFiles } from "./subscription";
-import { collaborationInterface } from "./collaboration";
+import { collaborationInterface, setSelectedFileIdInCollaboration } from "./collaboration";
 
 /** Entries */
 export const entriesList = (() => {
     const entriesStore = writable<File.File.File[]>([]);
 
     if (browser) {
-        const interfaceCollab = collaborationInterface.getInterface();
-
-        interfaceCollab?.onNewFile((file) => {
-            entriesStore.update(entries => [...entries, file]);
-        });
-
-        interfaceCollab?.onRemovedFile((file) => {
-            entriesStore.update(entries => {
-                const removeById = (items: File.File.File[]): File.File.File[] => {
-                    return items
-                        .filter(item => item.id !== file.id)
-                        .map(item => ({
-                            ...item,
-                            subentries: item.subentries ? removeById(item.subentries) : undefined
-                        }));
-                };
-                return removeById(entries);
+        const registerEntryListeners = (interfaceCollab: NonNullable<ReturnType<typeof collaborationInterface.getInterface>>) => {
+            interfaceCollab.onNewFile((file) => {
+                entriesStore.update(entries => [...entries, file]);
             });
-        });
 
-        interfaceCollab?.onRelocatedFile((file, target, relocatedByUser) => {
-            moveEntry(file.id, target.id, "inside");
-        });
-
-        interfaceCollab?.onRenamedFile((file, renambedByUser, newName) => {
-            patchFileById(file.id, {
-                ...file,
-                name: newName
+            interfaceCollab.onRemovedFile((file) => {
+                entriesStore.update(entries => {
+                    const removeById = (items: File.File.File[]): File.File.File[] => {
+                        return items
+                            .filter(item => item.id !== file.id)
+                            .map(item => ({
+                                ...item,
+                                subentries: item.subentries ? removeById(item.subentries) : undefined
+                            }));
+                    };
+                    return removeById(entries);
+                });
             });
-        });
 
-        interfaceCollab?.onWalperChangedFile((file, wallpaperUrl) => {
-            patchFileById(file.id, {
-                ...file,
-                walper: wallpaperUrl ?? undefined
+            interfaceCollab.onRelocatedFile((file, target, relocatedByUser) => {
+                moveEntry(file.id, target.id, "inside");
             });
-        });
 
-        interfaceCollab?.onIconChangedFile((file, icon) => {
-            patchFileById(file.id, {
-                ...file,
-                icon: icon ?? undefined
+            interfaceCollab.onRenamedFile((file, renambedByUser, newName) => {
+                patchFileById(file.id, {
+                    ...file,
+                    name: newName
+                });
             });
-        });
 
-        interfaceCollab?.onFileChanged((file) => {
-            patchFileById(file.id, file);
+            interfaceCollab.onWalperChangedFile((file, wallpaperUrl) => {
+                patchFileById(file.id, {
+                    ...file,
+                    walper: wallpaperUrl ?? undefined
+                });
+            });
+
+            interfaceCollab.onIconChangedFile((file, icon) => {
+                patchFileById(file.id, {
+                    ...file,
+                    icon: icon ?? undefined
+                });
+            });
+
+            interfaceCollab.onFileChanged((file) => {
+                patchFileById(file.id, file);
+            });
+        };
+
+        // Delay access to collaborationInterface to avoid TDZ during circular module initialization.
+        queueMicrotask(() => {
+            const existingInterface = collaborationInterface.getInterface();
+            if (existingInterface) {
+                registerEntryListeners(existingInterface);
+                return;
+            }
+
+            const unsubscribe = collaborationInterface.subscribe((interfaceCollab) => {
+                if (!interfaceCollab) {
+                    return;
+                }
+
+                registerEntryListeners(interfaceCollab);
+                unsubscribe();
+            });
         });
     }
 
@@ -446,6 +464,10 @@ export const selectedFile = (() => {
         },
     };
 })();
+
+selectedFile.subscribe((file) => {
+    setSelectedFileIdInCollaboration(file?.id);
+});
 
 export const availableTools = ["Web search", "Current Document", "RavenOne Documents"] as File.FileAI.BrowserToolsUnion[];
 

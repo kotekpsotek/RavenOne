@@ -12,6 +12,7 @@
     import { onMount, tick } from "svelte";
     import { get } from "svelte/store";
     import { File } from "@ravenlens/shared";
+    import { entriesCollaborators } from "$lib/stores/collaboration";
     import { changeFilePositionRequest, changeIconFileRequest, changeWalperFileRequest, deleteFileRequest, downloadFilesRequest, newFileRequest, renameFileRequest } from "$lib/files/connections/connections";
     import type { DropPosition } from "$lib/files/utils";
  
@@ -93,6 +94,7 @@
     let walperPickerInitialValue = $state("");
     let expandedEntries = $state<Record<string, boolean>>({});
     let contextMenuEntry = $derived(contextMenu ? findFileById($entriesList, contextMenu.entryId) : null);
+    let contextMenuEntryIsEditor = $derived(contextMenuEntry ? isCurrentUserFileEditor(contextMenuEntry.id) : false);
 
     function ensureActiveWorkspaceSubscription(operationName: string): boolean {
         if ($canManageWorkspaceFiles) {
@@ -108,6 +110,36 @@
         }
 
         return false;
+    }
+
+    function isCurrentUserFileEditor(fileId: string | null | undefined): boolean {
+        return entriesCollaborators.isCurrentUserEditor(fileId);
+    }
+
+    function ensureCurrentUserFileEditor(fileId: string | null | undefined, operationName: string): boolean {
+        if (isCurrentUserFileEditor(fileId)) {
+            return true;
+        }
+
+        setAlert(
+            "warning",
+            "Editor access required",
+            `Cannot ${operationName} because you are not a file editor collaborator for this file.`
+        );
+
+        return false;
+    }
+
+    function getContextMenuActionBlockedReason(fileId: string, requiresSubscription = false): string | undefined {
+        if (!isCurrentUserFileEditor(fileId)) {
+            return "File editor collaborator access required";
+        }
+
+        if (requiresSubscription && !$canManageWorkspaceFiles) {
+            return "Active workspace subscription required";
+        }
+
+        return undefined;
     }
 
     function focusInputAttachment(node: HTMLInputElement) {
@@ -193,6 +225,14 @@
     }
 
     function handleDragStart(e: DragEvent, id: string) {
+        if (!ensureCurrentUserFileEditor(id, "relocate this file")) {
+            draggedId = null;
+            dropTargetId = null;
+            dropPosition = null;
+            e.preventDefault();
+            return;
+        }
+
         draggedId = id;
         if (e.dataTransfer) {
             e.dataTransfer.setData('text/plain', id);
@@ -231,6 +271,13 @@
             const workspaceId = getCurrentWorkspaceId();
             const sourceId = draggedId;
             const nextDropPosition = dropPosition || 'inside';
+
+            if (!ensureCurrentUserFileEditor(sourceId, "relocate this file")) {
+                draggedId = null;
+                dropTargetId = null;
+                dropPosition = null;
+                return;
+            }
 
             if (workspaceId) {
                 const moveResult = await changeFilePositionRequest(
@@ -356,6 +403,10 @@
     }
 
     function openRename(entry: File.File.File) {
+        if (!ensureCurrentUserFileEditor(entry.id, "rename this file")) {
+            return;
+        }
+
         renamingId = entry.id;
         renameValue = entry.name;
         closeContextMenu();
@@ -364,6 +415,10 @@
     async function submitRename(fileId: string) {
         const nextName = renameValue.trim();
         if (!nextName) {
+            return;
+        }
+
+        if (!ensureCurrentUserFileEditor(fileId, "rename this file")) {
             return;
         }
 
@@ -391,6 +446,10 @@
     }
 
     function openIconPicker(entry: File.File.File) {
+        if (!ensureCurrentUserFileEditor(entry.id, "change file icon")) {
+            return;
+        }
+
         if (!ensureActiveWorkspaceSubscription("change file icon")) {
             return;
         }
@@ -415,6 +474,11 @@
         }
 
         const entryId = iconPickerEntryId;
+
+        if (!ensureCurrentUserFileEditor(entryId, "change file icon")) {
+            return;
+        }
+
         const normalizedIconValue = iconValue.trim();
 
         const workspaceId = getCurrentWorkspaceId();
@@ -455,6 +519,10 @@
 
         const entryId = iconPickerEntryId;
 
+        if (!ensureCurrentUserFileEditor(entryId, "change file icon")) {
+            return;
+        }
+
         const workspaceId = getCurrentWorkspaceId();
         if (!workspaceId) {
             return;
@@ -483,6 +551,10 @@
     }
 
     function openWalperPicker(entry: File.File.File) {
+        if (!ensureCurrentUserFileEditor(entry.id, "change file wallpaper")) {
+            return;
+        }
+
         if (!ensureActiveWorkspaceSubscription("change file wallpaper")) {
             return;
         }
@@ -507,6 +579,10 @@
         }
 
         const entryId = walperPickerEntryId;
+
+        if (!ensureCurrentUserFileEditor(entryId, "change file wallpaper")) {
+            return;
+        }
 
         const workspaceId = getCurrentWorkspaceId();
         if (!workspaceId) {
@@ -544,6 +620,10 @@
 
         const entryId = walperPickerEntryId;
 
+        if (!ensureCurrentUserFileEditor(entryId, "change file wallpaper")) {
+            return;
+        }
+
         const workspaceId = getCurrentWorkspaceId();
         if (!workspaceId) {
             return;
@@ -570,6 +650,10 @@
     }
 
     function openDeleteModal(entry: File.File.File) {
+        if (!ensureCurrentUserFileEditor(entry.id, "delete this file")) {
+            return;
+        }
+
         deleteTarget = entry;
         closeContextMenu();
     }
@@ -581,6 +665,10 @@
     async function confirmDelete() {
         const target = deleteTarget;
         if (!target) {
+            return;
+        }
+
+        if (!ensureCurrentUserFileEditor(target.id, "delete this file")) {
             return;
         }
 
@@ -648,7 +736,7 @@
     <div class="w-full {isTarget && dropPosition === 'before' ? 'border-t-2 border-primary' : ''} {isTarget && dropPosition === 'after' ? 'border-b-2 border-primary' : ''}">
         <div
             class="group/file flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-base-300 {isTarget && dropPosition === 'inside' ? 'bg-primary/20' : ''} {$selectedFile?.id === entry.id ? 'bg-base-300/70' : ''}"
-            draggable="true"
+            draggable={isCurrentUserFileEditor(entry.id)}
             ondragstart={(e) => handleDragStart(e, entry.id)}
             ondragover={(e) => handleDragOver(e, entry)}
             ondrop={(e) => handleDrop(e, entry.id)}
@@ -771,7 +859,8 @@
                 <li>
                     <button
                         onclick={() => openRename(contextMenuEntry)}
-                        disabled={!$canManageWorkspaceFiles}
+                        disabled={!contextMenuEntryIsEditor}
+                        title={getContextMenuActionBlockedReason(contextMenuEntry.id)}
                     >
                         Change name
                     </button>
@@ -779,8 +868,8 @@
                 <li>
                     <button
                         onclick={() => openIconPicker(contextMenuEntry)}
-                        disabled={!$canManageWorkspaceFiles}
-                        title={!$canManageWorkspaceFiles ? "Active workspace subscription required" : undefined}
+                        disabled={Boolean(getContextMenuActionBlockedReason(contextMenuEntry.id, true))}
+                        title={getContextMenuActionBlockedReason(contextMenuEntry.id, true)}
                     >
                         {contextMenuEntry.icon ? 'Change icon' : 'Add icon'}
                     </button>
@@ -788,13 +877,22 @@
                 <li>
                     <button
                         onclick={() => openWalperPicker(contextMenuEntry)}
-                        disabled={!$canManageWorkspaceFiles}
-                        title={!$canManageWorkspaceFiles ? "Active workspace subscription required" : undefined}
+                        disabled={Boolean(getContextMenuActionBlockedReason(contextMenuEntry.id, true))}
+                        title={getContextMenuActionBlockedReason(contextMenuEntry.id, true)}
                     >
                         {contextMenuEntry.walper ? 'Change walper' : 'Add walper'}
                     </button>
                 </li>
-                <li><button class="text-error" onclick={() => openDeleteModal(contextMenuEntry)}>Delete</button></li>
+                <li>
+                    <button
+                        class="text-error"
+                        onclick={() => openDeleteModal(contextMenuEntry)}
+                        disabled={!contextMenuEntryIsEditor}
+                        title={getContextMenuActionBlockedReason(contextMenuEntry.id)}
+                    >
+                        Delete
+                    </button>
+                </li>
             {/if}
         </ul>
     </div>

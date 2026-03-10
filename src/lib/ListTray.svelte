@@ -82,8 +82,8 @@
         if (isReadOnly) {
             setAlert(
                 'warning',
-                'Active workspace subscription required',
-                'Cannot add list points because this workspace has no active subscription.'
+                'File is read-only',
+                'Cannot add list points because you do not have edit access for this file.'
             );
             return;
         }
@@ -316,8 +316,8 @@
                         event.preventDefault();
                         setAlert(
                             'warning',
-                            'Active workspace subscription required',
-                            'Cannot add list points because this workspace has no active subscription.'
+                            'File is read-only',
+                            'Cannot add list points because you do not have edit access for this file.'
                         );
                     }}
                 >

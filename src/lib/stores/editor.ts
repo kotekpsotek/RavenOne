@@ -29,6 +29,7 @@ export const editor = (() => {
 
     const store = {
         subscribe,
+        update,
         selectFile(file: File.File.File) {
             const content = normalizeContent(file.content);
             activeFileId = file.id;

@@ -247,30 +247,54 @@ export const selectedWorkspace = (() => {
     }
 
     if (browser) {
-        const interfaceCollab = get(collaborationInterface);
-
-        interfaceCollab?.onJoinWorkspace((workspaceId, user) => {
-            if (!isSelectedWorkspaceEvent(workspaceId)) {
-                return;
-            }
-
-            workspaceCollabs.update((collaborators) => {
-                if (collaborators.some((collaborator) => collaborator.id === user.id)) {
-                    return collaborators;
+        const registerWorkspaceCollaborationListeners = (
+            interfaceCollab: NonNullable<ReturnType<typeof collaborationInterface.getInterface>>
+        ) => {
+            interfaceCollab.onJoinWorkspace((workspaceId, user) => {
+                if (!isSelectedWorkspaceEvent(workspaceId)) {
+                    return;
                 }
 
-                return [...collaborators, user];
-            });
-        });
+                workspaceCollabs.update((collaborators) => {
+                    if (collaborators.some((collaborator) => collaborator.id === user.id)) {
+                        return collaborators;
+                    }
 
-        interfaceCollab?.onLeaveWorkspace((workspaceId, user) => {
-            if (!isSelectedWorkspaceEvent(workspaceId)) {
+                    return [...collaborators, user];
+                });
+            });
+
+            interfaceCollab.onLeaveWorkspace((workspaceId, user) => {
+                if (!isSelectedWorkspaceEvent(workspaceId)) {
+                    return;
+                }
+
+                workspaceCollabs.update((collaborators) =>
+                    collaborators.filter((collaborator) => collaborator.id !== user.id)
+                );
+            });
+
+            const selectedWorkspaceState = get(store);
+            if (selectedWorkspaceState) {
+                interfaceCollab.sendJoinWorkspace(selectedWorkspaceState.id);
+            }
+        };
+
+        queueMicrotask(() => {
+            const existingInterface = collaborationInterface.getInterface();
+            if (existingInterface) {
+                registerWorkspaceCollaborationListeners(existingInterface);
                 return;
             }
 
-            workspaceCollabs.update((collaborators) =>
-                collaborators.filter((collaborator) => collaborator.id !== user.id)
-            );
+            const unsubscribe = collaborationInterface.subscribe((interfaceCollab) => {
+                if (!interfaceCollab) {
+                    return;
+                }
+
+                registerWorkspaceCollaborationListeners(interfaceCollab);
+                unsubscribe();
+            });
         });
     }
     
@@ -296,7 +320,22 @@ export const selectedWorkspace = (() => {
 
             if (value) {
                 // Join new workspace
-                interfaceCollab?.sendJoinWorkspace(value.id);
+                if (interfaceCollab) {
+                    interfaceCollab.sendJoinWorkspace(value.id);
+                } else {
+                    const targetWorkspaceId = value.id;
+                    const unsubscribe = collaborationInterface.subscribe((readyInterface) => {
+                        if (!readyInterface) {
+                            return;
+                        }
+
+                        if (get(store)?.id === targetWorkspaceId) {
+                            readyInterface.sendJoinWorkspace(targetWorkspaceId);
+                        }
+
+                        unsubscribe();
+                    });
+                }
             }
         },
         update: (updater: (currentWorkspace: WorkspaceEntry | undefined) => WorkspaceEntry | undefined) => {

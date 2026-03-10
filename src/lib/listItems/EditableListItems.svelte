@@ -526,6 +526,7 @@
                 <AIAnswersList
                     aiAnswers={item.answers}
                     itemId={item.id}
+                    isReadOnly={isEditingDisabled}
                 />
             {/if}
         </div>
