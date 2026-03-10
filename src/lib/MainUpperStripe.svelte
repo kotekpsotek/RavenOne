@@ -18,6 +18,7 @@
     import { playableDocumentsAndListsWithPoints } from "./stores/playModeStore";
     import { isFilePlayable } from "./listItems/utils";
     import SaveFile from "./components/SaveFile.svelte";
+    import CollaboratorsOfFile from "./collaboration/CollaboratorsOfFile.svelte";
     import { shareFileRequest } from "./files/connections/connections";
     import { File } from "@ravenlens/shared";
     import { canManageWorkspaceFiles } from "./stores/subscription";
@@ -346,6 +347,7 @@
     >
         <div class="right-side flex items-center gap-2">
             <SaveFile/>
+            <CollaboratorsOfFile />
         </div>
 
         <div 
