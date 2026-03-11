@@ -307,7 +307,7 @@ export const selectedWorkspace = (() => {
             // Leaves previously selected workspace
             const workspaceBefore = get(store);
             if (workspaceBefore && workspaceBefore.id !== workspace?.id) {
-                collab?.sendLeaveWorkspace(workspaceBefore.id);
+                collab?.sendLeaveWorkspace(workspaceBefore.id, success => !success ? console.error("Cannot leave workspace: ", workspaceBefore.id) : undefined);
             }
 
             // Joins new workspace
@@ -316,7 +316,7 @@ export const selectedWorkspace = (() => {
                 persistSelectedWorkspaceId(workspace.id);
 
                 // Join to workspace
-                collab?.sendJoinWorkspace(workspace.id);
+                collab?.sendJoinWorkspace(workspace.id, success => !success ? console.error("Cannot join workspace: ", workspace.id) : undefined);
             }
 
             // Selects new workspace

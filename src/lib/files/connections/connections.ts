@@ -11,7 +11,7 @@ export type ShareFileResponse = {
 
 export async function downloadFilesRequest(workspaceId: string) {
     return await requestFilesApi<FilesDownloadResponse>(
-        "/files/api/download",
+        "/files/api/download/files",
         "POST",
         {
             workspaceId

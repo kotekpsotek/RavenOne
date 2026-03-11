@@ -3,9 +3,9 @@ import {
     loadWorkspaceEntries,
     parseJsonBody,
     requireWorkspaceAccess
-} from "../server-utils";
+} from "../../server-utils";
 import { json } from "@sveltejs/kit";
-import type { RequestHandler } from "./$types";
+import type { RequestHandler } from "../$types";
 
 type DownloadFilesRequestBody = {
     workspaceId?: unknown;

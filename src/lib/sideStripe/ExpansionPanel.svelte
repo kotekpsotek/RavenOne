@@ -1,7 +1,7 @@
 <script lang="ts">
     import { goto } from "$app/navigation";
     import { UI } from "@ravenlens/frontend";
-    import { entriesList, moveEntry, selectedFile } from "$lib/stores/files";
+    import { entriesList, isFileDownloading, moveEntry, selectedFile } from "$lib/stores/files";
     import { canManageWorkspaceFiles, workspaceSubscriptionCheckInProgress } from "$lib/stores/subscription";
     import { selectedWorkspace } from "$lib/stores/workspace";
     import Icon from "@iconify/svelte";
@@ -12,10 +12,12 @@
     import { onMount } from "svelte";
     import { get } from "svelte/store";
     import { Collabortation, File } from "@ravenlens/shared";
-    import { collaborationInterface, entriesCollaborators } from "$lib/stores/collaboration";
+    import { collaborationInterface, entriesCollaborators, onHandleJoinFile, onHandleLeaveFile } from "$lib/stores/collaboration";
     import { userProfile } from "$lib/stores/user";
     import { changeFilePositionRequest, changeIconFileRequest, changeWalperFileRequest, deleteFileRequest, downloadFilesRequest, newFileRequest, renameFileRequest } from "$lib/files/connections/connections";
     import type { DropPosition } from "$lib/files/utils";
+    import { fetchAuthenticated } from "$lib/utils/fetch";
+    import { editor } from "$lib/stores/editor";
  
     let { isExpanded = false }: { isExpanded?: boolean } = $props();
     function getCurrentWorkspaceId(): string | null {
@@ -126,7 +128,7 @@
             return;
         }
 
-        collab.sendJoinFile(entry);
+        collab.sendJoinFile(entry, onHandleJoinFile);
         contextMenuJoinedFileId = entry.id;
     }
 
@@ -147,7 +149,7 @@
             return;
         }
 
-        collaborationInterface.getInterface()?.sendLeaveFile(joinedFile);
+        collaborationInterface.getInterface()?.sendLeaveFile(joinedFile, onHandleLeaveFile);
     }
 
     function ensureActiveWorkspaceSubscription(operationName: string): boolean {
@@ -265,9 +267,6 @@
 
         const fullEntiresInOneScope = get(entriesList).flatMap(getEntiresToOneScope);
         const targetEntry = fullEntiresInOneScope.find(entry => entry.id === targetId);
-        
-        // 
-        collaborationInterface.getInterface()?.sendNewFile(newFile, targetEntry);
     }
 
     function getNextName(entries: File.File.File[], type: 'Task') {
@@ -355,14 +354,6 @@
                 );
                 if (moveResult) {
                     moveEntry(sourceId, targetId, nextDropPosition);
-
-                    if (targetId) {
-                        const relocatedFile = findFileById(get(entriesList), sourceId);
-                        const targetFile = findFileById(get(entriesList), targetId);
-                        if (relocatedFile && targetFile) {
-                            collaborationInterface.getInterface()?.sendRelocateFile(relocatedFile, targetFile);
-                        }
-                    }
                 }
             }
         }
@@ -536,9 +527,6 @@
         })));
 
         const renamedFile = findFileById(get(entriesList), fileId);
-        if (renamedFile) {
-            collaborationInterface.getInterface()?.sendRenameFile(renamedFile, nextName);
-        }
 
         renamingId = null;
         releaseContextMenuFileJoin();
@@ -602,11 +590,6 @@
             icon: normalizedIconValue
         })));
 
-        const updatedFile = findFileById(get(entriesList), entryId);
-        if (updatedFile) {
-            collaborationInterface.getInterface()?.sendIconChangeFile(updatedFile, normalizedIconValue || null);
-        }
-
         if ($selectedFile?.id === entryId) {
             document.dispatchEvent(new CustomEvent("file-icon-change:leftstripe", {
                 detail: {
@@ -648,11 +631,6 @@
             ...entry,
             icon: undefined
         })));
-
-        const updatedFile = findFileById(get(entriesList), entryId);
-        if (updatedFile) {
-            collaborationInterface.getInterface()?.sendIconChangeFile(updatedFile, null);
-        }
 
         if ($selectedFile?.id === entryId) {
             document.dispatchEvent(new CustomEvent("file-icon-change:leftstripe", {
@@ -716,11 +694,6 @@
             walper: walperValue
         })));
 
-        const updatedFile = findFileById(get(entriesList), entryId);
-        if (updatedFile) {
-            collaborationInterface.getInterface()?.sendWallperChangeFile(updatedFile, walperValue || null);
-        }
-
         if ($selectedFile?.id === entryId) {
             $selectedFile = {
                 ...$selectedFile,
@@ -760,11 +733,6 @@
             ...entry,
             walper: undefined
         })));
-
-        const updatedFile = findFileById(get(entriesList), entryId);
-        if (updatedFile) {
-            collaborationInterface.getInterface()?.sendWallperChangeFile(updatedFile, null);
-        }
 
         if ($selectedFile?.id === entryId) {
             $selectedFile = {
@@ -810,8 +778,6 @@
             return;
         }
 
-        collaborationInterface.getInterface()?.sendDeleteFile(target);
-
         entriesList.update((list) => removeFileById(list, target.id));
 
         if ($selectedFile?.id === target.id) {
@@ -825,12 +791,37 @@
 
     function onEntryClick(entry: File.File.File) {
         return async () => {
-            // await goto("/");
+            await goto("/");
             closeContextMenu({ keepJoinedFile: true });
             selectedFile.selectFile(entry);
 
             if (contextMenuJoinedFileId === entry.id) {
                 contextMenuJoinedFileId = null;
+            }
+
+            // Download the freshest file
+            const downloadTimeout = setTimeout(() => {
+                $isFileDownloading = true;
+            }, 400);
+
+            try {
+                const fileDownloadingResponse = await fetchAuthenticated("/files/api/download/file", {
+                    method: "POST",
+                    body: JSON.stringify({ workspaceId: $selectedWorkspace?.id, fileId: entry.id })
+                });
+    
+                if (fileDownloadingResponse.ok) {
+                    const body = await fileDownloadingResponse.json() as { file: File.File.File | undefined, ok: boolean };
+                    
+                    if (body.ok && body.file) {
+                        $selectedFile = body.file;
+                    }
+                }
+            }
+            catch {}
+            finally {
+                clearTimeout(downloadTimeout);
+                $isFileDownloading = false;
             }
         }
     }

@@ -3,7 +3,7 @@
     import { derived } from "svelte/store";
     import { EditorContent } from "svelte-tiptap";
     import { editor } from "./stores/editor";
-    import { selectedFile } from "./stores/files";
+    import { isFileDownloading, selectedFile } from "./stores/files";
     import { isCurrentUserSelectedFileEditor } from "./stores/collaboration";
     import { workspaceHasActiveSubscription, workspaceSubscriptionCheckInProgress } from "./stores/subscription";
     import { isWorkspaceInAddition } from "./stores/workspace";
@@ -63,8 +63,22 @@
                     </div>
                 {/if}
 
-                <EditorContent editor={$editor} class="tiptap-editor" />
-                <ListTray isReadOnly={!$canEditSelectedFileContent}/>
+                {#if $isFileDownloading}
+                    <div class="w-full h-full flex flex-col gap-2">
+                        <div class="skeleton h-4 w-28"></div>
+                        <div class="skeleton h-4 w-[200px]"></div>
+                        <div class="skeleton h-4 w-full"></div>
+                        <div class="skeleton h-4 w-full"></div>
+                        <div class="skeleton h-4 w-[400px]"></div>
+                        <div class="skeleton h-4 w-1/2"></div>
+                        <div class="skeleton h-4 w-full"></div>
+                        <div class="skeleton h-4 w-[200px]"></div>
+                        <div class="skeleton h-4 w-[150px]"></div>
+                    </div>
+                {:else}
+                    <EditorContent editor={$editor} class="tiptap-editor" />
+                    <ListTray isReadOnly={!$canEditSelectedFileContent}/>
+                {/if}
             </div>
         {/if}
     {:else}

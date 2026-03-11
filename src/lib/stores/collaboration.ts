@@ -163,3 +163,36 @@ export const fileCollaborators = (() => {
         }
     };
 })();
+
+export const onHandleLeaveFile: Collabortation.SuccessCallback = (success) => {
+    if (!success) {
+        console.error(`Cannot leave file`);
+    }
+}
+
+export const onHandleJoinFile: Collabortation.CollabsCallback = (success, collabs, fileId) => {
+    if (!success) {
+        console.error(`Cannot join file`);
+        return [];
+    }
+
+    console.log('Joined file: ', fileId, collabs)
+    
+    // Download the file collaborators and setups as the collaborators of current file
+    if (fileId) {
+        entriesCollaborators.update(entriesCollabs => {
+            return entriesCollabs.map(collabOfEntry => {
+                if (collabOfEntry.fileId === fileId) {
+                    return {
+                        ...collabOfEntry,
+                        collaborators: collabs
+                    }
+                } 
+
+                return collabOfEntry;
+            });
+        })
+    }
+    
+    return collabs;
+}

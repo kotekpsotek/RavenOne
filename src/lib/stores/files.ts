@@ -5,7 +5,7 @@ import { get, writable } from "svelte/store";
 import { File } from "@ravenlens/shared";
 import { selectedWorkspace } from "./workspace";
 import { canManageWorkspaceFiles } from "./subscription";
-import { collaborationInterface, entriesCollaborators, isCurrentUserSelectedFileEditor, isUserEditorForFile, setSelectedFileIdInCollaboration } from "./collaboration";
+import { collaborationInterface, entriesCollaborators, isCurrentUserSelectedFileEditor, isUserEditorForFile, onHandleJoinFile, onHandleLeaveFile, setSelectedFileIdInCollaboration } from "./collaboration";
 import type { Collab } from "../../../../../packages/shared/dist/collaboration/collab";
 import { userProfile } from "./user";
 
@@ -41,6 +41,7 @@ export const entriesList = (() => {
 })();
 /** Access saving state -> 'true' when file is actually saving, 'false' when is not */
 export const isFileSaving = writable<boolean>(false);
+export const isFileDownloading = writable<boolean>(false);
 
 // File
 export const selectedFile = (() => {
@@ -292,27 +293,17 @@ export const selectedFile = (() => {
             unsavedFiles.flushPendingFilesOnExit(get(store));
         };
 
-        const sendUnsavedFilesChangedToAllClients = (collab: Collab | undefined) => {
-            const unsavedFilesListLocal = get(unsavedFiles);
-            for (const { file } of unsavedFilesListLocal) {
-                collab?.sendFileChanged(file);
-            }
-        };
-
         function onPageHide() {
             //
             const collaborationInterfaceLocal = collaborationInterface.getInterface();
 
-            // Emit all files as changed before flushing the event
-            sendUnsavedFilesChangedToAllClients(collaborationInterfaceLocal);
-            
             // Save the queued file
             flushPendingOnPageLeave();
 
             // Leave file -> if was selected
             const selectedFileLocal = get(selectedFile);
             if (selectedFileLocal) {
-                collaborationInterfaceLocal?.sendLeaveFile(selectedFileLocal);
+                collaborationInterfaceLocal?.sendLeaveFile(selectedFileLocal, onHandleLeaveFile);
             }
         }
         
@@ -334,12 +325,6 @@ export const selectedFile = (() => {
                 const currentFileFromPreviousWorkspace = currentFile && getWorkspaceIdFromFile(currentFile) === activeWorkspaceId
                     ? currentFile
                     : undefined;
-
-                // Collab obtain
-                const collaborationInterfaceLocal = collaborationInterface.getInterface();
-                    
-                // Emit all files as changed before flushing the event
-                sendUnsavedFilesChangedToAllClients(collaborationInterfaceLocal);
 
                 // Clears unsaved files
                 void unsavedFiles
@@ -400,7 +385,7 @@ export const selectedFile = (() => {
             // User leaves the prior file
             const fileBefore = get(store);
             if (fileBefore && fileBefore.id !== file?.id) {
-                collab?.sendLeaveFile(fileBefore);
+                collab?.sendLeaveFile(fileBefore, onHandleLeaveFile);
 
                 // Clears collaborators of leaved file
                 entriesCollaborators.update(entriesCollabs => {
@@ -416,27 +401,7 @@ export const selectedFile = (() => {
 
             // User join new file
             if (file && file.id !== fileBefore?.id) {
-                collab?.sendJoinFile(file);
-
-                // Download the file collaborators and setups as the collaborators of current file
-                if (file) {
-                    // Download the collaborators from selected file -> among them is user himself
-                    collab?.getCollabsFromFile(file)
-                        .then(collabs => {
-                            entriesCollaborators.update(entriesCollabs => {
-                                return entriesCollabs.map(collabOfEntry => {
-                                    if (collabOfEntry.fileId === file.id) {
-                                        return {
-                                            ...collabOfEntry,
-                                            collaborators: collabs
-                                        }
-                                    } 
-    
-                                    return collabOfEntry;
-                                });
-                            })
-                        });
-                }
+                collab?.sendJoinFile(file, onHandleJoinFile);
             }
 
             // Setup the file
@@ -455,11 +420,11 @@ export const selectedFile = (() => {
 
             if (didSwitchFile && options.emitPresenceOnFileSwitch !== false) {
                 if (priorFile) {
-                    collab?.sendLeaveFile(priorFile);
+                    collab?.sendLeaveFile(priorFile, onHandleLeaveFile);
                 }
 
                 if (afterFile) {
-                    collab?.sendJoinFile(afterFile);
+                    collab?.sendJoinFile(afterFile, onHandleJoinFile);
                 }
             }
 
@@ -480,10 +445,6 @@ export const selectedFile = (() => {
             if (options.queueUnsaved !== false) {
                 // Schedule only persisted changes (content/lists) for autosave.
                 unsavedFiles.addNew([constructUnsavedFile(afterFile, Date.now())]);
-            }
-
-            if (options.emitFileChanged !== false) {
-                collab?.sendFileChanged(afterFile);
             }
         },
         updateFileListItems(spawnedListId: string, items: File.File.EditableListItem[]): Promise<boolean> {
@@ -532,7 +493,6 @@ export const selectedFile = (() => {
 
             if (afterFile && priorPersistedState !== afterPersistedState) {
                 unsavedFiles.addNew([constructUnsavedFile(afterFile, Date.now())]);
-                collab?.sendFileChanged(afterFile);
             }
 
             return Promise.resolve(true);
