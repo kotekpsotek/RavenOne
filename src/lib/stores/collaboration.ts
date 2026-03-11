@@ -19,7 +19,7 @@ export function setSelectedFileIdInCollaboration(fileId: string | undefined): vo
     selectedFileId.set(fileId);
 }
 
-function isUserEditorForFile(
+export function isUserEditorForFile(
     entries: FileCollaboratorsEntry[],
     fileId: string | null | undefined,
     userId: string | null | undefined

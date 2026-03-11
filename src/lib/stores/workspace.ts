@@ -236,6 +236,36 @@ function onWorkspaceSelectionStateChange(isOpen: boolean) {
     });
 }
 
+interface WorkspaceSwitchEventData {
+    oldWorkspace: WorkspaceEntry | undefined;
+    newWorkspace: WorkspaceEntry | undefined;
+}
+
+export class SwitchWorkspaceEvent {
+    static EventName = "Change-Workspace";
+
+    static emit(oldWorkspace: WorkspaceEntry | undefined, newWorkspace: WorkspaceEntry | undefined) {
+        document.dispatchEvent(
+            new CustomEvent(
+                SwitchWorkspaceEvent.EventName,
+                {
+                    detail: {
+                        oldWorkspace,
+                        newWorkspace
+                    } satisfies WorkspaceSwitchEventData
+                }
+            )
+        )
+    }
+
+    static listen(handler: (oldWorkspace: WorkspaceEntry | undefined, newWorkspace: WorkspaceEntry | undefined) => any | Promise<any>) {
+        document.addEventListener(SwitchWorkspaceEvent.EventName, async ev => {
+            const { detail } = ev as CustomEvent<WorkspaceSwitchEventData>;
+            await handler(detail.oldWorkspace, detail.newWorkspace);
+        });
+    }
+}
+
 export const selectedWorkspace = (() => {
     const store = writable<WorkspaceEntry | undefined>(undefined);
     const { set, update, subscribe } = store;
@@ -316,6 +346,10 @@ export const selectedWorkspace = (() => {
             if (workspaceStateBefore) {
                 // Leave old workspace
                 interfaceCollab?.sendLeaveWorkspace(workspaceStateBefore.id);
+            }
+
+            if (workspaceStateBefore?.id !== value?.id) {
+                SwitchWorkspaceEvent.emit(workspaceStateBefore, value);
             }
 
             if (value) {

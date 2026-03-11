@@ -255,6 +255,19 @@
         }
 
         entriesList.update((list) => addToTarget(list));
+
+        function getEntiresToOneScope(value: File.File.File): File.File.File[] {
+            return [
+                value,
+                ...((value.subentries ? value.subentries.flatMap(getEntiresToOneScope) : []) as File.File.File[])
+            ]
+        }
+
+        const fullEntiresInOneScope = get(entriesList).flatMap(getEntiresToOneScope);
+        const targetEntry = fullEntiresInOneScope.find(entry => entry.id === targetId);
+        
+        // 
+        collaborationInterface.getInterface()?.sendNewFile(newFile, targetEntry);
     }
 
     function getNextName(entries: File.File.File[], type: 'Task') {

@@ -5,8 +5,9 @@ import { get, writable } from "svelte/store";
 import { File } from "@ravenlens/shared";
 import { selectedWorkspace } from "./workspace";
 import { canManageWorkspaceFiles } from "./subscription";
-import { collaborationInterface, setSelectedFileIdInCollaboration } from "./collaboration";
+import { collaborationInterface, entriesCollaborators, isCurrentUserSelectedFileEditor, isUserEditorForFile, setSelectedFileIdInCollaboration } from "./collaboration";
 import type { Collab } from "../../../../../packages/shared/dist/collaboration/collab";
+import { userProfile } from "./user";
 
 /** Entries */
 export const entriesList = (() => {
@@ -181,7 +182,17 @@ export const selectedFile = (() => {
             const filesToSave = dedupeUnsavedFiles(files);
             const filesGroupedByWorkspace = new Map<string, UnsavedFile[]>();
 
+            const userProfileLocal = get(userProfile);
+            if (!userProfileLocal) {
+                return false;
+            }
+
             for (const candidate of filesToSave) {
+                // Ignores file when user isn't file editor
+                if (!isUserEditorForFile(get(entriesCollaborators), candidate.file.id, userProfileLocal.id)) {
+                    continue;
+                }
+                
                 const workspaceId = getWorkspaceIdFromFile(candidate.file) ?? requestedWorkspaceId;
                 if (!workspaceId) {
                     continue;
@@ -432,10 +443,31 @@ export const selectedFile = (() => {
                     priorFile
                 );
             }
+
             
             // Emit user join to file
             if (didSwitchFile && file) {
+                // Join new file
                 collab?.sendJoinFile(file);
+                
+                // Download the file collaborators and setups as the collaborators of current file
+                if (file) {
+                    collab?.getCollabsFromFile(file)
+                        .then(collabs => {
+                            entriesCollaborators.update(entriesCollabs => {
+                                return entriesCollabs.map(collabOfEntry => {
+                                    if (collabOfEntry.fileId === file.id) {
+                                        return {
+                                            ...collabOfEntry,
+                                            collaborators: collabs
+                                        }
+                                    } 
+    
+                                    return collabOfEntry;
+                                });
+                            })
+                        });
+                }
             }
 
             // Setup new file version
