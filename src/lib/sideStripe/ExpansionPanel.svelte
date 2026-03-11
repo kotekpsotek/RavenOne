@@ -17,7 +17,7 @@
     import { changeFilePositionRequest, changeIconFileRequest, changeWalperFileRequest, deleteFileRequest, downloadFilesRequest, newFileRequest, renameFileRequest } from "$lib/files/connections/connections";
     import type { DropPosition } from "$lib/files/utils";
     import { fetchAuthenticated } from "$lib/utils/fetch";
-    import { editor } from "$lib/stores/editor";
+    import { isCollaboratorEditor } from "../../../../../packages/shared/dist/collaboration/collab";
  
     let { isExpanded = false }: { isExpanded?: boolean } = $props();
     function getCurrentWorkspaceId(): string | null {
@@ -88,7 +88,7 @@
     let draggedId = $state<string | null>(null);
     let dropTargetId = $state<string | null>(null);
     let dropPosition = $state<DropPosition>(null);
-    let contextMenu = $state<{ entryId: string; x: number; y: number } | null>(null);
+    let contextMenu = $state<{ entry: File.File.File; x: number; y: number } | null>(null);
     let renamingId = $state<string | null>(null);
     let renameValue = $state('');
     let deleteTarget = $state<File.File.File | null>(null);
@@ -99,7 +99,7 @@
     let expandedEntries = $state<Record<string, boolean>>({});
     let contextMenuJoinedFileId = $state<string | null>(null);
     let contextMenuElement = $state<HTMLDivElement | null>(null);
-    let contextMenuEntry = $derived(contextMenu ? findFileById($entriesList, contextMenu.entryId) : null);
+    let contextMenuEntry = $derived(contextMenu ? findFileById($entriesList, contextMenu.entry.id) : null);
     let contextMenuEntryIsEditor = $derived(contextMenuEntry ? isCurrentUserFileEditor(contextMenuEntry.id) : false);
 
     function isFileEditorLockedByAnotherUser(fileId: string): boolean {
@@ -467,7 +467,7 @@
         return null;
     }
 
-    function onEntryContextMenu(e: MouseEvent, entry: File.File.File) {
+    async function onEntryContextMenu(e: MouseEvent, entry: File.File.File) {
         e.preventDefault();
         e.stopPropagation();
 
@@ -477,14 +477,35 @@
 
         tryJoinFileFromContextMenu(entry);
 
+        await new Promise((res) => {
+            collaborationInterface.getInterface()
+                ?.sendContextMenuLock(entry, (success) => {
+                    if (!success) {
+                        console.warn('Cannot lock context menu since other user is locking');
+                        res(false);
+                    }
+
+                    res(true);
+                });
+        })
+
         contextMenu = {
-            entryId: entry.id,
+            entry: entry,
             x: e.clientX,
             y: e.clientY
         };
     }
 
     function closeContextMenu(options: { keepJoinedFile?: boolean } = {}) {
+        if (contextMenu?.entry) {
+            collaborationInterface.getInterface()
+                ?.sendContextMenuUnlock(contextMenu.entry, (success) => {
+                    if (!success) {
+                        console.warn('Cannot unlock context menu since other user is locking');
+                    }
+                });
+        }
+        
         const hadContextMenu = contextMenu !== null;
         contextMenu = null;
 
@@ -1021,43 +1042,51 @@
     >
         <ul class="menu dropdown-content z-[1] w-52 rounded-box border border-base-300 bg-base-100 p-2 shadow-xl">
             {#if contextMenuEntry}
-                <li>
-                    <button
-                        onclick={() => openRename(contextMenuEntry)}
-                        disabled={!contextMenuEntryIsEditor}
-                        title={getContextMenuActionBlockedReason(contextMenuEntry.id)}
-                    >
-                        Change name
-                    </button>
-                </li>
-                <li>
-                    <button
-                        onclick={() => openIconPicker(contextMenuEntry)}
-                        disabled={Boolean(getContextMenuActionBlockedReason(contextMenuEntry.id, true))}
-                        title={getContextMenuActionBlockedReason(contextMenuEntry.id, true)}
-                    >
-                        {contextMenuEntry.icon ? 'Change icon' : 'Add icon'}
-                    </button>
-                </li>
-                <li>
-                    <button
-                        onclick={() => openWalperPicker(contextMenuEntry)}
-                        disabled={Boolean(getContextMenuActionBlockedReason(contextMenuEntry.id, true))}
-                        title={getContextMenuActionBlockedReason(contextMenuEntry.id, true)}
-                    >
-                        {contextMenuEntry.walper ? 'Change walper' : 'Add walper'}
-                    </button>
-                </li>
-                <li>
-                    <button
-                        class="text-error"
-                        onclick={() => openDeleteModal(contextMenuEntry)}
-                        disabled={!contextMenuEntryIsEditor}
-                        title={getContextMenuActionBlockedReason(contextMenuEntry.id)}
-                    >
-                        Delete
-                    </button>
-                </li>
+                {#await collaborationInterface.getInterface()?.getCollabsFromFile(contextMenuEntry)}
+                    <div>
+                        Loading...
+                    </div>
+                {:then collabs}
+                    {@const areBtnsDisabled = collabs?.length && collabs.some(collab => collab.id !== $userProfile?.id && isCollaboratorEditor(collab)) ? true : false}
+                
+                    <li>
+                        <button
+                            onclick={() => openRename(contextMenuEntry)}
+                            disabled={areBtnsDisabled}
+                            title={getContextMenuActionBlockedReason(contextMenuEntry.id)}
+                        >
+                            Change name
+                        </button>
+                    </li>
+                    <li>
+                        <button
+                            onclick={() => openIconPicker(contextMenuEntry)}
+                            disabled={areBtnsDisabled}
+                            title={getContextMenuActionBlockedReason(contextMenuEntry.id, true)}
+                        >
+                            {contextMenuEntry.icon ? 'Change icon' : 'Add icon'}
+                        </button>
+                    </li>
+                    <li>
+                        <button
+                            onclick={() => openWalperPicker(contextMenuEntry)}
+                            disabled={areBtnsDisabled}
+                            title={getContextMenuActionBlockedReason(contextMenuEntry.id, true)}
+                        >
+                            {contextMenuEntry.walper ? 'Change walper' : 'Add walper'}
+                        </button>
+                    </li>
+                    <li>
+                        <button
+                            class="text-error"
+                            onclick={() => openDeleteModal(contextMenuEntry)}
+                            disabled={areBtnsDisabled}
+                            title={getContextMenuActionBlockedReason(contextMenuEntry.id)}
+                        >
+                            Delete
+                        </button>
+                    </li>
+                {/await}
             {/if}
         </ul>
     </div>

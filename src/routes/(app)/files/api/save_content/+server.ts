@@ -113,7 +113,6 @@ export const POST: RequestHandler = async ({ request, cookies, fetch }) => {
             file: fileEntry,
             workspaceId: workspaceId
         });
-        console.log('Access', hasNotUserAccessResponse)
         if (hasNotUserAccessResponse) {
             return hasNotUserAccessResponse;
         }

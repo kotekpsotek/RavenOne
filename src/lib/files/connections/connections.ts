@@ -1,7 +1,7 @@
 import { type DropPosition, type FilesDownloadResponse } from "../utils";
 import { File } from "@ravenlens/shared";
 import { requestFilesApi } from "./common";
-import type { PlayRequestBody } from "../../../routes/(app)/play/play.types";
+// import type { PlayRequestBody } from "../../../routes/(app)/play/play.types";
 
 export type ShareFileResponse = {
     shareUrl?: string;
@@ -142,7 +142,7 @@ export async function shareFileRequest(workspaceId: string, fileId: string) {
     );
 }
 
-export async function playRequest(requestBody: PlayRequestBody) {
+/* export async function playRequest(requestBody: PlayRequestBody) {
     return requestFilesApi<PlayRequestBody>(
         "/play",
         "POST",
@@ -150,4 +150,4 @@ export async function playRequest(requestBody: PlayRequestBody) {
         "Play failed",
         "Cannot play the entity"
     )
-}
+} */

@@ -53,7 +53,7 @@ export async function hasUserEditorFileAccess(
         workspaceId: options.workspaceId
     });
     if (!hasEditorGradeAccess) {
-        return json({ message: "You've no access to save file: " + options.file.name, ok: false }, { status: 400 });
+        return json({ type: "collaboration_file", message: "You've no access to save file: " + options.file.name, ok: false }, { status: 400 });
     }
 
     return undefined

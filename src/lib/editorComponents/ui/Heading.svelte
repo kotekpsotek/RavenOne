@@ -7,12 +7,14 @@
 	import WallpaperSelectionModal from "$lib/modals/WallpaperSelectionModal.svelte";
 	import IconValue from "$lib/IconValue.svelte";
 	import { workspaceHasActiveSubscription, workspaceSubscriptionCheckInProgress } from "$lib/stores/subscription";
-	import { collaborationInterface, isCurrentUserSelectedFileEditor } from "$lib/stores/collaboration";
+	import { collaborationInterface, entriesCollaborators, isCurrentUserSelectedFileEditor, isUserEditorForFile } from "$lib/stores/collaboration";
     import { entriesList, selectedFile } from "$lib/stores/files";
 	import { setAlert } from "$lib/utils/alert";
     import { changeIconFileRequest, changeWalperFileRequest, renameFileRequest } from "$lib/files/connections/connections";
     import { selectedWorkspace } from "$lib/stores/workspace";
     import { isSharingModeOn } from "$lib/stores/share";
+    import { get } from "svelte/store";
+    import { userProfile } from "$lib/stores/user";
 
 	let { node, updateAttributes, editor, getPos }: NodeViewProps = $props();
 
@@ -250,18 +252,24 @@
 				return;
 			}
 
+			if (!isUserEditorForFile(get(entriesCollaborators), selectedFileId, get(userProfile)!.id)) {
+				return false;
+			}
+
 			// Update selected file
 			selectedFile.update(current => (current ? { ...current, name: nextHeading } : current));
-
+			
 			// Update file content remotelly
-			const renameResult = await renameFileRequest(
-				workspaceId,
-				selectedFileId,
-				nextHeading
-			);
-
-			if (!renameResult) {
-				return;
+			if ($isCurrentUserSelectedFileEditor) {
+				const renameResult = await renameFileRequest(
+					workspaceId,
+					selectedFileId,
+					nextHeading
+				);
+	
+				if (!renameResult) {
+					return;
+				}
 			}
 
 			// Update the file on entires list
@@ -276,10 +284,6 @@
 			const updatedFile = $selectedFile?.id === selectedFileId
 				? { ...$selectedFile, name: nextHeading }
 				: undefined;
-
-			if (updatedFile) {
-				collaborationInterface.getInterface()?.sendRenameFile(updatedFile, nextHeading);
-			}
 
 			if (nextHeading !== lastCommittedHeading) {
 				lastCommittedHeading = nextHeading;
@@ -351,13 +355,6 @@
 		updateAttributes({ walper: normalizedWalper });
 		syncSelectedFileWalper(normalizedWalper);
 
-		collaborationInterface
-			.getInterface()
-			?.sendWallperChangeFile(
-				{ ...selectedFileLocal, walper: normalizedWalper || undefined },
-				normalizedWalper || null
-			);
-
 		isWallpaperPickerOpen = false;
 	}
 
@@ -379,10 +376,6 @@
 
 		updateAttributes({ walper: "" });
 		syncSelectedFileWalper("");
-
-		collaborationInterface
-			.getInterface()
-			?.sendWallperChangeFile({ ...selectedFileLocal, walper: undefined }, null);
 
 		isWallpaperPickerOpen = false;
 	}
@@ -419,10 +412,6 @@
 		updateAttributes({ icon: normalizedIcon });
 		syncSelectedFileIcon(normalizedIcon);
 
-		collaborationInterface
-			.getInterface()
-			?.sendIconChangeFile({ ...selectedFileLocal, icon: normalizedIcon || undefined }, normalizedIcon || null);
-
 		isIconPickerOpen = false;
 	}
 
@@ -444,10 +433,6 @@
 
 		updateAttributes({ icon: "" });
 		syncSelectedFileIcon("");
-
-		collaborationInterface
-			.getInterface()
-			?.sendIconChangeFile({ ...selectedFileLocal, icon: undefined }, null);
 
 		isIconPickerOpen = false;
 	}

@@ -5,9 +5,10 @@ import type { AI } from "@ravenlens/shared";
 import { get, writable } from "svelte/store";
 import { File } from "@ravenlens/shared";
 import { selectedWorkspace } from "./workspace";
-import { collaborationInterface, entriesCollaborators, onHandleJoinFile, onHandleLeaveFile, setSelectedFileIdInCollaboration } from "./collaboration";
+import { collaborationInterface, entriesCollaborators, isUserEditorForFile, onHandleJoinFile, onHandleLeaveFile, setSelectedFileIdInCollaboration } from "./collaboration";
 import type { Collab } from "../../../../../packages/shared/dist/collaboration/collab";
 import { isSharedRoute } from "./share";
+import { userProfile } from "./user";
 
 /** Entries */
 export const entriesList = (() => {
@@ -111,6 +112,10 @@ export const selectedFile = (() => {
             return false;
         }
 
+        if (!isUserEditorForFile(get(entriesCollaborators), fileToSave.id, get(userProfile)!.id)) {
+            return false;
+        }
+
         isFileSaving.set(true);
 
         try {
@@ -130,10 +135,11 @@ export const selectedFile = (() => {
             );
 
             if (!backendCall.ok) {
+                const potentialType = (await backendCall.json());
                 const errorMessage = await extractErrorMessage(backendCall);
                 console.error(errorMessage);
 
-                if (options.showFailureAlert !== false) {
+                if (options.showFailureAlert !== false && (!potentialType.type || potentialType.type !== "collaboration_file")) {
                     setAlert("error", "Cannot save file", errorMessage);
                 }
 
