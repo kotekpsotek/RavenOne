@@ -20,7 +20,7 @@
 </script>
 
 
-<div class="relative w-full h-full min-h-0 overflow-hidden">
+<div class="relative w-full h-full h-full overflow-hidden">
     <!-- Workspace Addition -->
     <AddWorkspace 
         bind:open={$isWorkspaceInAddition}

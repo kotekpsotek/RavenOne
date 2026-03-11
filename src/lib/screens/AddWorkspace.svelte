@@ -143,7 +143,7 @@
 </script>
 
 {#if open}
-    <div class="relative">
+    <div class="relative h-full">
         <div class={!canCreateWorkspace ? "pointer-events-none opacity-60" : ""}>
             <UI.Workspace.Management.AddWorkspaceScreen
                 bind:open
