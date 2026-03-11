@@ -15,55 +15,7 @@ export const entriesList = (() => {
 
     if (browser) {
         const registerEntryListeners = (interfaceCollab: NonNullable<ReturnType<typeof collaborationInterface.getInterface>>) => {
-            interfaceCollab.onNewFile((file) => {
-                entriesStore.update(entries => [...entries, file]);
-            });
-
-            interfaceCollab.onRemovedFile((file) => {
-                entriesStore.update(entries => {
-                    const removeById = (items: File.File.File[]): File.File.File[] => {
-                        return items
-                            .filter(item => item.id !== file.id)
-                            .map(item => ({
-                                ...item,
-                                subentries: item.subentries ? removeById(item.subentries) : undefined
-                            }));
-                    };
-                    return removeById(entries);
-                });
-            });
-
-            interfaceCollab.onRelocatedFile((file, target, relocatedByUser) => {
-                moveEntry(file.id, target.id, "inside");
-            });
-
-            interfaceCollab.onRenamedFile((file, renambedByUser, newName) => {
-                patchFileById(file.id, {
-                    ...file,
-                    name: newName
-                });
-            });
-
-            interfaceCollab.onWalperChangedFile((file, wallpaperUrl) => {
-                patchFileById(file.id, {
-                    ...file,
-                    walper: wallpaperUrl ?? undefined
-                });
-            });
-
-            interfaceCollab.onIconChangedFile((file, icon) => {
-                patchFileById(file.id, {
-                    ...file,
-                    icon: icon ?? undefined
-                });
-            });
-
-            interfaceCollab.onFileChanged((file) => {
-                patchFileById(file.id, file, {
-                    queueUnsaved: false,
-                    emitFileChanged: false
-                });
-            });
+            
         };
 
         // Delay access to collaborationInterface to avoid TDZ during circular module initialization.
@@ -428,13 +380,7 @@ export const selectedFile = (() => {
             const priorFile = get(store);
             const didSwitchFile = priorFile?.id !== file?.id;
             const shouldFlushPreviousFile = Boolean(priorFile && didSwitchFile);
-            const collab = collaborationInterface.getInterface();
 
-            // User leaves the prior file
-            if (didSwitchFile && priorFile) {
-                collab?.sendLeaveFile(priorFile);
-            }
-            
             if (shouldFlushPreviousFile && priorFile) {
                 // Ensure old file is included and flushed before focus moves away.
                 unsavedFiles.addNew([constructUnsavedFile(priorFile, Date.now())]);
@@ -444,14 +390,37 @@ export const selectedFile = (() => {
                 );
             }
 
+            // Setup new file version
+            store.set(file);
+        },
+        /** Selection of file with addition as joined file */
+        selectFile(file: FileType) {
+            const collab = collaborationInterface.getInterface();
             
-            // Emit user join to file
-            if (didSwitchFile && file) {
-                // Join new file
+            // User leaves the prior file
+            const fileBefore = get(store);
+            if (fileBefore && fileBefore.id !== file?.id) {
+                collab?.sendLeaveFile(fileBefore);
+
+                // Clears collaborators of leaved file
+                entriesCollaborators.update(entriesCollabs => {
+                    return entriesCollabs.map(collabOfEntry => {
+                        if (collabOfEntry.fileId === fileBefore.id) {
+                            return undefined;
+                        } 
+
+                        return collabOfEntry;
+                    }).filter(entry => entry !== undefined);
+                });
+            }
+
+            // User join new file
+            if (file && file.id !== fileBefore?.id) {
                 collab?.sendJoinFile(file);
-                
+
                 // Download the file collaborators and setups as the collaborators of current file
                 if (file) {
+                    // Download the collaborators from selected file -> among them is user himself
                     collab?.getCollabsFromFile(file)
                         .then(collabs => {
                             entriesCollaborators.update(entriesCollabs => {
@@ -470,7 +439,7 @@ export const selectedFile = (() => {
                 }
             }
 
-            // Setup new file version
+            // Setup the file
             store.set(file);
         },
         update(updater: (file: FileType) => FileType, options: UpdateOptions = {}) {

@@ -827,7 +827,7 @@
         return async () => {
             await goto("/");
             closeContextMenu({ keepJoinedFile: true });
-            $selectedFile = entry;
+            selectedFile.selectFile(entry);
 
             if (contextMenuJoinedFileId === entry.id) {
                 contextMenuJoinedFileId = null;

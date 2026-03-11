@@ -53,14 +53,14 @@ function createCollaborationInterface(profile: Profile, tokenJwt: string): Colla
 
 export const collaborationInterface = (() => {
     const store = writable<Collabortation.Collab | undefined>(undefined);
-    const storeSetup = {
-        ...store,
-        getInterface() {
-            return get(store);
-        }
-    };
 
-    const initializeInterface = (profile: Profile | undefined, tokenJwt: string): boolean => {
+    const initializeInterface = (profile: Profile | undefined): boolean => {
+        const tokenJwt = JWTAuth.getToken();
+        if (!tokenJwt) {
+            console.error("Token JWT doesn't exist");
+            return false;
+        }
+
         if (!profile || get(store)) {
             return false;
         }
@@ -69,20 +69,37 @@ export const collaborationInterface = (() => {
         return true;
     };
 
-    if (browser) {
-        const tokenJwt = JWTAuth.getToken();
-        if (!tokenJwt) {
-            return storeSetup;
-        }
+    const storeSetup = {
+        ...store,
+        getInterface() {
+            let interfaceCollab = get(store);
+            if (!interfaceCollab) {
+                const profile = get(userProfile);
+                if (!profile) {
+                    throw("Cannot initialize interface since user-profile is undefined");
+                }
+                
+                const initTry = initializeInterface(profile);
+                if (!initTry) {
+                    throw("Cannot initialize collaboration service interface");
+                }
 
+                interfaceCollab = get(store);
+            }
+
+            return interfaceCollab;
+        }
+    };
+
+    if (browser) {
         if (!env.PUBLIC_SOCKET_IO_COLLABORATION_SERVICE_URL) {
             console.error("Cannot setup collaboration service due to: Connection env variable isn't specified");
             return storeSetup;
         }
 
-        if (!initializeInterface(get(userProfile), tokenJwt)) {
+        if (!initializeInterface(get(userProfile))) {
             const unsubscribe = userProfile.subscribe((userProfileLocal) => {
-                if (!initializeInterface(userProfileLocal, tokenJwt)) {
+                if (!initializeInterface(userProfileLocal)) {
                     return;
                 }
 
@@ -91,7 +108,10 @@ export const collaborationInterface = (() => {
         }
     }
 
-    return storeSetup;
+    return {
+        ...storeSetup,
+        initializeInterface
+    };
 })();
 
 /** Is the list of collaborators from currently selected workspace */
@@ -99,95 +119,6 @@ export const workspaceCollabs = writable<Collabortation.CollabUser[]>([]);
 
 export const entriesCollaborators = (() => {
     const collabsFiles = writable<FileCollaboratorsEntry[]>([]);
-
-    if (browser) {
-        const registerEntriesCollaboratorsListeners = (interfaceCollab: NonNullable<ReturnType<typeof collaborationInterface.getInterface>>) => {
-            interfaceCollab.onJoinFile((file, user) => {
-                collabsFiles.update((state) => {
-                    const fileEntry = state.find((candidate) => candidate.fileId === file.id);
-                    if (!fileEntry) {
-                        return [...state, { fileId: file.id, collaborators: [user] }];
-                    }
-
-                    if (fileEntry.collaborators.some((collaborator) => collaborator.id === user.id)) {
-                        return state;
-                    }
-
-                    return state.map((entry) => {
-                        if (entry.fileId !== file.id) {
-                            return entry;
-                        }
-
-                        return {
-                            ...entry,
-                            collaborators: [...entry.collaborators, user]
-                        };
-                    });
-                });
-            });
-
-            interfaceCollab.onLeaveFile((file, user) => {
-                collabsFiles.update((state) => {
-                    return state.map((entry) => {
-                        if (entry.fileId !== file.id) {
-                            return entry;
-                        }
-
-                        return {
-                            ...entry,
-                            collaborators: entry.collaborators.filter((collaborator) => collaborator.id !== user.id)
-                        };
-                    });
-                });
-            });
-
-            interfaceCollab.onNewEditorGradeUser((file, user) => {
-                collabsFiles.update((state) => {
-                    return state.map((entry) => {
-                        if (entry.fileId !== file.id) {
-                            return entry;
-                        }
-
-                        return {
-                            ...entry,
-                            collaborators: entry.collaborators.map((collaborator) => {
-                                if (collaborator.id === user.id) {
-                                    return {
-                                        ...collaborator,
-                                        isEditor: true
-                                    } as Collabortation.CollabEditor;
-                                }
-
-                                if (!Collabortation.isCollaboratorEditor(collaborator)) {
-                                    return collaborator;
-                                }
-
-                                const { isEditor, ...collaboratorWithoutEditorGrade } = collaborator as CollabEditor;
-                                return collaboratorWithoutEditorGrade as Collabortation.CollabUser;
-                            })
-                        };
-                    });
-                });
-            });
-        };
-
-        queueMicrotask(() => {
-            const existingInterface = collaborationInterface.getInterface();
-            if (existingInterface) {
-                registerEntriesCollaboratorsListeners(existingInterface);
-                return;
-            }
-
-            const unsubscribe = collaborationInterface.subscribe((interfaceCollab) => {
-                if (!interfaceCollab) {
-                    return;
-                }
-
-                registerEntriesCollaboratorsListeners(interfaceCollab);
-                unsubscribe();
-            });
-        });
-    }
 
     return {
         ...collabsFiles,

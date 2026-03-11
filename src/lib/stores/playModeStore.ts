@@ -2,7 +2,7 @@ import { browser } from "$app/environment";
 import { get, writable, type Updater } from "svelte/store";
 import { selectedFile } from "./files";
 import { findItemDirectSubitems } from "$lib/listItems/utils";
-import { playInFile, type PointResultEventPayload } from "$lib/play/connections";
+import { /* playInFile, */ type PointResultEventPayload } from "$lib/play/connections";
 import type { AI, File, Play } from "@ravenlens/shared";
 
 interface PlayableListItem extends Omit<File.File.EditableListItem, "answers"> {
@@ -344,7 +344,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
     if (browser) {
         let disconnectPointResultListener: (() => void) | undefined;
 
-        playInFile.subscribe(connection => {
+        /* playInFile.subscribe(connection => {
             disconnectPointResultListener?.();
             disconnectPointResultListener = undefined;
 
@@ -367,7 +367,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
                 attachPointAnswerToSelectedFile(ids.fileId, ids.pointId, payload.answer);
                 settlePointResultWaiter(ids.fileId, ids.pointId);
             });
-        });
+        }); */
     }
     /// experiment end
 
@@ -1004,7 +1004,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
                     ? createPlayFileTarget(selectedDocumentLocal, config, point.id)
                     : createPlayPointTarget(selectedDocumentLocal, point, config);
 
-                const playConnection = get(playInFile);
+                /* const playConnection = get(playInFile);
                 if (!playConnection) {
                     console.warn(`Cannot play point \"${point.id}\" because play connection is unavailable.`);
                 }
@@ -1012,7 +1012,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
                     const waitForPointResultTask = waitForPointResult(selectedDocumentLocal.id, point.id);
                     await playConnection.play(playTarget);
                     await waitForPointResultTask;
-                }
+                } */
 
                 if (!isPointPlayingInCurrentRun(point.id)) {
                     return "don-not-allow-to-play-childs";

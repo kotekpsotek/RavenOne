@@ -1,11 +1,12 @@
 import { get, writable } from "svelte/store";
 import { Workspace } from "@ravenlens/shared";
-import { userProfile as user } from "./user";
+import { userProfile as user, userProfile } from "./user";
 import type { ComponentProps } from "svelte";
 import type { UI } from "@ravenlens/frontend";
 import { browser } from "$app/environment";
 import { fetchAuthenticated } from "$lib/utils/fetch";
 import { collaborationInterface, workspaceCollabs } from "./collaboration";
+import { isSharedRoute } from "./share";
 
 type WorkspaceEntry = Workspace.Workspace.WorkspaceUserEntryLoaded;
 
@@ -159,22 +160,24 @@ function extractWorkspacesFromPayload(payload: unknown): WorkspaceEntry[] {
 
 function syncSelectedWorkspace(workspaces: WorkspaceEntry[]) {
     if (!workspaces.length) {
-        selectedWorkspace.set(undefined);
+        selectedWorkspace.selectWorkspace(undefined);
         return;
     }
 
     const currentSelectedWorkspace = get(selectedWorkspace);
-    const preferredWorkspaceId = currentSelectedWorkspace?.id ?? storedSelectedWorkspaceId;
+    const preferredWorkspaceId = currentSelectedWorkspace?.id ?? readSelectedWorkspaceIdFromStorage();
+    console.log('Pref', preferredWorkspaceId);
 
     if (preferredWorkspaceId) {
         const refreshedSelectedWorkspace = workspaces.find(workspace => workspace.id === preferredWorkspaceId);
         if (refreshedSelectedWorkspace) {
-            selectedWorkspace.set(refreshedSelectedWorkspace);
+            selectedWorkspace.selectWorkspace(refreshedSelectedWorkspace);
             return;
         }
     }
 
-    selectedWorkspace.set(workspaces[0]);
+    console.log('Select frst workspace')
+    selectedWorkspace.selectWorkspace(workspaces[0]);
 }
 
 async function downloadWorkspacesFromBackend(): Promise<WorkspaceEntry[]> {
@@ -270,107 +273,76 @@ export const selectedWorkspace = (() => {
     const store = writable<WorkspaceEntry | undefined>(undefined);
     const { set, update, subscribe } = store;
 
-    /** Helps to 'ingore members are joining to differnet workspace then selected' */
-    function isSelectedWorkspaceEvent(workspaceId: string) {
-        const selectedWorkspaceState = get(store);
-        return Boolean(selectedWorkspaceState && selectedWorkspaceState.id === workspaceId);
-    }
-
-    if (browser) {
-        const registerWorkspaceCollaborationListeners = (
-            interfaceCollab: NonNullable<ReturnType<typeof collaborationInterface.getInterface>>
-        ) => {
-            interfaceCollab.onJoinWorkspace((workspaceId, user) => {
-                if (!isSelectedWorkspaceEvent(workspaceId)) {
-                    return;
-                }
-
-                workspaceCollabs.update((collaborators) => {
-                    if (collaborators.some((collaborator) => collaborator.id === user.id)) {
-                        return collaborators;
-                    }
-
-                    return [...collaborators, user];
-                });
-            });
-
-            interfaceCollab.onLeaveWorkspace((workspaceId, user) => {
-                if (!isSelectedWorkspaceEvent(workspaceId)) {
-                    return;
-                }
-
-                workspaceCollabs.update((collaborators) =>
-                    collaborators.filter((collaborator) => collaborator.id !== user.id)
-                );
-            });
-
-            const selectedWorkspaceState = get(store);
-            if (selectedWorkspaceState) {
-                interfaceCollab.sendJoinWorkspace(selectedWorkspaceState.id);
-            }
-        };
-
-        queueMicrotask(() => {
-            const existingInterface = collaborationInterface.getInterface();
-            if (existingInterface) {
-                registerWorkspaceCollaborationListeners(existingInterface);
-                return;
-            }
-
-            const unsubscribe = collaborationInterface.subscribe((interfaceCollab) => {
-                if (!interfaceCollab) {
-                    return;
-                }
-
-                registerWorkspaceCollaborationListeners(interfaceCollab);
-                unsubscribe();
-            });
-        });
-    }
-    
     return {
         subscribe,
         set: (value: WorkspaceEntry | undefined) => {
             // Before workspace state
             const workspaceStateBefore = get(store);
-            const interfaceCollab = collaborationInterface.getInterface();
-
-            // Collaborators list is scoped to currently selected workspace.
-            workspaceCollabs.set([]);
 
             // Setup workspace and set to `localStorage`
             storedSelectedWorkspaceId = value?.id;
-            persistSelectedWorkspaceId(storedSelectedWorkspaceId);
             set(value);
-
-            if (workspaceStateBefore) {
-                // Leave old workspace
-                interfaceCollab?.sendLeaveWorkspace(workspaceStateBefore.id);
-            }
 
             if (workspaceStateBefore?.id !== value?.id) {
                 SwitchWorkspaceEvent.emit(workspaceStateBefore, value);
             }
-
-            if (value) {
-                // Join new workspace
-                if (interfaceCollab) {
-                    interfaceCollab.sendJoinWorkspace(value.id);
-                } else {
-                    const targetWorkspaceId = value.id;
-                    const unsubscribe = collaborationInterface.subscribe((readyInterface) => {
-                        if (!readyInterface) {
-                            return;
-                        }
-
-                        if (get(store)?.id === targetWorkspaceId) {
-                            readyInterface.sendJoinWorkspace(targetWorkspaceId);
-                        }
-
-                        unsubscribe();
-                    });
-                }
+        },
+        async selectWorkspace(workspace: WorkspaceEntry | undefined) {
+            if (!browser) {
+                return;
             }
+
+            const waitTillProfileLoaded = (intervalMs: number = 500, MAX_WAIT_PERIOD_MS: number = 20_000) => {
+                return new Promise((res, rej) => {
+                    let waitForMs = 0;
+                    const timer = setInterval(() => {
+                        const profile = get(userProfile);
+
+                        if (profile) {
+                            clearInterval(timer);
+                            res(true);
+                        }
+
+                        // 
+                        waitForMs += intervalMs;
+                        
+                        // 
+                        if (waitForMs >= MAX_WAIT_PERIOD_MS) {
+                            rej(`Cannot download the user profile in specified ${MAX_WAIT_PERIOD_MS} treshold. Increaase Treshold or check network connection`)
+                        }
+                    }, intervalMs);
+                })
+            };
+
+            // Wait for profile to be loaded
+            await waitTillProfileLoaded();
+            
+            // Sharing mode doesn't work for collaboration
+            const isSharedRouteLocal = get(isSharedRoute);
+            if (browser && isSharedRouteLocal) {
+                return;
+            }
+            
+            // Collab SRC Feature
+            const collab = collaborationInterface.getInterface();
+            
+            // Leaves previously selected workspace
+            const workspaceBefore = get(store);
+            if (workspaceBefore && workspaceBefore.id !== workspace?.id) {
+                collab?.sendLeaveWorkspace(workspaceBefore.id);
+            }
+
+            // Joins new workspace
+            if (workspace) {
+                // Save workspace for latter 
+                persistSelectedWorkspaceId(workspace.id);
+
+                // Join to workspace
+                collab?.sendJoinWorkspace(workspace.id);
+            }
+
+            // Selects new workspace
+            set(workspace);
         },
         update: (updater: (currentWorkspace: WorkspaceEntry | undefined) => WorkspaceEntry | undefined) => {
             update(currentWorkspace => {
@@ -388,22 +360,10 @@ export const isWorkspaceInAddition = writable<boolean>(false);
 export const isWorkspaceDownloadInProgress = writable<boolean>(false);
 
 if (browser) {
-    storedSelectedWorkspaceId = readSelectedWorkspaceIdFromStorage();
     isWorkspaceSelectionOpen.subscribe(onWorkspaceSelectionStateChange);
 
     // Resolve selected workspace from fresh backend payload instead of stale localStorage object snapshots.
-    void syncWorkspaces({
+    syncWorkspaces({
         showLoading: true
     });
-}
-
-/**
- * Checks whether user can add another workspace to workspaces list
-*/
-export function isAddNewWorkspaceBtnDisabled(): ComponentProps<UI.Workspace.WorkspaceTray>["newWorkspaceButtonDisabled"] {
-    const userState = get(user);
-
-    // TODO: Make the real check base on stores we've -> user has to have the subscription to do it
-
-    return false;
 }

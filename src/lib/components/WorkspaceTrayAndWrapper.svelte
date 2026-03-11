@@ -55,7 +55,7 @@
 
     function onSelectWorkspace(workspace: Workspace.Workspace.WorkspaceUserEntryLoaded) {
         return (ev?: Event) => {
-            $selectedWorkspace = workspace;
+            selectedWorkspace.selectWorkspace(workspace);
         };
     }
 

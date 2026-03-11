@@ -37,7 +37,7 @@
     }
 
     function onSelectSearchEntry(entry: File.File.File) {
-        $selectedFile = entry;
+        selectedFile.selectFile(entry);
         $isSearchModalOpen = false;
     }
     

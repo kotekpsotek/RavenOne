@@ -12,7 +12,8 @@ import { StandardTaskList } from "../editorComponents/components/StandardTaskLis
 import { StandardTaskItem } from "../editorComponents/components/StandardTaskItem.js";
 import { CodeSnippet } from "../editorComponents/components/CodeSnippet.js";
 import { File } from "@ravenlens/shared";
-import { collaborationInterface } from "./collaboration.js";
+import { collaborationInterface, isCurrentUserSelectedFileEditor } from "./collaboration.js";
+import { browser } from "$app/environment";
 
 function normalizeContent(content?: string): string {
     if (!content || !content.trim()) {
@@ -38,9 +39,11 @@ export const editor = (() => {
         }
     }
 
-    SwitchWorkspaceEvent.listen((oldWorkspace, newWorkspace) => {
-        clearTimer();
-    })
+    if (browser) {
+        SwitchWorkspaceEvent.listen((oldWorkspace, newWorkspace) => {
+            clearTimer();
+        })
+    }
     
     const store = {
         subscribe,
@@ -100,6 +103,15 @@ export const editor = (() => {
                         fileUpdationTimer = setTimeout(() => {
                             const currentFile = get(selectedFile);
                             const currentEditor = get(editorStore);
+                            const isCurrentUserSelectedFileEditorLocal = get(isCurrentUserSelectedFileEditor); 
+
+                            if (!isCurrentUserSelectedFileEditorLocal) {
+                                if (fileUpdationTimer) {
+                                    clearTimeout(fileUpdationTimer);
+                                };
+                                
+                                return;
+                            }
 
                             if (currentFile) {
                                 collaborationInterface.getInterface()?.sendFileChanged(
