@@ -67,6 +67,12 @@ export const selectedFile = (() => {
         return normalizedWorkspaceId.length ? normalizedWorkspaceId : undefined;
     }
 
+    const toCollabFileRef = (file: File.File.File): File.File.File => {
+        return {
+            id: file.id,
+        } as File.File.File;
+    }
+
     const getWorkspaceIdFromFile = (file?: FileType): string | undefined => {
         return normalizeWorkspaceId(file?.createdByAuthorId);
     }
@@ -303,7 +309,7 @@ export const selectedFile = (() => {
             // Leave file -> if was selected
             const selectedFileLocal = get(selectedFile);
             if (selectedFileLocal) {
-                collaborationInterfaceLocal?.sendLeaveFile(selectedFileLocal, onHandleLeaveFile);
+                collaborationInterfaceLocal?.sendLeaveFile(toCollabFileRef(selectedFileLocal), onHandleLeaveFile);
             }
         }
         
@@ -386,7 +392,7 @@ export const selectedFile = (() => {
             const fileBefore = get(store);
             if (fileBefore && fileBefore.id !== file?.id) {
                 if (!file) {
-                    collab?.sendLeaveFile(fileBefore, onHandleLeaveFile);
+                    collab?.sendLeaveFile(toCollabFileRef(fileBefore), onHandleLeaveFile);
                 }
 
                 // Clears collaborators of leaved file
@@ -403,7 +409,7 @@ export const selectedFile = (() => {
 
             // User join new file
             if (file && file.id !== fileBefore?.id) {
-                collab?.sendJoinFile(file, onHandleJoinFile);
+                collab?.sendJoinFile(toCollabFileRef(file), onHandleJoinFile);
             }
 
             // Setup the file
@@ -422,11 +428,11 @@ export const selectedFile = (() => {
 
             if (didSwitchFile && options.emitPresenceOnFileSwitch !== false) {
                 if (!afterFile && priorFile) {
-                    collab?.sendLeaveFile(priorFile, onHandleLeaveFile);
+                    collab?.sendLeaveFile(toCollabFileRef(priorFile), onHandleLeaveFile);
                 }
 
                 if (afterFile) {
-                    collab?.sendJoinFile(afterFile, onHandleJoinFile);
+                    collab?.sendJoinFile(toCollabFileRef(afterFile), onHandleJoinFile);
                 }
             }
 

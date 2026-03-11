@@ -128,8 +128,10 @@
             return;
         }
 
+        const fileReference = { id: entry.id } as File.File.File;
+
         void collab
-            .getCollabsFromFile(entry)
+            .getCollabsFromFile(fileReference)
             .then((collaborators) => {
                 entriesCollaborators.update((entries) => {
                     const existingEntryIndex = entries.findIndex((candidate) => candidate.fileId === entry.id);

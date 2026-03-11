@@ -159,9 +159,10 @@ export async function requireFileEditorCollaborator(
     operationName: string
 ): Promise<Response | null> {
     let isEditor = false;
+    const fileReference = { id: file.id } as FileEntry;
 
     try {
-        isEditor = await collaboration.amIEditorOfFile(file);
+        isEditor = await collaboration.amIEditorOfFile(fileReference);
     } catch (error) {
         console.error("Cannot validate file editor collaborator", error);
         return json(
