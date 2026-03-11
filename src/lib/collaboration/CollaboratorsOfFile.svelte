@@ -32,7 +32,7 @@
 	>
 		{#each visibleCollaborators as collaborator, index (collaborator.id)}
 			<div
-				class={`relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-base-300 ${
+				class={`relative flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-base-300 ${
 					index > 0 ? "-ml-3" : ""
 				} ${
 					isEditor(collaborator)

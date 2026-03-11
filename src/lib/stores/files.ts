@@ -1,13 +1,13 @@
 import { browser } from "$app/environment";
 import { fetchAuthenticated } from "$lib/utils/fetch";
+import { setAlert } from "$lib/utils/alert";
 import type { AI } from "@ravenlens/shared";
 import { get, writable } from "svelte/store";
 import { File } from "@ravenlens/shared";
 import { selectedWorkspace } from "./workspace";
-import { canManageWorkspaceFiles } from "./subscription";
-import { collaborationInterface, entriesCollaborators, isCurrentUserSelectedFileEditor, isUserEditorForFile, onHandleJoinFile, onHandleLeaveFile, setSelectedFileIdInCollaboration } from "./collaboration";
+import { collaborationInterface, entriesCollaborators, onHandleJoinFile, onHandleLeaveFile, setSelectedFileIdInCollaboration } from "./collaboration";
 import type { Collab } from "../../../../../packages/shared/dist/collaboration/collab";
-import { userProfile } from "./user";
+import { isSharedRoute } from "./share";
 
 /** Entries */
 export const entriesList = (() => {
@@ -46,15 +46,15 @@ export const isFileDownloading = writable<boolean>(false);
 // File
 export const selectedFile = (() => {
     type FileType = File.File.File | undefined;
-    type UnsavedFile = { file: NonNullable<File.File.File>; date: number };
-    type SaveFilesOptions = { keepalive?: boolean; workspaceId?: string };
+    type SaveSingleFileOptions = {
+        keepalive?: boolean;
+        showFailureAlert?: boolean;
+    };
     type UpdateOptions = {
         queueUnsaved?: boolean;
         emitFileChanged?: boolean;
         emitPresenceOnFileSwitch?: boolean;
     };
-
-    const AUTO_SAVE_INTERVAL_MS = 30_000;
 
     const store = writable<FileType>(undefined);
 
@@ -77,240 +77,133 @@ export const selectedFile = (() => {
         return normalizeWorkspaceId(file?.createdByAuthorId);
     }
 
-    const getPersistedStateSignature = (file?: FileType): string => {
-        if (!file) {
-            return "";
-        }
-
-        return JSON.stringify({
-            content: file.content ?? "",
-            lists: file.lists ?? []
-        });
-    }
-
     const syncEntryListWithFile = (file: File.File.File) => {
         entriesList.update(entries => updateEntryById(entries, file.id, file));
     }
 
-    const constructUnsavedFile = (file: File.File.File, dateTimestamp: number): UnsavedFile => {
-        return {
-            file: file,
-            date: dateTimestamp
+    const clearCollaboratorsForFile = (fileId: string): void => {
+        entriesCollaborators.update((entriesCollabs) => {
+            return entriesCollabs.filter((collabOfEntry) => collabOfEntry.fileId !== fileId);
+        });
+    }
+
+    const extractErrorMessage = async (response: Response): Promise<string> => {
+        try {
+            const body = await response.json() as { message?: unknown };
+            if (typeof body?.message === "string" && body.message.trim().length) {
+                return body.message;
+            }
+        } catch {
+            // Keep fallback message when response body cannot be parsed.
+        }
+
+        return `Cannot save file because of: ${response.status}`;
+    }
+
+    const saveSingleFileRequest = async (
+        fileToSave: NonNullable<FileType>,
+        options: SaveSingleFileOptions = {}
+    ): Promise<boolean> => {
+        const workspaceId = getWorkspaceIdFromFile(fileToSave)
+            ?? normalizeWorkspaceId(get(selectedWorkspace)?.id);
+
+        if (!workspaceId) {
+            if (options.showFailureAlert !== false) {
+                setAlert("error", "Cannot save file", "Workspace id is missing for the selected file.");
+            }
+
+            return false;
+        }
+
+        isFileSaving.set(true);
+
+        try {
+            const backendCall = await fetchAuthenticated(
+                `/files/api/save_content`,
+                {
+                    method: "POST",
+                    keepalive: options.keepalive,
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        workspaceId,
+                        file: fileToSave
+                    })
+                }
+            );
+
+            if (!backendCall.ok) {
+                const errorMessage = await extractErrorMessage(backendCall);
+                console.error(errorMessage);
+
+                if (options.showFailureAlert !== false) {
+                    setAlert("error", "Cannot save file", errorMessage);
+                }
+
+                return false;
+            }
+
+            return true;
+        } catch (error) {
+            console.error("Cannot save file because of:", error);
+
+            if (options.showFailureAlert !== false) {
+                setAlert("error", "Cannot save file", "Network error occurred while saving file.");
+            }
+
+            return false;
+        } finally {
+            isFileSaving.set(false);
         }
     }
 
-    const dedupeUnsavedFiles = (files: UnsavedFile[]): UnsavedFile[] => {
-        const newestFiles = new Map<string, UnsavedFile>();
+    const transitionSelection = async (nextFile: FileType): Promise<void> => {
+        const fileBefore = get(store);
+        const isShareRoute = get(isSharedRoute);
 
-        for (const candidate of files) {
-            const workspaceId = getWorkspaceIdFromFile(candidate.file) ?? "unknown";
-            const dedupeKey = `${workspaceId}:${candidate.file.id}`;
-            const newestCandidate = newestFiles.get(dedupeKey);
-
-            if (!newestCandidate || newestCandidate.date < candidate.date) {
-                newestFiles.set(dedupeKey, candidate);
-            }
+        if (fileBefore?.id === nextFile?.id) {
+            store.set(nextFile);
+            return;
         }
 
-        return [...newestFiles.values()];
+        if (fileBefore && !isShareRoute) {
+            saveSingleFileRequest(fileBefore, { showFailureAlert: true })
+                .finally(() => {
+                    collaborationInterface
+                        .getInterface()
+                        ?.sendLeaveFile(toCollabFileRef(fileBefore), onHandleLeaveFile);
+                });
+
+            clearCollaboratorsForFile(fileBefore.id);
+        }
+
+        if (nextFile && !isShareRoute) {
+            collaborationInterface
+                .getInterface()
+                ?.sendJoinFile(toCollabFileRef(nextFile), onHandleJoinFile);
+        }
+
+        store.set(nextFile);
     }
-
-    const unsavedFiles = (() => {
-        // Waiting list
-        const all = writable<UnsavedFile[]>([]);
-
-        const buildFilesToSave = (currentFile?: FileType): UnsavedFile[] => {
-            return dedupeUnsavedFiles([
-                ...get(all),
-                ...(currentFile ? [constructUnsavedFile(currentFile, Date.now())] : [])
-            ]);
-        }
-        
-        /**
-         * Save file by send to backend and after success remove from 'Waiting List' or console.error when file cannot be saved
-         * @param file - list with files will be send to save on backend
-         * @returns - status of operation
-        */
-        async function saveFiles(files: UnsavedFile[], options: SaveFilesOptions = {}): Promise<boolean> {
-            const canManageWorkspaceFilesLocal = get(canManageWorkspaceFiles);
-            if (!canManageWorkspaceFilesLocal) {
-                return false;
-            };
-            
-            const requestedWorkspaceId = normalizeWorkspaceId(options.workspaceId);
-            const filesToSave = dedupeUnsavedFiles(files);
-            const filesGroupedByWorkspace = new Map<string, UnsavedFile[]>();
-
-            const userProfileLocal = get(userProfile);
-            if (!userProfileLocal) {
-                return false;
-            }
-
-            for (const candidate of filesToSave) {
-                // Ignores file when user isn't file editor
-                if (!isUserEditorForFile(get(entriesCollaborators), candidate.file.id, userProfileLocal.id)) {
-                    continue;
-                }
-                
-                const workspaceId = getWorkspaceIdFromFile(candidate.file) ?? requestedWorkspaceId;
-                if (!workspaceId) {
-                    continue;
-                }
-
-                if (requestedWorkspaceId && requestedWorkspaceId !== workspaceId) {
-                    continue;
-                }
-
-                const normalizedCandidate = getWorkspaceIdFromFile(candidate.file)
-                    ? candidate
-                    : {
-                        ...candidate,
-                        file: {
-                            ...candidate.file,
-                            createdByAuthorId: workspaceId
-                        }
-                    };
-
-                const groupedFiles = filesGroupedByWorkspace.get(workspaceId) ?? [];
-                groupedFiles.push(normalizedCandidate);
-                filesGroupedByWorkspace.set(workspaceId, groupedFiles);
-            }
-
-            if (!filesGroupedByWorkspace.size) {
-                return true;
-            }
-
-            isFileSaving.set(true);
-            let isSuccess = true;
-
-            try {
-                for (const [workspaceId, workspaceFiles] of filesGroupedByWorkspace.entries()) {
-                    const backendCall = await fetchAuthenticated(
-                        `/files/api/save_content`,
-                        {
-                            method: "POST",
-                            keepalive: options.keepalive,
-                            headers: {
-                                "Content-Type": "application/json"
-                            },
-                            body: JSON.stringify({
-                                workspaceId,
-                                files: workspaceFiles
-                            })
-                        }
-                    );
-
-                    if (backendCall.status !== 200) {
-                        isSuccess = false;
-                        console.error(`Cannot save files because of: ${backendCall.status}`);
-                        continue;
-                    }
-
-                    const savedFileIds = (await backendCall.json()) as string[];
-                    const savedFileIdsSet = new Set(savedFileIds);
-
-                    // Remove saved files only from matching workspace.
-                    all.update(waitListFiles => {
-                        return waitListFiles.filter(waitListUnit => {
-                            const waitListWorkspaceId = getWorkspaceIdFromFile(waitListUnit.file);
-                            if (waitListWorkspaceId !== workspaceId) {
-                                return true;
-                            }
-
-                            return !savedFileIdsSet.has(waitListUnit.file.id);
-                        });
-                    });
-                }
-            } catch (error) {
-                isSuccess = false;
-                console.error("Cannot save files because of:", error);
-            }
-
-            finally {
-                // Reset saving state
-                isFileSaving.set(false);
-            }
-
-            // Status
-            return isSuccess;
-        }
-
-        async function flushPendingFiles(options: SaveFilesOptions = {}, currentFile?: FileType): Promise<boolean> {
-            return saveFiles(buildFilesToSave(currentFile), options);
-        }
-
-        function flushPendingFilesOnExit(currentFile?: FileType): void {
-            if (!get(all).length && !currentFile) {
-                return;
-            }
-
-            void flushPendingFiles({ keepalive: true }, currentFile);
-        }
-
-        function clear(workspaceId?: string) {
-            const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
-
-            if (!normalizedWorkspaceId) {
-                all.set([]);
-                return;
-            }
-
-            all.update(waitListFiles => {
-                return waitListFiles.filter(waitListUnit => getWorkspaceIdFromFile(waitListUnit.file) !== normalizedWorkspaceId);
-            });
-        }
-
-        function hasPending(workspaceId?: string): boolean {
-            const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
-            const pendingFiles = get(all);
-
-            if (!normalizedWorkspaceId) {
-                return pendingFiles.length > 0;
-            }
-
-            return pendingFiles.some(waitListUnit => getWorkspaceIdFromFile(waitListUnit.file) === normalizedWorkspaceId);
-        }
-
-        return {
-            ...all,
-            // Add files to waiting list
-            addNew(files: UnsavedFile[]) {
-                if (!files.length) {
-                    return;
-                }
-
-                all.update(storeFiles => [...storeFiles, ...files]);
-            },
-            // Manaually save the file
-            saveFiles,
-            flushPendingFiles,
-            flushPendingFilesOnExit,
-            clear,
-            hasPending,
-        }
-    })();
     
     if (browser) {
-        const flushPendingOnPageLeave = () => {
-            if (!unsavedFiles.hasPending()) {
+        function onPageHide() {
+            const selectedFileLocal = get(store);
+            if (!selectedFileLocal) {
                 return;
             }
 
-            unsavedFiles.flushPendingFilesOnExit(get(store));
-        };
-
-        function onPageHide() {
-            //
-            const collaborationInterfaceLocal = collaborationInterface.getInterface();
-
-            // Save the queued file
-            flushPendingOnPageLeave();
-
-            // Leave file -> if was selected
-            const selectedFileLocal = get(selectedFile);
-            if (selectedFileLocal) {
-                collaborationInterfaceLocal?.sendLeaveFile(toCollabFileRef(selectedFileLocal), onHandleLeaveFile);
-            }
+            saveSingleFileRequest(selectedFileLocal, {
+                keepalive: true,
+                showFailureAlert: false
+            })
+                .finally(() => {
+                    collaborationInterface
+                        .getInterface()
+                        ?.sendLeaveFile(toCollabFileRef(selectedFileLocal), onHandleLeaveFile);
+                    clearCollaboratorsForFile(selectedFileLocal.id);
+                });
         }
         
         window.addEventListener("pagehide", onPageHide);
@@ -320,103 +213,20 @@ export const selectedFile = (() => {
                 onPageHide();
             }
         });
-
-        let activeWorkspaceId = normalizeWorkspaceId(get(selectedWorkspace)?.id);
-
-        selectedWorkspace.subscribe(workspace => {
-            const nextWorkspaceId = normalizeWorkspaceId(workspace?.id);
-
-            if (activeWorkspaceId && activeWorkspaceId !== nextWorkspaceId) {
-                const currentFile = get(store);
-                const currentFileFromPreviousWorkspace = currentFile && getWorkspaceIdFromFile(currentFile) === activeWorkspaceId
-                    ? currentFile
-                    : undefined;
-
-                // Clears unsaved files
-                void unsavedFiles
-                    .flushPendingFiles({ keepalive: true, workspaceId: activeWorkspaceId }, currentFileFromPreviousWorkspace)
-                    .finally(() => {
-                        unsavedFiles.clear(activeWorkspaceId);
-                    });
-            }
-
-            // New workspace should always start with an empty waiting list.
-            if (nextWorkspaceId && activeWorkspaceId !== nextWorkspaceId) {
-                unsavedFiles.clear(nextWorkspaceId);
-            }
-
-            activeWorkspaceId = nextWorkspaceId;
-        });
-
-        // Interval loop to save all files and erase old
-        setInterval(async () => {
-            if (!unsavedFiles.hasPending()) {
-                return;
-            }
-
-            await unsavedFiles.flushPendingFiles();
-        }, AUTO_SAVE_INTERVAL_MS);
     }
     
     return {
         ...store,
-        /** Use this function to construct file ready to be passed to 'saveFiles' function */
-        constructUnsavedFile,
-        /** Use this to save file manually */
-        saveFiles: unsavedFiles.saveFiles,
-        /** Flush files waiting in queue */
-        flushPendingFiles: unsavedFiles.flushPendingFiles,
         /** Set file */
         set(file: FileType) {
-            const priorFile = get(store);
-            const didSwitchFile = priorFile?.id !== file?.id;
-            const shouldFlushPreviousFile = Boolean(priorFile && didSwitchFile);
-
-            if (shouldFlushPreviousFile && priorFile) {
-                // Ensure old file is included and flushed before focus moves away.
-                unsavedFiles.addNew([constructUnsavedFile(priorFile, Date.now())]);
-                void unsavedFiles.flushPendingFiles(
-                    { workspaceId: getWorkspaceIdFromFile(priorFile) },
-                    priorFile
-                );
-            }
-
-            // Setup new file version
-            store.set(file);
+            transitionSelection(file);
         },
         /** Selection of file with addition as joined file */
         selectFile(file: FileType) {
-            const collab = collaborationInterface.getInterface();
-            
-            // User leaves the prior file
-            const fileBefore = get(store);
-            if (fileBefore && fileBefore.id !== file?.id) {
-                collab?.sendLeaveFile(toCollabFileRef(fileBefore), onHandleLeaveFile);
-
-                // Clears collaborators of leaved file
-                entriesCollaborators.update(entriesCollabs => {
-                    return entriesCollabs.map(collabOfEntry => {
-                        if (collabOfEntry.fileId === fileBefore.id) {
-                            return undefined;
-                        } 
-
-                        return collabOfEntry;
-                    }).filter(entry => entry !== undefined);
-                });
-            }
-
-            // User join new file
-            if (file && file.id !== fileBefore?.id) {
-                collab?.sendJoinFile(toCollabFileRef(file), onHandleJoinFile);
-            }
-
-            // Setup the file
-            store.set(file);
+            transitionSelection(file);
         },
         update(updater: (file: FileType) => FileType, options: UpdateOptions = {}) {
             const priorFile = get(store);
-            const priorPersistedState = getPersistedStateSignature(priorFile);
-            const collab = collaborationInterface.getInterface();
             
             // Updater
             store.update(updater);
@@ -425,38 +235,31 @@ export const selectedFile = (() => {
             const didSwitchFile = priorFile?.id !== afterFile?.id;
 
             if (didSwitchFile && options.emitPresenceOnFileSwitch !== false) {
-                if (priorFile) {
-                    collab?.sendLeaveFile(toCollabFileRef(priorFile), onHandleLeaveFile);
-                }
+                (async () => {
+                    if (priorFile) {
+                        saveSingleFileRequest(priorFile, { showFailureAlert: true })
+                            .finally(() => {
+                                collaborationInterface
+                                    .getInterface()
+                                    ?.sendLeaveFile(toCollabFileRef(priorFile), onHandleLeaveFile);
+                                clearCollaboratorsForFile(priorFile.id);
+                            })
+                    }
 
-                if (afterFile) {
-                    collab?.sendJoinFile(toCollabFileRef(afterFile), onHandleJoinFile);
-                }
+                    if (afterFile) {
+                        collaborationInterface
+                            .getInterface()
+                            ?.sendJoinFile(toCollabFileRef(afterFile), onHandleJoinFile);
+                    }
+                })();
             }
 
             if (afterFile) {
                 // Keep explorer tree in sync with selected file changes (also nested entries).
                 syncEntryListWithFile(afterFile);
             }
-
-            if (!afterFile || !priorFile || priorFile.id !== afterFile.id) {
-                return;
-            }
-
-            const afterPersistedState = getPersistedStateSignature(afterFile);
-            if (priorPersistedState === afterPersistedState) {
-                return;
-            }
-
-            if (options.queueUnsaved !== false) {
-                // Schedule only persisted changes (content/lists) for autosave.
-                unsavedFiles.addNew([constructUnsavedFile(afterFile, Date.now())]);
-            }
         },
         updateFileListItems(spawnedListId: string, items: File.File.EditableListItem[]): Promise<boolean> {
-            const priorFile = get(store);
-            const priorPersistedState = getPersistedStateSignature(priorFile);
-            const collab = collaborationInterface.getInterface();
             let wasUpdated = false;
 
             store.update(file => {
@@ -493,12 +296,6 @@ export const selectedFile = (() => {
             const afterFile = get(store);
             if (afterFile) {
                 syncEntryListWithFile(afterFile);
-            }
-
-            const afterPersistedState = getPersistedStateSignature(afterFile);
-
-            if (afterFile && priorPersistedState !== afterPersistedState) {
-                unsavedFiles.addNew([constructUnsavedFile(afterFile, Date.now())]);
             }
 
             return Promise.resolve(true);

@@ -191,8 +191,6 @@ export const onHandleJoinFile: Collabortation.CollabsCallback = (success, collab
         return [];
     }
 
-    console.log('Joined file: ', fileId, collabs, get(userProfile))
-    
     // Download the file collaborators and setups as the collaborators of current file
     if (fileId) {
         entriesCollaborators.update(entriesCollabs => {

@@ -7,9 +7,9 @@ import {
     moveFileEntry,
     parseJsonBody,
     persistWorkspaceEntries,
-    requireFileEditorCollaborator,
     requireWorkspaceAccess,
-    type MovePosition
+    type MovePosition,
+    hasUserEditorFileAccess
 } from "../server-utils";
 import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
@@ -72,18 +72,14 @@ export const PUT: RequestHandler = async ({ request, cookies, fetch }) => {
         return collaboration;
     }
 
-    try {
-        const editorAccessFailure = await requireFileEditorCollaborator(
-            collaboration,
-            sourceFile,
-            "change file position"
-        );
-
-        if (editorAccessFailure) {
-            return editorAccessFailure;
-        }
-    } finally {
-        collaboration.io.disconnect();
+    const hasNotUserAccessResponse = await hasUserEditorFileAccess({
+        request,
+        cookies,
+        file: sourceFile,
+        workspaceId: workspaceId
+    });
+    if (hasNotUserAccessResponse) {
+        return hasNotUserAccessResponse;
     }
 
     const moveResult = moveFileEntry(workspaceEntries, sourceId, targetId, requestBody.position);

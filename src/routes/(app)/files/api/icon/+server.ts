@@ -6,9 +6,9 @@ import {
     loadWorkspaceEntries,
     parseJsonBody,
     persistWorkspaceEntries,
-    requireFileEditorCollaborator,
     requireWorkspaceAccess,
-    updateFileById
+    updateFileById,
+    hasUserEditorFileAccess
 } from "../server-utils";
 import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
@@ -58,18 +58,14 @@ export const PUT: RequestHandler = async ({ request, cookies, fetch }) => {
         return collaboration;
     }
 
-    try {
-        const editorAccessFailure = await requireFileEditorCollaborator(
-            collaboration,
-            fileEntry,
-            "change file icon"
-        );
-
-        if (editorAccessFailure) {
-            return editorAccessFailure;
-        }
-    } finally {
-        collaboration.io.disconnect();
+    const hasNotUserAccessResponse = await hasUserEditorFileAccess({
+        request,
+        cookies,
+        file: fileEntry,
+        workspaceId: workspaceId
+    });
+    if (hasNotUserAccessResponse) {
+        return hasNotUserAccessResponse;
     }
 
     const normalizedIcon = iconCandidate?.trim() || undefined;

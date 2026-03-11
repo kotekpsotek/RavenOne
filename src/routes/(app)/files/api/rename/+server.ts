@@ -2,10 +2,10 @@ import {
     asNonEmptyString,
     createFileCollaboration,
     findFileById,
+    hasUserEditorFileAccess,
     loadWorkspaceEntries,
     parseJsonBody,
     persistWorkspaceEntries,
-    requireFileEditorCollaborator,
     requireWorkspaceAccess,
     updateFileById
 } from "../server-utils";
@@ -55,18 +55,14 @@ export const PUT: RequestHandler = async ({ request, cookies, fetch }) => {
         return collaboration;
     }
 
-    try {
-        const editorAccessFailure = await requireFileEditorCollaborator(
-            collaboration,
-            fileEntry,
-            "rename this file"
-        );
-
-        if (editorAccessFailure) {
-            return editorAccessFailure;
-        }
-    } finally {
-        collaboration.io.disconnect();
+    const hasNotUserAccessResponse = await hasUserEditorFileAccess({
+        request,
+        cookies,
+        file: fileEntry,
+        workspaceId: workspaceId
+    });
+    if (hasNotUserAccessResponse) {
+        return hasNotUserAccessResponse;
     }
 
     const updateResult = updateFileById(workspaceEntries, fileId, (entry) => {

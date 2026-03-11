@@ -2,10 +2,10 @@ import {
     asNonEmptyString,
     createFileCollaboration,
     findFileById,
+    hasUserEditorFileAccess,
     loadWorkspaceEntries,
     parseJsonBody,
     persistWorkspaceEntries,
-    requireFileEditorCollaborator,
     requireWorkspaceAccess,
     updateFileById
 } from "../server-utils";
@@ -15,12 +15,7 @@ import type { RequestHandler } from "./$types";
 
 type SaveContentRequestBody = {
     workspaceId?: unknown;
-    files?: unknown;
-};
-
-type SaveFileEnvelope = {
     file?: unknown;
-    date?: unknown;
 };
 
 type IncomingFilePayload = {
@@ -31,20 +26,11 @@ type IncomingFilePayload = {
 
 type FileUpdate = {
     fileId: string;
-    date: number;
     content: string;
     lists: File.File.SpawnedList[];
 };
 
 const EMPTY_FILE_CONTENT = "<p></p>";
-
-function normalizeDate(dateCandidate: unknown): number {
-    if (typeof dateCandidate === "number" && Number.isFinite(dateCandidate)) {
-        return dateCandidate;
-    }
-
-    return Date.now();
-}
 
 function normalizeLists(listsCandidate: unknown): File.File.SpawnedList[] {
     if (!Array.isArray(listsCandidate)) {
@@ -66,39 +52,23 @@ function normalizeFileContent(contentCandidate: unknown): string {
     return contentCandidate;
 }
 
-function buildFileUpdates(filesCandidate: unknown): FileUpdate[] | null {
-    if (!Array.isArray(filesCandidate)) {
+function buildFileUpdate(fileCandidate: unknown): FileUpdate | null {
+    if (!fileCandidate || typeof fileCandidate !== "object") {
         return null;
     }
 
-    const updates: FileUpdate[] = [];
+    const filePayload = fileCandidate as IncomingFilePayload;
 
-    for (const envelopeCandidate of filesCandidate) {
-        if (!envelopeCandidate || typeof envelopeCandidate !== "object") {
-            return null;
-        }
-
-        const envelope = envelopeCandidate as SaveFileEnvelope;
-        if (!envelope.file || typeof envelope.file !== "object") {
-            return null;
-        }
-
-        const filePayload = envelope.file as IncomingFilePayload;
-
-        const fileId = asNonEmptyString(filePayload.id);
-        if (!fileId) {
-            return null;
-        }
-
-        updates.push({
-            fileId,
-            date: normalizeDate(envelope.date),
-            content: normalizeFileContent(filePayload.content),
-            lists: normalizeLists(filePayload.lists)
-        });
+    const fileId = asNonEmptyString(filePayload.id);
+    if (!fileId) {
+        return null;
     }
 
-    return updates;
+    return {
+        fileId,
+        content: normalizeFileContent(filePayload.content),
+        lists: normalizeLists(filePayload.lists)
+    };
 }
 
 export const POST: RequestHandler = async ({ request, cookies, fetch }) => {
@@ -112,27 +82,10 @@ export const POST: RequestHandler = async ({ request, cookies, fetch }) => {
         return json({ ok: false, message: "workspaceId is required" }, { status: 400 });
     }
 
-    const incomingUpdates = buildFileUpdates(requestBody.files);
-    if (!incomingUpdates) {
-        return json({ ok: false, message: "files has to be an array of unsaved file entries" }, { status: 400 });
+    const fileUpdate = buildFileUpdate(requestBody.file);
+    if (!fileUpdate) {
+        return json({ ok: false, message: "file has to be a valid file object" }, { status: 400 });
     }
-
-    if (!incomingUpdates.length) {
-        return json([], { status: 200 });
-    }
-
-    // Keep only the newest item for each file key.
-    const dedupedUpdates = new Map<string, FileUpdate>();
-    for (const update of incomingUpdates) {
-        const dedupeKey = update.fileId;
-        const existingUpdate = dedupedUpdates.get(dedupeKey);
-
-        if (!existingUpdate || existingUpdate.date < update.date) {
-            dedupedUpdates.set(dedupeKey, update);
-        }
-    }
-
-    const updates = [...dedupedUpdates.values()];
 
     const access = await requireWorkspaceAccess({
         request,
@@ -147,54 +100,40 @@ export const POST: RequestHandler = async ({ request, cookies, fetch }) => {
         return access;
     }
 
-    const collaboration = createFileCollaboration(access);
-    if (collaboration instanceof Response) {
-        return collaboration;
-    }
-
     try {
-        let workspaceEntries = await loadWorkspaceEntries(workspaceId);
-        const acknowledgedFileIds: string[] = [];
-        let hasPersistedChanges = false;
-
-        for (const update of updates) {
-            const fileEntry = findFileById(workspaceEntries, update.fileId);
-            if (!fileEntry) {
-                acknowledgedFileIds.push(update.fileId);
-                continue;
-            }
-
-            const editorAccessFailure = await requireFileEditorCollaborator(
-                collaboration,
-                fileEntry,
-                "save file content"
-            );
-            if (editorAccessFailure) {
-                return editorAccessFailure;
-            }
-
-            const updateResult = updateFileById(workspaceEntries, update.fileId, (entry) => {
-                return {
-                    ...entry,
-                    content: update.content,
-                    lists: update.lists
-                };
-            });
-
-            hasPersistedChanges = true;
-            workspaceEntries = updateResult.entries;
-            acknowledgedFileIds.push(update.fileId);
+        const workspaceEntries = await loadWorkspaceEntries(workspaceId);
+        const fileEntry = findFileById(workspaceEntries, fileUpdate.fileId);
+        if (!fileEntry) {
+            return json({ ok: false, message: "File was not found" }, { status: 404 });
         }
 
-        if (hasPersistedChanges) {
-            await persistWorkspaceEntries(workspaceId, workspaceEntries);
+        const hasNotUserAccessResponse = await hasUserEditorFileAccess({
+            request,
+            cookies,
+            file: fileEntry,
+            workspaceId: workspaceId
+        });
+        if (hasNotUserAccessResponse) {
+            return hasNotUserAccessResponse;
         }
 
-        return json(acknowledgedFileIds, { status: 200 });
+        const updateResult = updateFileById(workspaceEntries, fileUpdate.fileId, (entry) => {
+            return {
+                ...entry,
+                content: fileUpdate.content,
+                lists: fileUpdate.lists
+            };
+        });
+
+        if (!updateResult.updated) {
+            return json({ ok: false, message: "File was not found" }, { status: 404 });
+        }
+
+        await persistWorkspaceEntries(workspaceId, updateResult.entries);
+
+        return json({ ok: true, fileId: fileUpdate.fileId }, { status: 200 });
     } catch (error) {
         console.error("Cannot persist file content", error);
         return json({ ok: false, message: "Cannot save file content" }, { status: 500 });
-    } finally {
-        collaboration.io.disconnect();
     }
 };

@@ -2,11 +2,11 @@ import {
     asNonEmptyString,
     createFileCollaboration,
     findFileById,
+    hasUserEditorFileAccess,
     loadWorkspaceEntries,
     parseJsonBody,
     persistWorkspaceEntries,
     removeFileById,
-    requireFileEditorCollaborator,
     requireWorkspaceAccess
 } from "../server-utils";
 import { json } from "@sveltejs/kit";
@@ -52,18 +52,14 @@ export const DELETE: RequestHandler = async ({ request, cookies, fetch }) => {
         return collaboration;
     }
 
-    try {
-        const editorAccessFailure = await requireFileEditorCollaborator(
-            collaboration,
-            fileEntry,
-            "delete this file"
-        );
-
-        if (editorAccessFailure) {
-            return editorAccessFailure;
-        }
-    } finally {
-        collaboration.io.disconnect();
+    const hasNotUserAccessResponse = await hasUserEditorFileAccess({
+        request,
+        cookies,
+        file: fileEntry,
+        workspaceId: workspaceId
+    });
+    if (hasNotUserAccessResponse) {
+        return hasNotUserAccessResponse;
     }
 
     const removalResult = removeFileById(workspaceEntries, fileId);

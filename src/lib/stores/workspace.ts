@@ -166,7 +166,6 @@ function syncSelectedWorkspace(workspaces: WorkspaceEntry[]) {
 
     const currentSelectedWorkspace = get(selectedWorkspace);
     const preferredWorkspaceId = currentSelectedWorkspace?.id ?? readSelectedWorkspaceIdFromStorage();
-    console.log('Pref', preferredWorkspaceId);
 
     if (preferredWorkspaceId) {
         const refreshedSelectedWorkspace = workspaces.find(workspace => workspace.id === preferredWorkspaceId);
@@ -176,7 +175,6 @@ function syncSelectedWorkspace(workspaces: WorkspaceEntry[]) {
         }
     }
 
-    console.log('Select frst workspace')
     selectedWorkspace.selectWorkspace(workspaces[0]);
 }
 

@@ -101,8 +101,6 @@ export const editor = (() => {
 
                         // Send file update once atime
                         fileUpdationTimer = setTimeout(() => {
-                            const currentFile = get(selectedFile);
-                            const currentEditor = get(editorStore);
                             const isCurrentUserSelectedFileEditorLocal = get(isCurrentUserSelectedFileEditor); 
 
                             if (!isCurrentUserSelectedFileEditorLocal) {
@@ -113,15 +111,6 @@ export const editor = (() => {
                                 return;
                             }
 
-                            if (currentFile) {
-                                collaborationInterface.getInterface()?.sendFileChanged(
-                                    {
-                                        ...currentFile,
-                                        content: currentEditor.getHTML() ?? currentFile.content ?? ""
-                                    }
-                                );
-                            }
-                            
                             if (fileUpdationTimer) {
                                 clearTimeout(fileUpdationTimer);
                                 fileUpdationTimer = null;

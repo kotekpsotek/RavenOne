@@ -29,6 +29,32 @@ type RequireWorkspaceAccessArgs = {
     activeWorkspaceSubscriptionFailureMessage?: string;
 };
 
+export async function hasUserEditorFileAccess(
+    options: {
+        request: Request;
+        cookies: Cookies;
+        file: FileEntry;
+        workspaceId: string;
+    }
+) {
+    const payload = getAuthenticatedPayload(options.request, options.cookies);
+    if (!payload) {
+        return json({ message: "JWT Payload isn't specified", ok: false }, { status: 400 });
+    }
+    
+    const hasEditorGradeAccess = await Collabortation.amIEditorOfFile(options.file, {
+        connectionURL: `${env.PUBLIC_SOCKET_IO_COLLABORATION_SERVICE_URL}/am-i-editor-of-file`,
+        userId: payload.userId,
+        workspaceId: options.workspaceId
+    });
+    console.log('Has access', hasEditorGradeAccess)
+    if (hasEditorGradeAccess) {
+        return json({ message: "You've no access to file", ok: false }, { status: 400 });
+    }
+
+    return undefined
+}
+
 function buildForwardedAuthHeaders(request: Request): Headers {
     const forwardedHeaders = new Headers();
     const authorization = request.headers.get("authorization");
@@ -150,40 +176,6 @@ export function createFileCollaboration(access: WorkspaceAccess): Collabortation
         access.authToken,
         access.collabProfile,
         collaborationServiceUrl
-    );
-}
-
-export async function requireFileEditorCollaborator(
-    collaboration: Collabortation.Collab,
-    file: FileEntry,
-    operationName: string
-): Promise<Response | null> {
-    let isEditor = false;
-    const fileReference = { id: file.id } as FileEntry;
-
-    try {
-        isEditor = await collaboration.amIEditorOfFile(fileReference);
-    } catch (error) {
-        console.error("Cannot validate file editor collaborator", error);
-        return json(
-            {
-                ok: false,
-                message: "Cannot validate file editor collaborator access right now"
-            },
-            { status: 503 }
-        );
-    }
-
-    if (isEditor) {
-        return null;
-    }
-
-    return json(
-        {
-            ok: false,
-            message: `Cannot ${operationName} because you are not a file editor collaborator for this file.`
-        },
-        { status: 403 }
     );
 }
 
