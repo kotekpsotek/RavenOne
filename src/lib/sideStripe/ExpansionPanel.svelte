@@ -12,7 +12,7 @@
     import { onMount } from "svelte";
     import { get } from "svelte/store";
     import { Collabortation, File } from "@ravenlens/shared";
-    import { collaborationInterface, entriesCollaborators, onHandleJoinFile, onHandleLeaveFile } from "$lib/stores/collaboration";
+    import { collaborationInterface, entriesCollaborators } from "$lib/stores/collaboration";
     import { userProfile } from "$lib/stores/user";
     import { changeFilePositionRequest, changeIconFileRequest, changeWalperFileRequest, deleteFileRequest, downloadFilesRequest, newFileRequest, renameFileRequest } from "$lib/files/connections/connections";
     import type { DropPosition } from "$lib/files/utils";
@@ -128,7 +128,38 @@
             return;
         }
 
-        collab.sendJoinFile(entry, onHandleJoinFile);
+        void collab
+            .getCollabsFromFile(entry)
+            .then((collaborators) => {
+                entriesCollaborators.update((entries) => {
+                    const existingEntryIndex = entries.findIndex((candidate) => candidate.fileId === entry.id);
+
+                    if (existingEntryIndex < 0) {
+                        return [
+                            ...entries,
+                            {
+                                fileId: entry.id,
+                                collaborators,
+                            }
+                        ];
+                    }
+
+                    return entries.map((candidate, index) => {
+                        if (index !== existingEntryIndex) {
+                            return candidate;
+                        }
+
+                        return {
+                            ...candidate,
+                            collaborators,
+                        };
+                    });
+                });
+            })
+            .catch((error) => {
+                console.error("Cannot preload collaborators for file context menu", error);
+            });
+
         contextMenuJoinedFileId = entry.id;
     }
 
@@ -144,12 +175,10 @@
             return;
         }
 
-        const joinedFile = findFileById(get(entriesList), joinedFileId);
-        if (!joinedFile) {
+        const joinedFileExists = Boolean(findFileById(get(entriesList), joinedFileId));
+        if (!joinedFileExists) {
             return;
         }
-
-        collaborationInterface.getInterface()?.sendLeaveFile(joinedFile, onHandleLeaveFile);
     }
 
     function ensureActiveWorkspaceSubscription(operationName: string): boolean {
