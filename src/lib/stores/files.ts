@@ -391,9 +391,7 @@ export const selectedFile = (() => {
             // User leaves the prior file
             const fileBefore = get(store);
             if (fileBefore && fileBefore.id !== file?.id) {
-                if (!file) {
-                    collab?.sendLeaveFile(toCollabFileRef(fileBefore), onHandleLeaveFile);
-                }
+                collab?.sendLeaveFile(toCollabFileRef(fileBefore), onHandleLeaveFile);
 
                 // Clears collaborators of leaved file
                 entriesCollaborators.update(entriesCollabs => {
@@ -427,7 +425,7 @@ export const selectedFile = (() => {
             const didSwitchFile = priorFile?.id !== afterFile?.id;
 
             if (didSwitchFile && options.emitPresenceOnFileSwitch !== false) {
-                if (!afterFile && priorFile) {
+                if (priorFile) {
                     collab?.sendLeaveFile(toCollabFileRef(priorFile), onHandleLeaveFile);
                 }
 

@@ -32,9 +32,24 @@ export function isUserEditorForFile(
         return false;
     }
 
-    return entry.collaborators.some(
+    const isExplicitEditor = entry.collaborators.some(
         (collaborator) => collaborator.id === userId && Collabortation.isCollaboratorEditor(collaborator)
     );
+
+    if (isExplicitEditor) {
+        return true;
+    }
+
+    const hasAnyExplicitEditor = entry.collaborators.some((collaborator) => {
+        return Collabortation.isCollaboratorEditor(collaborator);
+    });
+
+    if (hasAnyExplicitEditor) {
+        return false;
+    }
+
+    // Fallback for payloads without editor grade: treat current collaborator as editor.
+    return entry.collaborators.some((collaborator) => collaborator.id === userId);
 }
 
 function createCollaborationInterface(profile: Profile, tokenJwt: string): Collabortation.Collab {
@@ -176,20 +191,32 @@ export const onHandleJoinFile: Collabortation.CollabsCallback = (success, collab
         return [];
     }
 
-    console.log('Joined file: ', fileId, collabs)
+    console.log('Joined file: ', fileId, collabs, get(userProfile))
     
     // Download the file collaborators and setups as the collaborators of current file
     if (fileId) {
         entriesCollaborators.update(entriesCollabs => {
-            return entriesCollabs.map(collabOfEntry => {
-                if (collabOfEntry.fileId === fileId) {
-                    return {
-                        ...collabOfEntry,
-                        collaborators: collabs
-                    }
-                } 
+            const existingEntryIndex = entriesCollabs.findIndex((entry) => entry.fileId === fileId);
 
-                return collabOfEntry;
+            if (existingEntryIndex < 0) {
+                return [
+                    ...entriesCollabs,
+                    {
+                        fileId,
+                        collaborators: collabs,
+                    }
+                ];
+            }
+
+            return entriesCollabs.map((collabOfEntry) => {
+                if (collabOfEntry.fileId !== fileId) {
+                    return collabOfEntry;
+                }
+
+                return {
+                    ...collabOfEntry,
+                    collaborators: collabs
+                };
             });
         })
     }
