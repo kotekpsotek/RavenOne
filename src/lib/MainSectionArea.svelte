@@ -3,7 +3,7 @@
     import { derived } from "svelte/store";
     import { EditorContent } from "svelte-tiptap";
     import { editor } from "./stores/editor";
-    import { isFileDownloading, selectedFile } from "./stores/files";
+    import { isFileDownloading, isFileSaving, selectedFile } from "./stores/files";
     import { isCurrentUserSelectedFileEditor } from "./stores/collaboration";
     import { workspaceHasActiveSubscription, workspaceSubscriptionCheckInProgress } from "./stores/subscription";
     import { isWorkspaceInAddition } from "./stores/workspace";
@@ -63,7 +63,7 @@
                     </div>
                 {/if}
 
-                {#if $isFileDownloading}
+                {#if $isFileDownloading || $isFileSaving}
                     <div class="w-full h-full flex flex-col gap-2">
                         <div class="skeleton h-4 w-28"></div>
                         <div class="skeleton h-4 w-[200px]"></div>

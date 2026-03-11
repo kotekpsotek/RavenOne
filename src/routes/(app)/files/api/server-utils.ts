@@ -7,6 +7,7 @@ import { Collabortation, File } from "@ravenlens/shared";
 import { env } from "$env/dynamic/public";
 import { json } from "@sveltejs/kit";
 import type { Cookies } from "@sveltejs/kit";
+import { fileCollaborators } from "$lib/stores/collaboration";
 
 export type FileEntry = File.File.File;
 export type MovePosition = "before" | "after" | "inside";
@@ -29,6 +30,10 @@ type RequireWorkspaceAccessArgs = {
     activeWorkspaceSubscriptionFailureMessage?: string;
 };
 
+/**
+ * @param options 
+ * @returns undefined - when user has access to file or Response when user hasn't got access
+ */
 export async function hasUserEditorFileAccess(
     options: {
         request: Request;
@@ -47,9 +52,8 @@ export async function hasUserEditorFileAccess(
         userId: payload.userId,
         workspaceId: options.workspaceId
     });
-    console.log('Has access', hasEditorGradeAccess)
-    if (hasEditorGradeAccess) {
-        return json({ message: "You've no access to file", ok: false }, { status: 400 });
+    if (!hasEditorGradeAccess) {
+        return json({ message: "You've no access to save file: " + options.file.name, ok: false }, { status: 400 });
     }
 
     return undefined

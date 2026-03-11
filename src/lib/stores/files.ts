@@ -50,11 +50,6 @@ export const selectedFile = (() => {
         keepalive?: boolean;
         showFailureAlert?: boolean;
     };
-    type UpdateOptions = {
-        queueUnsaved?: boolean;
-        emitFileChanged?: boolean;
-        emitPresenceOnFileSwitch?: boolean;
-    };
 
     const store = writable<FileType>(undefined);
 
@@ -95,6 +90,7 @@ export const selectedFile = (() => {
             }
         } catch {
             // Keep fallback message when response body cannot be parsed.
+            return "Cannot parse the response body";
         }
 
         return `Cannot save file because of: ${response.status}`;
@@ -168,17 +164,18 @@ export const selectedFile = (() => {
         }
 
         if (fileBefore && !isShareRoute) {
-            saveSingleFileRequest(fileBefore, { showFailureAlert: true })
-                .finally(() => {
-                    collaborationInterface
-                        .getInterface()
-                        ?.sendLeaveFile(toCollabFileRef(fileBefore), onHandleLeaveFile);
-                });
+            console.log("Leave")
+            await saveSingleFileRequest(fileBefore);
 
+            collaborationInterface
+                .getInterface()
+                ?.sendLeaveFile(toCollabFileRef(fileBefore), onHandleLeaveFile);
             clearCollaboratorsForFile(fileBefore.id);
+
         }
 
         if (nextFile && !isShareRoute) {
+            console.log("Join")
             collaborationInterface
                 .getInterface()
                 ?.sendJoinFile(toCollabFileRef(nextFile), onHandleJoinFile);
@@ -194,16 +191,7 @@ export const selectedFile = (() => {
                 return;
             }
 
-            saveSingleFileRequest(selectedFileLocal, {
-                keepalive: true,
-                showFailureAlert: false
-            })
-                .finally(() => {
-                    collaborationInterface
-                        .getInterface()
-                        ?.sendLeaveFile(toCollabFileRef(selectedFileLocal), onHandleLeaveFile);
-                    clearCollaboratorsForFile(selectedFileLocal.id);
-                });
+            saveSingleFileRequest(selectedFileLocal);
         }
         
         window.addEventListener("pagehide", onPageHide);
@@ -217,15 +205,11 @@ export const selectedFile = (() => {
     
     return {
         ...store,
-        /** Set file */
-        set(file: FileType) {
-            transitionSelection(file);
-        },
         /** Selection of file with addition as joined file */
         selectFile(file: FileType) {
             transitionSelection(file);
         },
-        update(updater: (file: FileType) => FileType, options: UpdateOptions = {}) {
+        update(updater: (file: FileType) => FileType) {
             const priorFile = get(store);
             
             // Updater
@@ -233,26 +217,6 @@ export const selectedFile = (() => {
 
             const afterFile = get(store);
             const didSwitchFile = priorFile?.id !== afterFile?.id;
-
-            if (didSwitchFile && options.emitPresenceOnFileSwitch !== false) {
-                (async () => {
-                    if (priorFile) {
-                        saveSingleFileRequest(priorFile, { showFailureAlert: true })
-                            .finally(() => {
-                                collaborationInterface
-                                    .getInterface()
-                                    ?.sendLeaveFile(toCollabFileRef(priorFile), onHandleLeaveFile);
-                                clearCollaboratorsForFile(priorFile.id);
-                            })
-                    }
-
-                    if (afterFile) {
-                        collaborationInterface
-                            .getInterface()
-                            ?.sendJoinFile(toCollabFileRef(afterFile), onHandleJoinFile);
-                    }
-                })();
-            }
 
             if (afterFile) {
                 // Keep explorer tree in sync with selected file changes (also nested entries).
@@ -348,11 +312,7 @@ function updateEntryById(items: File.File.File[], fileId: string, patch: Partial
 
 export function patchFileById(
     fileId: string,
-    patch: Partial<File.File.File>,
-    options: {
-        queueUnsaved?: boolean;
-        emitFileChanged?: boolean;
-    } = {}
+    patch: Partial<File.File.File>
 ) {
     entriesList.update(entries => updateEntryById(entries, fileId, patch));
     selectedFile.update(
@@ -362,11 +322,6 @@ export function patchFileById(
             }
 
             return { ...file, ...patch };
-        },
-        {
-            queueUnsaved: options.queueUnsaved,
-            emitFileChanged: options.emitFileChanged,
-            emitPresenceOnFileSwitch: false
         }
     );
 }
