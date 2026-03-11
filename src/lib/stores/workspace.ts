@@ -1,6 +1,6 @@
 import { get, writable } from "svelte/store";
 import { Workspace } from "@ravenlens/shared";
-import { userProfile as user, userProfile } from "./user";
+import { userProfile as user, userProfile, waitTillProfileLoaded } from "./user";
 import type { ComponentProps } from "svelte";
 import type { UI } from "@ravenlens/frontend";
 import { browser } from "$app/environment";
@@ -291,28 +291,6 @@ export const selectedWorkspace = (() => {
             if (!browser) {
                 return;
             }
-
-            const waitTillProfileLoaded = (intervalMs: number = 500, MAX_WAIT_PERIOD_MS: number = 20_000) => {
-                return new Promise((res, rej) => {
-                    let waitForMs = 0;
-                    const timer = setInterval(() => {
-                        const profile = get(userProfile);
-
-                        if (profile) {
-                            clearInterval(timer);
-                            res(true);
-                        }
-
-                        // 
-                        waitForMs += intervalMs;
-                        
-                        // 
-                        if (waitForMs >= MAX_WAIT_PERIOD_MS) {
-                            rej(`Cannot download the user profile in specified ${MAX_WAIT_PERIOD_MS} treshold. Increaase Treshold or check network connection`)
-                        }
-                    }, intervalMs);
-                })
-            };
 
             // Wait for profile to be loaded
             await waitTillProfileLoaded();

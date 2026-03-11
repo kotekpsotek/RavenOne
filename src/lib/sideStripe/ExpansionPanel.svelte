@@ -825,7 +825,7 @@
 
     function onEntryClick(entry: File.File.File) {
         return async () => {
-            await goto("/");
+            // await goto("/");
             closeContextMenu({ keepJoinedFile: true });
             selectedFile.selectFile(entry);
 

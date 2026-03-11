@@ -3,9 +3,8 @@ import { Collabortation } from "@ravenlens/shared";
 import type { Profile } from "@ravenlens/shared";
 import { browser } from "$app/environment";
 import { JWTAuth } from "$lib/utils/auth";
-import { userProfile } from "./user";
+import { userProfile, waitTillProfileLoaded } from "./user";
 import { env } from "$env/dynamic/public";
-import type { CollabEditor } from "../../../../../packages/shared/dist/collaboration/collab";
 
 type FileCollaborator = Collabortation.CollabEditor | Collabortation.CollabUser;
 type FileCollaboratorsEntry = {
@@ -76,7 +75,7 @@ export const collaborationInterface = (() => {
             if (!interfaceCollab) {
                 const profile = get(userProfile);
                 if (!profile) {
-                    throw("Cannot initialize interface since user-profile is undefined");
+                    console.error("Cannot initialize interface since user-profile is undefined");
                 }
                 
                 const initTry = initializeInterface(profile);
@@ -97,14 +96,18 @@ export const collaborationInterface = (() => {
             return storeSetup;
         }
 
-        if (!initializeInterface(get(userProfile))) {
-            const unsubscribe = userProfile.subscribe((userProfileLocal) => {
-                if (!initializeInterface(userProfileLocal)) {
-                    return;
-                }
-
-                unsubscribe();
-            });
+        // Assure collab will always be initialized
+        const collab = get(storeSetup);
+        if (!collab) {
+            const profile = get(userProfile);
+            if (!profile) {
+                waitTillProfileLoaded(100).then(filled => {
+                    if (filled) {
+                        storeSetup.getInterface();
+                    }
+                });
+            }
+            else storeSetup.getInterface();
         }
     }
 
