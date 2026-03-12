@@ -7,7 +7,6 @@ import { File } from "@ravenlens/shared";
 import { selectedWorkspace } from "./workspace";
 import { collaborationInterface, entriesCollaborators, onHandleJoinFile, onHandleLeaveFile, setSelectedFileIdInCollaboration } from "./collaboration";
 import { isSharedRoute } from "./share";
-import { saveFileToDB, getAllFilesFromDB, clearAllFilesFromDB } from "$lib/utils/indexeddb";
 
 /** Entries */
 export const entriesList = (() => {
@@ -44,33 +43,6 @@ export type SavingValues = boolean | "without-scardfolding";
 export const isFileSaving = writable<SavingValues>(false);
 export const isFileDownloading = writable<boolean>(false);
 
-class PageHidePreserveFile {
-    file: File.File.File;
-    
-    constructor(file: File.File.File) {
-        this.file = file;
-    }
-
-    async loadToMemory() {
-        await saveFileToDB(this.file);
-    }
-
-    /** TODO:  */
-    static async undigAllFromMemoryAndSave() {
-        const files = await getAllFilesFromDB();
-        if (files.length === 0) return;
-
-        for (const file of files) {
-            await selectedFile.requestSave(file, "without-scardfolding", {
-                showFailureAlert: false,
-                requireChangedContent: false // Always save recovered files
-            });
-        }
-
-        await clearAllFilesFromDB();
-    }
-}
-
 // File
 export const selectedFile = (() => {
     type FileType = File.File.File | undefined;
@@ -78,6 +50,19 @@ export const selectedFile = (() => {
         keepalive?: boolean;
         showFailureAlert?: boolean;
         requireChangedContent?: boolean;
+        skipClientEditorCheck?: boolean;
+        allowBeaconFallback?: boolean;
+    };
+
+    type SaveFilePayload = {
+        id: string;
+        content: string;
+        lists: File.File.SpawnedList[];
+    };
+
+    type SaveRequestPayload = {
+        workspaceId: string;
+        file: SaveFilePayload;
     };
 
     const store = writable<FileType>(undefined);
@@ -182,6 +167,28 @@ export const selectedFile = (() => {
         return `Cannot save file because of: ${response.status}`;
     }
 
+    const buildSaveFilePayload = (file: NonNullable<FileType>): SaveFilePayload => {
+        return {
+            id: file.id,
+            content: normalizeContentForSignature(file.content),
+            lists: Array.isArray(file.lists) ? file.lists : []
+        };
+    }
+
+    const trySaveWithBeacon = (requestPayload: SaveRequestPayload): boolean => {
+        if (!browser || typeof navigator?.sendBeacon !== "function") {
+            return false;
+        }
+
+        try {
+            const requestBody = JSON.stringify(requestPayload);
+            const requestBlob = new Blob([requestBody], { type: "application/json" });
+            return navigator.sendBeacon("/files/api/save_content", requestBlob);
+        } catch {
+            return false;
+        }
+    }
+
     const saveSingleFileRequest = async (
         fileToSave: NonNullable<FileType>,
         saveValue: SavingValues = true,
@@ -202,12 +209,18 @@ export const selectedFile = (() => {
             return false;
         }
 
-        if (!canCurrentUserSaveFile(fileToSave)) {
+        if (!options.skipClientEditorCheck && !canCurrentUserSaveFile(fileToSave)) {
             return false;
         }
 
         activeSaveRequests += 1;
         isFileSaving.set(saveValue);
+        const filePayload = buildSaveFilePayload(fileToSave);
+        const requestPayload: SaveRequestPayload = {
+            workspaceId,
+            file: filePayload
+        };
+        const requestBody = JSON.stringify(requestPayload);
 
         try {
             const backendCall = await fetchAuthenticated(
@@ -218,19 +231,31 @@ export const selectedFile = (() => {
                     headers: {
                         "Content-Type": "application/json"
                     },
-                    body: JSON.stringify({
-                        workspaceId,
-                        file: fileToSave
-                    })
+                    body: requestBody
                 }
             );
 
             if (!backendCall.ok) {
-                const potentialType = (await backendCall.json());
-                const errorMessage = await extractErrorMessage(backendCall);
+                let potentialType: unknown;
+                let errorMessage: string;
+
+                try {
+                    const errorBody = await backendCall.clone().json() as { message?: unknown; type?: unknown };
+                    potentialType = errorBody?.type;
+
+                    if (typeof errorBody?.message === "string" && errorBody.message.trim().length) {
+                        errorMessage = errorBody.message;
+                    } else {
+                        errorMessage = `Cannot save file because of: ${backendCall.status}`;
+                    }
+                } catch {
+                    potentialType = undefined;
+                    errorMessage = await extractErrorMessage(backendCall);
+                }
+
                 console.error(errorMessage);
 
-                if (options.showFailureAlert !== false && (!potentialType.type || potentialType.type !== "collaboration_file")) {
+                if (options.showFailureAlert !== false && potentialType !== "collaboration_file") {
                     setAlert("error", "Cannot save file", errorMessage);
                 }
 
@@ -240,6 +265,12 @@ export const selectedFile = (() => {
             persistedFileSignatures.set(fileToSave.id, getPersistedFileSignature(fileToSave));
             return true;
         } catch (error) {
+            const canTryBeaconFallback = options.keepalive === true && options.allowBeaconFallback !== false;
+            if (canTryBeaconFallback && trySaveWithBeacon(requestPayload)) {
+                persistedFileSignatures.set(fileToSave.id, getPersistedFileSignature(fileToSave));
+                return true;
+            }
+
             console.error("Cannot save file because of:", error);
 
             if (options.showFailureAlert !== false) {
@@ -298,25 +329,24 @@ export const selectedFile = (() => {
             void saveSingleFileRequest(selectedFileLocal, "without-scardfolding", {
                 showFailureAlert: false,
                 requireChangedContent: true,
+                keepalive: false
             });
         }, AUTOSAVE_INTERVAL_MS);
 
-        const PAGE_HIDE_DEDUP_MS = 1000;
-        let lastPageHideSaveAt = 0;
-
         async function onPageHide() {
-            const now = Date.now();
-            if (now - lastPageHideSaveAt < PAGE_HIDE_DEDUP_MS) {
+            const file = get(store);
+            if (!file) {
                 return;
             }
-
-            const selectedFileLocal = get(store);
-            if (!selectedFileLocal) {
-                return;
-            }
-
-            lastPageHideSaveAt = now;
-            await new PageHidePreserveFile(selectedFileLocal).loadToMemory();
+            
+            // Tries to save the file
+            await saveSingleFileRequest(file, true, {
+                keepalive: true,
+                showFailureAlert: false,
+                requireChangedContent: true,
+                skipClientEditorCheck: true,
+                allowBeaconFallback: true
+            });
         }
         
         window.addEventListener("pagehide", onPageHide);
@@ -325,11 +355,6 @@ export const selectedFile = (() => {
             if (document.visibilityState === "hidden") {
                 void onPageHide();
             }
-        });
-
-        // Initialize sync on startup
-        queueMicrotask(() => {
-            void PageHidePreserveFile.undigAllFromMemoryAndSave();
         });
     }
 
