@@ -2,6 +2,7 @@ import { type DropPosition, type FilesDownloadResponse } from "../utils";
 import { File } from "@ravenlens/shared";
 import { requestFilesApi } from "./common";
 import type { PlayRequestBody } from "../../../routes/(app)/play/play.types";
+import type { DisabledModelsResponse } from "../../../routes/(app)/(workspace)/(api)/models/disabled/disabled";
 
 export type ShareFileResponse = {
     shareUrl?: string;
@@ -149,5 +150,15 @@ export async function playRequest(requestBody: PlayRequestBody) {
         { ...requestBody },
         "Play failed",
         "Cannot play the entity"
+    )
+}
+
+export async function downloadUnavaiableModelsRequest(requestBody: { workspaceId: string }) {
+    return requestFilesApi<DisabledModelsResponse>(
+        "/models/disabled",
+        "POST",
+        { ...requestBody },
+        "Unavaiable models downloading failed",
+        "Cannot download the list with Unavaiable models"
     )
 }

@@ -18,7 +18,7 @@
     import { playableDocumentsAndListsWithPoints } from "./stores/playModeStore";
     import { isFilePlayable } from "./listItems/utils";
     import SaveFile from "./components/SaveFile.svelte";
-    import { shareFileRequest } from "./files/connections/connections";
+    import { downloadUnavaiableModelsRequest, shareFileRequest } from "./files/connections/connections";
     import { File } from "@ravenlens/shared";
     import { canManageWorkspaceFiles } from "./stores/subscription";
 
@@ -57,6 +57,25 @@
     
     const getModelByKey = (key: string) =>
         avaiableModels.find((model) => model.model === key);
+
+    const modelOrderByName = new Map(
+        avaiableModels.map((model, index) => [model.model, index])
+    );
+
+    function sortModelsByAvailability(disabledModels?: typeof avaiableModels) {
+        const unavailableModelNames = new Set((disabledModels ?? []).map((model) => model.model));
+
+        return [...avaiableModels].sort((leftModel, rightModel) => {
+            const isLeftUnavailable = unavailableModelNames.has(leftModel.model);
+            const isRightUnavailable = unavailableModelNames.has(rightModel.model);
+
+            if (isLeftUnavailable === isRightUnavailable) {
+                return (modelOrderByName.get(leftModel.model) ?? 0) - (modelOrderByName.get(rightModel.model) ?? 0);
+            }
+
+            return isLeftUnavailable ? 1 : -1;
+        });
+    }
 
     const currentModel = $derived(getModelByKey(selectedModelKey));
 
@@ -353,14 +372,29 @@
         >
             <div class="flex items-center gap-2">
                 <div class="join">
-                    <UI.Common.AI.SelectAIModel
-                        selectedModel={selectedModelKey}
-                        avaiabaleModels={avaiableModels}
-                        placeholder="Select model"
-                        onChange={onModelChange}
-                        disabled={!$canManageWorkspaceFiles}
-                        selectSize="sm"
-                    />
+                    {#await downloadUnavaiableModelsRequest({ workspaceId: $selectedWorkspace?.id! })}
+                        <div>
+                            <span class="loading-spinner loading-sm"></span>
+                            <span>Loading Models...</span>
+                        </div>
+                    {:then unavaiableModels}
+                        {@const sortedModels = sortModelsByAvailability(unavaiableModels?.allNotAvaiableModels)}
+                    
+                        <UI.Common.AI.SelectAIModel
+                            selectedModel={selectedModelKey}
+                            avaiabaleModels={sortedModels}
+                            disabledModels={unavaiableModels?.allNotAvaiableModels}
+                            placeholder="Select model"
+                            onChange={onModelChange}
+                            disabled={!$canManageWorkspaceFiles}
+                            selectSize="sm"
+                        />
+                    {:catch err}
+                        <div class="text-xs text-error">
+                            <span>Cannot download unavaiable models:</span>
+                            {err}
+                        </div>
+                    {/await}
 
                     {#if $canManageWorkspaceFiles}
                         <details

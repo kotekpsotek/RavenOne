@@ -1,4 +1,4 @@
-import type { SubscriptionKinds } from "@ravenlens/shared";
+import type { AI, SubscriptionKinds } from "@ravenlens/shared";
 
 export type SubscriptionPlanLimit = number | null;
 
