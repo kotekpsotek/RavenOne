@@ -40,6 +40,7 @@ export async function hasUserEditorFileAccess(
         cookies: Cookies;
         file: FileEntry;
         workspaceId: string;
+        checkIsRecentEditor: Parameters<typeof Collabortation.amIEditorOfFile>[1]["checkIsRecentEditor"];
     }
 ) {
     const payload = getAuthenticatedPayload(options.request, options.cookies);
@@ -50,7 +51,8 @@ export async function hasUserEditorFileAccess(
     const hasEditorGradeAccess = await Collabortation.amIEditorOfFile(options.file, {
         connectionURL: `${env.PUBLIC_SOCKET_IO_COLLABORATION_SERVICE_URL}/am-i-editor-of-file`,
         userId: payload.userId,
-        workspaceId: options.workspaceId
+        workspaceId: options.workspaceId,
+        checkIsRecentEditor: options.checkIsRecentEditor
     });
     if (!hasEditorGradeAccess) {
         return json({ type: "collaboration_file", message: "You've no access to save file: " + options.file.name, ok: false }, { status: 400 });

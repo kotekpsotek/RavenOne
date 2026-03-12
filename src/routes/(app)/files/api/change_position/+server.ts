@@ -76,7 +76,9 @@ export const PUT: RequestHandler = async ({ request, cookies, fetch }) => {
         request,
         cookies,
         file: sourceFile,
-        workspaceId: workspaceId
+        workspaceId: workspaceId,
+        // To assure that recent file editor will be able to save file if leave page
+        checkIsRecentEditor: true
     });
     if (hasNotUserAccessResponse) {
         return hasNotUserAccessResponse;
