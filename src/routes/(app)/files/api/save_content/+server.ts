@@ -72,6 +72,7 @@ function buildFileUpdate(fileCandidate: unknown): FileUpdate | null {
 }
 
 export const POST: RequestHandler = async ({ request, cookies, fetch }) => {
+    console.log('Retrived')
     const requestBody = await parseJsonBody<SaveContentRequestBody>(request);
     if (!requestBody) {
         return json({ ok: false, message: "Invalid request body" }, { status: 400 });
@@ -113,6 +114,7 @@ export const POST: RequestHandler = async ({ request, cookies, fetch }) => {
             file: fileEntry,
             workspaceId: workspaceId
         });
+        console.log('User lock', hasNotUserAccessResponse)
         if (hasNotUserAccessResponse) {
             return hasNotUserAccessResponse;
         }

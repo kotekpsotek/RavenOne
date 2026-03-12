@@ -5,10 +5,9 @@ import type { AI } from "@ravenlens/shared";
 import { get, writable } from "svelte/store";
 import { File } from "@ravenlens/shared";
 import { selectedWorkspace } from "./workspace";
-import { collaborationInterface, entriesCollaborators, isUserEditorForFile, onHandleJoinFile, onHandleLeaveFile, setSelectedFileIdInCollaboration } from "./collaboration";
-import type { Collab } from "../../../../../packages/shared/dist/collaboration/collab";
+import { collaborationInterface, entriesCollaborators, onHandleJoinFile, onHandleLeaveFile, setSelectedFileIdInCollaboration } from "./collaboration";
 import { isSharedRoute } from "./share";
-import { userProfile } from "./user";
+import { saveFileToDB, getAllFilesFromDB, clearAllFilesFromDB } from "$lib/utils/indexeddb";
 
 /** Entries */
 export const entriesList = (() => {
@@ -41,8 +40,36 @@ export const entriesList = (() => {
     return entriesStore;
 })();
 /** Access saving state -> 'true' when file is actually saving, 'false' when is not */
-export const isFileSaving = writable<boolean>(false);
+export type SavingValues = boolean | "without-scardfolding";
+export const isFileSaving = writable<SavingValues>(false);
 export const isFileDownloading = writable<boolean>(false);
+
+class PageHidePreserveFile {
+    file: File.File.File;
+    
+    constructor(file: File.File.File) {
+        this.file = file;
+    }
+
+    async loadToMemory() {
+        await saveFileToDB(this.file);
+    }
+
+    /** TODO:  */
+    static async undigAllFromMemoryAndSave() {
+        const files = await getAllFilesFromDB();
+        if (files.length === 0) return;
+
+        for (const file of files) {
+            await selectedFile.requestSave(file, "without-scardfolding", {
+                showFailureAlert: false,
+                requireChangedContent: false // Always save recovered files
+            });
+        }
+
+        await clearAllFilesFromDB();
+    }
+}
 
 // File
 export const selectedFile = (() => {
@@ -50,13 +77,27 @@ export const selectedFile = (() => {
     type SaveSingleFileOptions = {
         keepalive?: boolean;
         showFailureAlert?: boolean;
+        requireChangedContent?: boolean;
     };
 
     const store = writable<FileType>(undefined);
+    const AUTOSAVE_INTERVAL_MS = 30000;
+    const EMPTY_FILE_CONTENT = "<p></p>";
+    let activeSaveRequests = 0;
+    const persistedFileSignatures = new Map<string, string>();
+
+    type SelectedFileStore = {
+        subscribe: typeof store.subscribe;
+        set(file: FileType): void;
+        update(updater: (file: FileType) => FileType): void;
+        selectFile(file: FileType): void;
+        updateFileListItems(spawnedListId: string, items: File.File.EditableListItem[]): Promise<boolean>;
+        requestSave(file: NonNullable<FileType>, saveValue?: SavingValues, options?: SaveSingleFileOptions): Promise<boolean>;
+    };
 
     const normalizeWorkspaceId = (workspaceId?: string): string | undefined => {
         if (!workspaceId) {
-            return undefined;
+            return undefined
         }
 
         const normalizedWorkspaceId = workspaceId.trim();
@@ -71,6 +112,50 @@ export const selectedFile = (() => {
 
     const getWorkspaceIdFromFile = (file?: FileType): string | undefined => {
         return normalizeWorkspaceId(file?.createdByAuthorId);
+    }
+
+    const normalizeContentForSignature = (contentCandidate: unknown): string => {
+        if (typeof contentCandidate !== "string") {
+            return EMPTY_FILE_CONTENT;
+        }
+
+        if (!contentCandidate.trim()) {
+            return EMPTY_FILE_CONTENT;
+        }
+
+        return contentCandidate;
+    }
+
+    const getPersistedFileSignature = (file: NonNullable<FileType>): string => {
+        return JSON.stringify({
+            id: file.id,
+            content: normalizeContentForSignature(file.content),
+            lists: Array.isArray(file.lists) ? file.lists : []
+        });
+    }
+
+    const rememberInitialPersistedSignature = (file: NonNullable<FileType>): void => {
+        if (persistedFileSignatures.has(file.id)) {
+            return;
+        }
+
+        persistedFileSignatures.set(file.id, getPersistedFileSignature(file));
+    }
+
+    const hasFileChangedSincePersisted = (file: NonNullable<FileType>): boolean => {
+        const candidateSignature = getPersistedFileSignature(file);
+        const persistedSignature = persistedFileSignatures.get(file.id);
+
+        if (!persistedSignature) {
+            persistedFileSignatures.set(file.id, candidateSignature);
+            return false;
+        }
+
+        return candidateSignature !== persistedSignature;
+    }
+
+    const canCurrentUserSaveFile = (file: NonNullable<FileType>): boolean => {
+        return entriesCollaborators.isCurrentUserEditor(file.id);
     }
 
     const syncEntryListWithFile = (file: File.File.File) => {
@@ -99,8 +184,13 @@ export const selectedFile = (() => {
 
     const saveSingleFileRequest = async (
         fileToSave: NonNullable<FileType>,
+        saveValue: SavingValues = true,
         options: SaveSingleFileOptions = {}
     ): Promise<boolean> => {
+        if (options.requireChangedContent && !hasFileChangedSincePersisted(fileToSave)) {
+            return false;
+        }
+
         const workspaceId = getWorkspaceIdFromFile(fileToSave)
             ?? normalizeWorkspaceId(get(selectedWorkspace)?.id);
 
@@ -112,11 +202,12 @@ export const selectedFile = (() => {
             return false;
         }
 
-        if (!isUserEditorForFile(get(entriesCollaborators), fileToSave.id, get(userProfile)!.id)) {
+        if (!canCurrentUserSaveFile(fileToSave)) {
             return false;
         }
 
-        isFileSaving.set(true);
+        activeSaveRequests += 1;
+        isFileSaving.set(saveValue);
 
         try {
             const backendCall = await fetchAuthenticated(
@@ -146,6 +237,7 @@ export const selectedFile = (() => {
                 return false;
             }
 
+            persistedFileSignatures.set(fileToSave.id, getPersistedFileSignature(fileToSave));
             return true;
         } catch (error) {
             console.error("Cannot save file because of:", error);
@@ -156,22 +248,28 @@ export const selectedFile = (() => {
 
             return false;
         } finally {
-            isFileSaving.set(false);
+            activeSaveRequests = Math.max(0, activeSaveRequests - 1);
+            isFileSaving.set(activeSaveRequests > 0);
         }
     }
 
-    const transitionSelection = async (nextFile: FileType): Promise<void> => {
+    const transitionSelection = async (
+        selectedFileStore: Pick<SelectedFileStore, "set">,
+        nextFile: FileType
+    ): Promise<void> => {
         const fileBefore = get(store);
         const isShareRoute = get(isSharedRoute);
 
         if (fileBefore?.id === nextFile?.id) {
-            store.set(nextFile);
+            selectedFileStore.set(nextFile);
             return;
         }
 
         if (fileBefore && !isShareRoute) {
             console.log("Leave")
-            await saveSingleFileRequest(fileBefore);
+            await saveSingleFileRequest(fileBefore, true, {
+                requireChangedContent: true,
+            });
 
             collaborationInterface
                 .getInterface()
@@ -187,52 +285,81 @@ export const selectedFile = (() => {
                 ?.sendJoinFile(toCollabFileRef(nextFile), onHandleJoinFile);
         }
 
-        store.set(nextFile);
+        selectedFileStore.set(nextFile);
     }
     
     if (browser) {
-        function onPageHide() {
+        window.setInterval(() => {
             const selectedFileLocal = get(store);
             if (!selectedFileLocal) {
                 return;
             }
 
-            saveSingleFileRequest(selectedFileLocal);
+            void saveSingleFileRequest(selectedFileLocal, "without-scardfolding", {
+                showFailureAlert: false,
+                requireChangedContent: true,
+            });
+        }, AUTOSAVE_INTERVAL_MS);
+
+        const PAGE_HIDE_DEDUP_MS = 1000;
+        let lastPageHideSaveAt = 0;
+
+        async function onPageHide() {
+            const now = Date.now();
+            if (now - lastPageHideSaveAt < PAGE_HIDE_DEDUP_MS) {
+                return;
+            }
+
+            const selectedFileLocal = get(store);
+            if (!selectedFileLocal) {
+                return;
+            }
+
+            lastPageHideSaveAt = now;
+            await new PageHidePreserveFile(selectedFileLocal).loadToMemory();
         }
         
         window.addEventListener("pagehide", onPageHide);
         window.addEventListener("beforeunload", onPageHide);
         document.addEventListener("visibilitychange", () => {
             if (document.visibilityState === "hidden") {
-                onPageHide();
+                void onPageHide();
             }
         });
+
+        // Initialize sync on startup
+        queueMicrotask(() => {
+            void PageHidePreserveFile.undigAllFromMemoryAndSave();
+        });
     }
-    
-    return {
-        ...store,
+
+    const selectedFileStore: SelectedFileStore = {
+        subscribe: store.subscribe,
+        set(file: FileType) {
+            const selectedFileBefore = get(store);
+            store.set(file);
+
+            if (file) {
+                // Keep explorer tree in sync with selected file changes (also nested entries).
+                syncEntryListWithFile(file);
+
+                if (selectedFileBefore?.id !== file.id) {
+                    rememberInitialPersistedSignature(file);
+                }
+            }
+        },
         /** Selection of file with addition as joined file */
         selectFile(file: FileType) {
-            transitionSelection(file);
+            void transitionSelection(this, file);
         },
         update(updater: (file: FileType) => FileType) {
-            const priorFile = get(store);
-            
-            // Updater
-            store.update(updater);
-
-            const afterFile = get(store);
-            const didSwitchFile = priorFile?.id !== afterFile?.id;
-
-            if (afterFile) {
-                // Keep explorer tree in sync with selected file changes (also nested entries).
-                syncEntryListWithFile(afterFile);
-            }
+            const nextFile = updater(get(store));
+            this.set(nextFile);
         },
         updateFileListItems(spawnedListId: string, items: File.File.EditableListItem[]): Promise<boolean> {
             let wasUpdated = false;
 
-            store.update(file => {
+            this.update(file => {
                 if (!file) {
                     return file;
                 }
@@ -259,18 +386,14 @@ export const selectedFile = (() => {
                 };
             });
 
-            if (!wasUpdated) {
-                return Promise.resolve(false);
-            }
-
-            const afterFile = get(store);
-            if (afterFile) {
-                syncEntryListWithFile(afterFile);
-            }
-
-            return Promise.resolve(true);
+            return Promise.resolve(wasUpdated);
+        },
+        requestSave(file: NonNullable<FileType>, saveValue: SavingValues = true, options: SaveSingleFileOptions = {}): Promise<boolean> {
+            return saveSingleFileRequest(file, saveValue, options);
         },
     };
+
+    return selectedFileStore;
 })();
 
 selectedFile.subscribe((file) => {

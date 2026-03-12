@@ -63,7 +63,7 @@
                     </div>
                 {/if}
 
-                {#if $isFileDownloading || $isFileSaving}
+                {#if $isFileDownloading || ($isFileSaving && $isFileSaving !== "without-scardfolding")}
                     <div class="w-full h-full flex flex-col gap-2">
                         <div class="skeleton h-4 w-28"></div>
                         <div class="skeleton h-4 w-[200px]"></div>
