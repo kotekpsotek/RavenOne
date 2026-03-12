@@ -10,7 +10,7 @@
     import { mcpConfigurationStore, selectedMcpServers } from "./stores/mcpConfig";
     import { alertState } from "./utils/alert";
     import { editor } from "./stores/editor";
-    import { get } from "svelte/store";
+    import { get, writable } from "svelte/store";
     import McpSelectionModal from "./modals/McpSelectionModal.svelte";
     import { UI } from "@ravenlens/frontend";
     import ContextSelectionModal from "./modals/ContextSelectionModal.svelte";
@@ -21,14 +21,32 @@
     import { downloadUnavaiableModelsRequest, shareFileRequest } from "./files/connections/connections";
     import { File } from "@ravenlens/shared";
     import { canManageWorkspaceFiles } from "./stores/subscription";
+    import { browser } from "$app/environment";
 
     type DropdownName = "model-settings" | "mcp-tools" | "play-settings" | "share";
 
-    const initialModelKey = avaiableModels[0]?.model ?? "";
+    const selectedModelKey = (() => {
+        const initialModelKey = avaiableModels[0]?.model ?? "";
+        const selectedModelName = writable<string>(initialModelKey);
 
-    let selectedModelKey = $state(initialModelKey);
+        if (browser) {
+            const model = localStorage.getItem("localSelectedLLM");
+            selectedModelName.set(model ?? initialModelKey);
+        }
+
+        return {
+            ...selectedModelName,
+            set(model: string) {
+                if (browser) {
+                    localStorage.setItem('localSelectedLLM', model);
+                }
+                
+                selectedModelName.set(model ?? initialModelKey);
+            }
+        }
+    })();
     let modelWeights = $state<Record<string, number>>(
-        initialModelKey ? { [initialModelKey]: 1 } : {}
+        get(selectedModelKey) ? { [get(selectedModelKey)]: 1 } : {}
     );
     let useMcpServers = $state(true);
     let mcpConfigurationDraft = $state(get(mcpConfigurationStore));
@@ -77,9 +95,9 @@
         });
     }
 
-    const currentModel = $derived(getModelByKey(selectedModelKey));
+    const currentModel = $derived(getModelByKey($selectedModelKey));
 
-    const getCurrentModelWeight = () => modelWeights[selectedModelKey] ?? 1;
+    const getCurrentModelWeight = () => modelWeights[$selectedModelKey] ?? 1;
 
     function ensureModelWeight(key: string) {
         if (!key || modelWeights[key] !== undefined) {
@@ -100,8 +118,7 @@
         const target = ev.currentTarget as HTMLSelectElement | null;
         const modelNameFromTarget = target?.value;
         const modelNameFromDetail = (ev as CustomEvent<string | undefined>).detail;
-        const nextModelKey = modelNameFromTarget ?? modelNameFromDetail ?? selectedModelKey;
-        selectedModelKey = nextModelKey;
+        const nextModelKey = modelNameFromTarget ?? modelNameFromDetail ?? get(selectedModelKey);
         ensureModelWeight(nextModelKey);
     }
 
@@ -115,7 +132,7 @@
     function updateCurrentModelWeight(weight: number) {
         modelWeights = {
             ...modelWeights,
-            [selectedModelKey]: weight
+            [$selectedModelKey]: weight
         };
     }
 
@@ -381,7 +398,7 @@
                         {@const sortedModels = sortModelsByAvailability(unavaiableModels?.allNotAvaiableModels)}
                     
                         <UI.Common.AI.SelectAIModel
-                            selectedModel={selectedModelKey}
+                            bind:selectedModel={$selectedModelKey}
                             avaiabaleModels={sortedModels}
                             disabledModels={unavaiableModels?.allNotAvaiableModels}
                             placeholder="Select model"
