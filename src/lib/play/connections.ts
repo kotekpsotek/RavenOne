@@ -87,7 +87,8 @@ class FilePlayConnections {
         else this.file = undefined;
     }
     
-    async play(playTarget: Play.PlayFile | Play.PlayPoint) {
+    // TODO: Return true point answer context
+    async play(playTarget: Play.PlayFile | Play.PlayPoint): Promise<Play.PlayPointAnswer> {
         if (!this.file) {
             console.warn("Cannot play out of selected file");
             return;
