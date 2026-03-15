@@ -14,6 +14,7 @@
         SaveWorkspaceModelRequest,
         SaveWorkspaceModelResponse
     } from "$lib/workspace-settings/ai-models/types";
+    import type { MCPCredentials } from "@ravenlens/shared/mcp";
 
     function handleGetJWT() {
         const jwt = JWTAuth.getToken();
@@ -48,6 +49,11 @@
         const responseBody = await response.json() as GetWorkspaceApiKeysResponse;
 
         return responseBody.apiKeys;
+    }
+
+    // TODO: Download from backend
+    async function handleRetriveMCPCredentials(): Promise<MCPCredentials> {
+
     }
 
     async function handleRetrieveModels() {
@@ -155,9 +161,11 @@
     };
 </script>
 
-{#await handleRetrieveAPIKeys()}
+{#await Promise.all([handleRetrieveAPIKeys(), handleRetriveMCPCredentials()])}
     Loading api keys..
-{:then apiKeys} 
+{:then results} 
+    {@const [apiKeys, mcpCredentials] = results as [GetWorkspaceApiKeysResponse["apiKeys"], MCPCredentials]}
+
     <div class="space-y-6">
         <UI.Workspace.Settings.WorkspaceAIModelsScreen
             bgColor="bg-base-200"
@@ -174,6 +182,6 @@
             on:modelDeleted={handleModelDeleted}
         />
 
-        <MCPWorkspaceConfig />
+        <MCPWorkspaceConfig {mcpCredentials}/>
     </div>
 {/await}

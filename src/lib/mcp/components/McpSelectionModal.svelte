@@ -19,6 +19,7 @@
         mcpConfigurationError = "";
     }
 
+    // TODO: Modify save the mcp config to the server
     function acceptMcpConfiguration() {
         const validation = validateMcpConfiguration(mcpConfigurationDraft);
         if (!validation.valid) {
@@ -93,7 +94,7 @@
                 name="MCP configuration"
                 bind:open={open}
                 closeOnBackdrop={true}
-                size="lg"
+                modalClassExtension="max-w-[1000px]"
                 on:close={closeMcpConfigurationEditor}
             >
                 <UI.Modals.ModalWrapperHeading
@@ -124,7 +125,7 @@
 
                 <div class="mt-4 flex justify-end gap-2">
                     <button class="btn btn-ghost" onclick={closeMcpConfigurationEditor}>Cancel</button>
-                    <button class="btn btn-primary" onclick={acceptMcpConfiguration}>Accept</button>
+                    <button class="btn btn-primary" onclick={acceptMcpConfiguration}>Save</button>
                 </div>
             </UI.Modals.ModalWrapper>
         </div>
