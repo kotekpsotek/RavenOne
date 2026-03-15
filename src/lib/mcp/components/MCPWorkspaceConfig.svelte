@@ -3,11 +3,22 @@
 	import { UI } from "@ravenlens/frontend";
 	import McpSelectionModal from "$lib/mcp/components/McpSelectionModal.svelte";
     import type { MCPCredentials } from "@ravenlens/shared/mcp";
+	import "./MCPWorkspaceConfig.css";
 
     const { 
         mcpCredentials = undefined 
     }: { mcpCredentials: MCPCredentials | undefined  } = $props();
     
+	const configurationSteps: string[] = [
+		`Download and setup on your publicly available machine RavenOne MCP Middleware Server. Download server from <a href="">Github</a> or <a href="">Docker</a>`,
+		`Establish <b>Secret Password</b> on side of MCP Middleware Server`,
+		`Specify your server publicly available link at input url field in 'RavenOne > AI Models Settings'`,
+		`Specify at 'RavenOne > AI Models Settings' same password as you've specified for RavenOne MCP Server Middleware`,
+		`Specify the whitelist of available MCP servers with its configuration and required credentials in modal open with usage of 'Configure MCP Servers' button. Then click on "Save" button to save changes`,
+		`Accept all setup by flick on "Accept" button below all so far specified fields`,
+		`Verify connection state with specified <b>RavenOne MCP Middleware Server</b> by look on <u>"MCP RavenOne Server-Middleware URL" input</u> right-side <b>status-box</b>`
+	];
+	
 	// Values of state
 	let draftSecretPassword = $derived(mcpCredentials?.secretPassword ?? "");
 	let revealSecretPassword = $state(false);
@@ -199,7 +210,7 @@
 <!-- Instructions modal -->
 <UI.Modals.ModalWrapper
 	name="MCP setup"
-	size="lg"
+	size="2xl"
 	bind:open={setupModalOpen}
 >
 	<UI.Modals.ModalWrapperHeading
@@ -210,15 +221,11 @@
 
 	<div class="mt-3 space-y-3 text-sm text-base-content/80">
 		<p>Step-by-step flow for this card:</p>
-		<ol class="list-decimal space-y-1 pl-5">
-			<li>Provide MCP Server URL and run connection check.</li>
-			<li>Open status details to review validation reason.</li>
-			<li>Set your secret password and accept password edit.</li>
-			<li>Open MCP servers configuration and accept your JSON setup.</li>
+		<ol class="help-list list-decimal space-y-1 pl-5">
+			{#each configurationSteps as step}
+				<li>{@html step}</li>
+			{/each}
 		</ol>
-		<div class="rounded-xl border border-base-300 bg-base-200 p-3 text-xs">
-			The same status modal is used for both connection success and connection errors.
-		</div>
 	</div>
 
 	<div class="modal-action">
