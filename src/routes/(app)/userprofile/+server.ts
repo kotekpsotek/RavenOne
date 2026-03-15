@@ -2,7 +2,7 @@
 import { createHash, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
 import { dev } from "$app/environment";
 import { env } from "$env/dynamic/private";
-import { getAuthenticatedPayload } from "$lib/server/auth/request";
+import { ensureAuthenticatedViaRoute, getAuthenticatedPayload } from "$lib/server/auth/request";
 import { DB_Models } from "@ravenlens/backend";
 import { Storage } from "@google-cloud/storage";
 import { json } from "@sveltejs/kit";
@@ -55,34 +55,6 @@ function getJwtSecret(): string {
     }
 
     return jwtSecret;
-}
-
-function buildForwardedAuthHeaders(request: Request): Headers {
-    const forwardedHeaders = new Headers();
-    const authorization = request.headers.get("authorization");
-    const cookieHeader = request.headers.get("cookie");
-
-    if (authorization) {
-        forwardedHeaders.set("authorization", authorization);
-    }
-    if (cookieHeader) {
-        forwardedHeaders.set("cookie", cookieHeader);
-    }
-
-    return forwardedHeaders;
-}
-
-async function ensureAuthenticatedViaRoute(request: Request, fetchFn: typeof fetch): Promise<Response | null> {
-    try {
-        const response = await fetchFn("/auth/is-authenticated", {
-            method: "GET",
-            headers: buildForwardedAuthHeaders(request)
-        });
-
-        return response;
-    } catch {
-        return null;
-    }
 }
 
 function getStorageClient(): Storage {
