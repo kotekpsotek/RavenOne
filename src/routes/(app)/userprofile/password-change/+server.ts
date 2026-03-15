@@ -1,4 +1,4 @@
-import { getAuthenticatedPayload } from "$lib/server/auth/request";
+import { ensureAuthenticatedViaRoute, getAuthenticatedPayload } from "$lib/server/auth/request";
 import { DB_Models } from "@ravenlens/backend";
 import { json } from "@sveltejs/kit";
 import bcrypt from "bcryptjs";
@@ -36,19 +36,6 @@ function buildForwardedAuthHeaders(request: Request): Headers {
 	}
 
 	return forwardedHeaders;
-}
-
-async function ensureAuthenticatedViaRoute(request: Request, fetchFn: typeof fetch): Promise<Response | null> {
-	try {
-		const response = await fetchFn("/auth/is-authenticated", {
-			method: "GET",
-			headers: buildForwardedAuthHeaders(request)
-		});
-
-		return response;
-	} catch {
-		return null;
-	}
 }
 
 function validateNewPasswordCompliance(newPassword: string): string | undefined {

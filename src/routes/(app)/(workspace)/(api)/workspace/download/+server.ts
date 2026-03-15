@@ -1,4 +1,4 @@
-import { getAuthenticatedPayload } from "$lib/server/auth/request";
+import { ensureAuthenticatedViaRoute, getAuthenticatedPayload } from "$lib/server/auth/request";
 import { DB_Models } from "@ravenlens/backend";
 import { Permissions, Workspace } from "@ravenlens/shared";
 import { json } from "@sveltejs/kit";
@@ -28,34 +28,6 @@ type WorkspaceDocumentRaw = {
 	workspaceMembers?: WorkspaceMemberRaw[];
 	workspaceInvitements?: WorkspaceInvitementRaw[];
 };
-
-function buildForwardedAuthHeaders(request: Request): Headers {
-	const forwardedHeaders = new Headers();
-	const authorization = request.headers.get("authorization");
-	const cookieHeader = request.headers.get("cookie");
-
-	if (authorization) {
-		forwardedHeaders.set("authorization", authorization);
-	}
-	if (cookieHeader) {
-		forwardedHeaders.set("cookie", cookieHeader);
-	}
-
-	return forwardedHeaders;
-}
-
-async function ensureAuthenticatedViaRoute(request: Request, fetchFn: typeof fetch): Promise<Response | null> {
-	try {
-		const response = await fetchFn("/auth/is-authenticated", {
-			method: "GET",
-			headers: buildForwardedAuthHeaders(request)
-		});
-
-		return response;
-	} catch {
-		return null;
-	}
-}
 
 function normalizeObjectId(value: unknown): string | undefined {
 	if (typeof value === "string") {
