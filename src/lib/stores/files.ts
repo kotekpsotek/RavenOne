@@ -43,6 +43,25 @@ export type SavingValues = boolean | "without-scardfolding";
 export const isFileSaving = writable<SavingValues>(false);
 export const isFileDownloading = writable<boolean>(false);
 
+class RecentlySelectedFileIdStore {
+    static StoreKeyPrefix = "RecentlySelectedFileId";
+    workspaceId: string;
+
+    constructor(workspaceId: string) {
+        this.workspaceId = workspaceId;
+    }
+
+    save(fileId: string) {
+        localStorage.setItem(`${RecentlySelectedFileIdStore.StoreKeyPrefix}:${this.workspaceId}`, fileId);
+    }
+
+    /** Retrives selected file id */
+    retriveId() {
+        const fileSelectedName = localStorage.getItem(`${RecentlySelectedFileIdStore.StoreKeyPrefix}:${this.workspaceId}`);
+        return fileSelectedName;
+    }
+}
+
 // File
 export const selectedFile = (() => {
     type FileType = File.File.File | undefined;
@@ -297,7 +316,6 @@ export const selectedFile = (() => {
         }
 
         if (fileBefore && !isShareRoute) {
-            console.log("Leave")
             await saveSingleFileRequest(fileBefore, true, {
                 requireChangedContent: true,
             });
@@ -306,11 +324,9 @@ export const selectedFile = (() => {
                 .getInterface()
                 ?.sendLeaveFile(toCollabFileRef(fileBefore), onHandleLeaveFile);
             clearCollaboratorsForFile(fileBefore.id);
-
         }
 
         if (nextFile && !isShareRoute) {
-            console.log("Join")
             collaborationInterface
                 .getInterface()
                 ?.sendJoinFile(toCollabFileRef(nextFile), onHandleJoinFile);
@@ -320,6 +336,41 @@ export const selectedFile = (() => {
     }
     
     if (browser) {
+        function findFileByIdRecursive(items: File.File.File[], id: string): File.File.File | undefined {
+            for (const item of items) {
+                if (item.id === id) return item;
+                if (item.subentries?.length) {
+                    const found = findFileByIdRecursive(item.subentries, id);
+                    if (found) return found;
+                }
+            }
+            return undefined;
+        }
+
+        // Load recently selected file
+        selectedWorkspace.subscribe(sw => {
+            if (!sw) return;
+
+            const sInstance = new RecentlySelectedFileIdStore(sw.id);
+            const retrievedFileId = sInstance.retriveId();
+            
+            if (retrievedFileId) {
+                let unsubscribe: () => void;
+                unsubscribe = entriesList.subscribe(entries => {
+                    if (entries.length > 0) {
+                        const file = findFileByIdRecursive(entries, retrievedFileId);
+                        if (file) {
+                            selectedFile.selectFile(file);
+                        }
+                        if (unsubscribe) {
+                            unsubscribe();
+                        }
+                    }
+                });
+            }
+        });
+        
+        // Save file to backend
         window.setInterval(() => {
             const selectedFileLocal = get(store);
             if (!selectedFileLocal) {
@@ -375,6 +426,14 @@ export const selectedFile = (() => {
         },
         /** Selection of file with addition as joined file */
         selectFile(file: FileType) {
+            // Load recently selected file
+            const sw = get(selectedWorkspace);
+            if (file && sw) {
+                const sInstance = new RecentlySelectedFileIdStore(sw.id);
+                sInstance.save(file.id);
+            }
+            
+            // Save to backend
             void transitionSelection(this, file);
         },
         update(updater: (file: FileType) => FileType) {

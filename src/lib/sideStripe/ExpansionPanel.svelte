@@ -867,7 +867,6 @@
                     
                     if (body.ok && body.file) {
                         $selectedFile = body.file;
-                        console.log('Sel', body.file)
                     }
                 }
             }
