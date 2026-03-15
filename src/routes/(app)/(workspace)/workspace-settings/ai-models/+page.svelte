@@ -1,5 +1,6 @@
 <script lang="ts">
     import { UI } from "@ravenlens/frontend";
+    import MCPWorkspaceConfig from "$lib/mcp/components/MCPWorkspaceConfig.svelte";
     import { selectedWorkspace } from "$lib/stores/workspace";
     import { JWTAuth } from "$lib/utils/auth";
     import { fetchAuthenticated } from "$lib/utils/fetch";
@@ -157,18 +158,22 @@
 {#await handleRetrieveAPIKeys()}
     Loading api keys..
 {:then apiKeys} 
-    <UI.Workspace.Settings.WorkspaceAIModelsScreen
-        bgColor="bg-base-200"
-        visibility={{
-            evaluationFrequency: false,
-            customModels: false,
-            gEval: false,
-            apiKeysTable: true
-        }}
-        apiKeysList={apiKeys ?? []}
-        on:apiKeySaved={handleAPIKeySaved}
-        on:apiKeyDeleted={handleAPIKeyDeleted}
-        on:modelSaved={handleModelSaved}
-        on:modelDeleted={handleModelDeleted}
-    />
+    <div class="space-y-6">
+        <UI.Workspace.Settings.WorkspaceAIModelsScreen
+            bgColor="bg-base-200"
+            visibility={{
+                evaluationFrequency: false,
+                customModels: false,
+                gEval: false,
+                apiKeysTable: true
+            }}
+            apiKeysList={apiKeys ?? []}
+            on:apiKeySaved={handleAPIKeySaved}
+            on:apiKeyDeleted={handleAPIKeyDeleted}
+            on:modelSaved={handleModelSaved}
+            on:modelDeleted={handleModelDeleted}
+        />
+
+        <MCPWorkspaceConfig />
+    </div>
 {/await}
