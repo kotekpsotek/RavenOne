@@ -428,6 +428,14 @@ export const selectedFile = (() => {
         },
         /** Selection of file with addition as joined file */
         selectFile(file: FileType) {
+            const recentlySelectedFile = get(store);
+            if (recentlySelectedFile?.id !== file?.id) {
+                // Stop playing the point in the recently selected file
+                if (recentlySelectedFile) {
+                    playableDocumentsAndListsWithPoints.stopPlayingDocument(recentlySelectedFile);
+                }
+            }
+            
             // Load recently selected file
             const sw = get(selectedWorkspace);
             if (file && sw) {
