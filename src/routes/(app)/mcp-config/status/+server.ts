@@ -1,16 +1,20 @@
-import { getAndValidateAuthenticated } from "$lib/server/auth/request";
-import type { RequestHandler } from "@sveltejs/kit";
+import { json, type RequestHandler } from "@sveltejs/kit";
+import { performDownloadLikeOperation } from "../downloadLike";
+import type { MCPConnectionStatusObject } from "@ravenlens/shared/mcp";
 
-/**
- * Check:
- * 1. Is user logged-in
- * 2. Has user permission to check
- * 3. Check conneciton status
- * 4. Check is server online return status
- */
+/** Same as credetnials/download although it downloads the status without credentials */
 export const POST: RequestHandler = async ({ request, cookies }) => {
-    const isAuth = await getAndValidateAuthenticated(request, cookies);
-    if (isAuth instanceof Response) {
-        return isAuth
+    // 1. Make download operation
+    const resultDownloadOp = await performDownloadLikeOperation(request, cookies);
+    if (resultDownloadOp instanceof Response) {
+        return resultDownloadOp;
     }
+    
+    // 2. Return download credentials with status
+    return json(
+        {
+            ...resultDownloadOp.status
+        } satisfies MCPConnectionStatusObject,
+        { status: 200 }
+    );
 }

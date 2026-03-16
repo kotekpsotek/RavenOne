@@ -1,5 +1,5 @@
 import { getAndValidateAuthenticated } from "$lib/server/auth/request";
-import { isMCPMiddlewareServerURLValid, isUserMCPConfigRouteAccessPermited, isUserMCPServerOnlinePingPong } from "../../common";
+import { assumeStatus, isMCPMiddlewareServerURLValid, isUserMCPConfigRouteAccessPermited, isUserMCPServerConnectable } from "../../common";
 import { json, type RequestHandler } from "@sveltejs/kit";
 import type { MCPConnectionStatus, MCPCredentials, MCPCredentialsBackendWithoutStatus } from "@ravenlens/shared/mcp";
 import { DB_Models } from "@ravenlens/backend";
@@ -51,9 +51,11 @@ export const PUT: RequestHandler = async ({ request, cookies }) => {
         }
     
         // 5. Check is server hosted by ping
-        const isServerHosted = await isUserMCPServerOnlinePingPong(credentials);
+        const isServerHosted = await isUserMCPServerConnectable(credentials);
+        const assumedStatus = assumeStatus(credentials, isServerHosted);
+        
         if (!isServerHosted) {
-            return json({ status: "invalid-connection" satisfies MCPConnectionStatus }, { status: 403 });
+            return json({ status: assumedStatus }, { status: 403 });
         }
     
         // 6. Save server config
@@ -69,9 +71,10 @@ export const PUT: RequestHandler = async ({ request, cookies }) => {
                 upsert: true
             }
         );
+
     
         // 7. Return status ok
-        return json({ status: "connected" satisfies MCPConnectionStatus }, { status: 200 });
+        return json({ status: assumedStatus }, { status: 200 });
     }
     catch(err) {
         console.error(`Cannot save/update credetnials`, err);

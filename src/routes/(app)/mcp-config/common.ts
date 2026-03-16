@@ -1,7 +1,22 @@
 import { DB_Models } from "@ravenlens/backend";
 import type { Profile } from "@ravenlens/shared";
-import type { MCPCredentialsBackendWithoutStatus } from "@ravenlens/shared/mcp";
+import type { MCPConnectionStatusObject, MCPCredentialsBackendWithoutStatus } from "@ravenlens/shared/mcp";
 import type { Document } from "mongoose";
+
+export function assumeStatus(serverCredentials: MCPCredentialsBackendWithoutStatus, isConnectedOnline: boolean): MCPConnectionStatusObject {
+    if (!serverCredentials.secretPassword || !serverCredentials.serverURL) {
+        return { status: "not-specified" };
+    }
+    else if (isConnectedOnline) {
+        return {
+            status: "connected"
+        }
+    }
+    else return {
+        status: "invalid-connection",
+        reason: "Server has wrong connection or isn't online"
+    }
+}
 
 export function isMCPMiddlewareServerURLValid(serverURL: string): boolean {
     try {
@@ -15,12 +30,12 @@ export function isMCPMiddlewareServerURLValid(serverURL: string): boolean {
     }
 }
 
-/** TODO: Define it after specify the interface  */
-export async function isUserMCPServerOnlinePingPong(credentials: MCPCredentialsBackendWithoutStatus): Promise<boolean> {
+/** TODO: Internal util to Define it after specify the interface  */
+async function isUserMCPServerOnlinePingPong(credentials: MCPCredentialsBackendWithoutStatus): Promise<boolean> {
     return false;
 }
 
-/** TODO: */
+/** TODO: Check whether server is online and whether the server can be connected with use of specified credetnials */
 export async function isUserMCPServerConnectable(credentials: MCPCredentialsBackendWithoutStatus) {
     return false;
 }
