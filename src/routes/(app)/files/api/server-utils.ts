@@ -7,7 +7,60 @@ import { File } from "@ravenlens/shared";
 import { json } from "@sveltejs/kit";
 import type { Cookies } from "@sveltejs/kit";
 
-export type FileEntry = File.File.File;
+export type FileChatMode = "regular-ask" | "terms-resolution" | "visualization" | "tldr";
+export type FileChatDecision = "accepted" | "declined";
+export type MermaidDiagramType = "flowchart" | "sequenceDiagram" | "classDiagram" | "stateDiagram-v2";
+
+export type PersistedChatMermaid = {
+    definition: string;
+    type: MermaidDiagramType;
+};
+
+export type PersistedChatResponse = {
+    id: string;
+    answerHTML: string;
+    applyTo: "chat" | "selection";
+    decision?: FileChatDecision;
+    publishedDate: Date;
+    mermaid?: PersistedChatMermaid;
+};
+
+export type PersistedSelectedTextRange = {
+    id: string;
+    from: number;
+    to: number;
+    html: string;
+};
+
+export type PersistedChatBubble = {
+    id: string;
+    mode: FileChatMode;
+    isActive: boolean;
+    decision?: FileChatDecision;
+    userPrompt: string;
+    userPromptHTML: string;
+    selectedTextForPrompt: PersistedSelectedTextRange[];
+    aiResponse: PersistedChatResponse[];
+    createdAt: Date;
+};
+
+export type PersistedChatThread = {
+    id: string;
+    title: string;
+    type: FileChatMode;
+    bubbles: PersistedChatBubble[];
+    createdAt: Date;
+    updatedAt: Date;
+};
+
+export type FileAiChatState = {
+    chats: PersistedChatThread[];
+    selectedChatId?: string;
+};
+
+export type FileEntry = File.File.File & {
+    aiChatState?: FileAiChatState;
+};
 export type MovePosition = "before" | "after" | "inside";
 
 const EMPTY_FILE_CONTENT = "<p></p>";
@@ -197,11 +250,197 @@ function normalizeSharedUrls(sharedUrls: unknown): NonNullable<FileEntry["shared
     return normalizedSharedUrls.length ? normalizedSharedUrls : undefined;
 }
 
+function normalizeChatMode(modeCandidate: unknown): FileChatMode {
+    if (
+        modeCandidate === "regular-ask"
+        || modeCandidate === "terms-resolution"
+        || modeCandidate === "visualization"
+        || modeCandidate === "tldr"
+    ) {
+        return modeCandidate;
+    }
+
+    return "regular-ask";
+}
+
+function normalizeChatDecision(decisionCandidate: unknown): FileChatDecision | undefined {
+    if (decisionCandidate === "accepted" || decisionCandidate === "declined") {
+        return decisionCandidate;
+    }
+
+    return undefined;
+}
+
+function normalizeMermaidType(typeCandidate: unknown): MermaidDiagramType {
+    if (
+        typeCandidate === "flowchart"
+        || typeCandidate === "sequenceDiagram"
+        || typeCandidate === "classDiagram"
+        || typeCandidate === "stateDiagram-v2"
+    ) {
+        return typeCandidate;
+    }
+
+    return "flowchart";
+}
+
+function normalizeSelectedTextRange(candidate: unknown): PersistedSelectedTextRange | null {
+    if (!candidate || typeof candidate !== "object") {
+        return null;
+    }
+
+    const id = asNonEmptyString((candidate as PersistedSelectedTextRange).id);
+    const from = Number((candidate as PersistedSelectedTextRange).from);
+    const to = Number((candidate as PersistedSelectedTextRange).to);
+    const html = typeof (candidate as PersistedSelectedTextRange).html === "string"
+        ? (candidate as PersistedSelectedTextRange).html
+        : "";
+
+    if (!id || !Number.isFinite(from) || !Number.isFinite(to)) {
+        return null;
+    }
+
+    return {
+        id,
+        from,
+        to,
+        html
+    };
+}
+
+function normalizeChatResponse(candidate: unknown): PersistedChatResponse | null {
+    if (!candidate || typeof candidate !== "object") {
+        return null;
+    }
+
+    const responseId = asNonEmptyString((candidate as PersistedChatResponse).id);
+    const answerHTML = typeof (candidate as PersistedChatResponse).answerHTML === "string"
+        ? (candidate as PersistedChatResponse).answerHTML
+        : "";
+
+    if (!responseId) {
+        return null;
+    }
+
+    const applyTo = (candidate as PersistedChatResponse).applyTo === "selection"
+        ? "selection"
+        : "chat";
+
+    const mermaidCandidate = (candidate as PersistedChatResponse).mermaid;
+    const hasValidMermaid = Boolean(
+        mermaidCandidate
+        && typeof mermaidCandidate === "object"
+        && typeof mermaidCandidate.definition === "string"
+        && mermaidCandidate.definition.trim().length
+    );
+
+    return {
+        id: responseId,
+        answerHTML,
+        applyTo,
+        decision: normalizeChatDecision((candidate as PersistedChatResponse).decision),
+        publishedDate: toDate((candidate as PersistedChatResponse).publishedDate),
+        ...(hasValidMermaid
+            ? {
+                mermaid: {
+                    definition: String(mermaidCandidate!.definition),
+                    type: normalizeMermaidType(mermaidCandidate!.type)
+                }
+            }
+            : {})
+    };
+}
+
+function normalizeChatBubble(candidate: unknown): PersistedChatBubble | null {
+    if (!candidate || typeof candidate !== "object") {
+        return null;
+    }
+
+    const bubbleId = asNonEmptyString((candidate as PersistedChatBubble).id);
+    if (!bubbleId) {
+        return null;
+    }
+
+    const selectedTextForPrompt = Array.isArray((candidate as PersistedChatBubble).selectedTextForPrompt)
+        ? (candidate as PersistedChatBubble).selectedTextForPrompt
+            .map(normalizeSelectedTextRange)
+            .filter((entry): entry is PersistedSelectedTextRange => entry !== null)
+        : [];
+
+    const aiResponse = Array.isArray((candidate as PersistedChatBubble).aiResponse)
+        ? (candidate as PersistedChatBubble).aiResponse
+            .map(normalizeChatResponse)
+            .filter((entry): entry is PersistedChatResponse => entry !== null)
+        : [];
+
+    return {
+        id: bubbleId,
+        mode: normalizeChatMode((candidate as PersistedChatBubble).mode),
+        isActive: Boolean((candidate as PersistedChatBubble).isActive),
+        decision: normalizeChatDecision((candidate as PersistedChatBubble).decision),
+        userPrompt: typeof (candidate as PersistedChatBubble).userPrompt === "string"
+            ? (candidate as PersistedChatBubble).userPrompt
+            : "",
+        userPromptHTML: typeof (candidate as PersistedChatBubble).userPromptHTML === "string"
+            ? (candidate as PersistedChatBubble).userPromptHTML
+            : "",
+        selectedTextForPrompt,
+        aiResponse,
+        createdAt: toDate((candidate as PersistedChatBubble).createdAt)
+    };
+}
+
+function normalizeChatThread(candidate: unknown): PersistedChatThread | null {
+    if (!candidate || typeof candidate !== "object") {
+        return null;
+    }
+
+    const threadId = asNonEmptyString((candidate as PersistedChatThread).id);
+    if (!threadId) {
+        return null;
+    }
+
+    const bubbles = Array.isArray((candidate as PersistedChatThread).bubbles)
+        ? (candidate as PersistedChatThread).bubbles
+            .map(normalizeChatBubble)
+            .filter((entry): entry is PersistedChatBubble => entry !== null)
+        : [];
+
+    return {
+        id: threadId,
+        title: asNonEmptyString((candidate as PersistedChatThread).title) ?? "New chat",
+        type: normalizeChatMode((candidate as PersistedChatThread).type),
+        bubbles,
+        createdAt: toDate((candidate as PersistedChatThread).createdAt),
+        updatedAt: toDate((candidate as PersistedChatThread).updatedAt)
+    };
+}
+
+function normalizeAiChatState(aiChatStateCandidate: unknown): FileAiChatState | undefined {
+    if (!aiChatStateCandidate || typeof aiChatStateCandidate !== "object") {
+        return undefined;
+    }
+
+    const chats = Array.isArray((aiChatStateCandidate as FileAiChatState).chats)
+        ? (aiChatStateCandidate as FileAiChatState).chats
+            .map(normalizeChatThread)
+            .filter((entry): entry is PersistedChatThread => entry !== null)
+        : [];
+
+    const selectedChatId = asNonEmptyString((aiChatStateCandidate as FileAiChatState).selectedChatId);
+
+    return {
+        chats,
+        ...(selectedChatId ? { selectedChatId } : {})
+    };
+}
+
 export function sanitizeEntry(entry: FileEntry, workspaceId: string): FileEntry {
     const normalizedIcon = asNonEmptyString(entry.icon);
     const normalizedWalper = asNonEmptyString(entry.walper);
     const normalizedSubentries = normalizeSubentries(entry.subentries, workspaceId);
     const normalizedSharedUrls = normalizeSharedUrls(entry.sharedURLs);
+    const normalizedAiChatState = normalizeAiChatState(entry.aiChatState);
 
     return {
         type: "file",
@@ -215,7 +454,8 @@ export function sanitizeEntry(entry: FileEntry, workspaceId: string): FileEntry 
         ...(normalizedIcon ? { icon: normalizedIcon } : {}),
         ...(normalizedWalper ? { walper: normalizedWalper } : {}),
         ...(normalizedSubentries?.length ? { subentries: normalizedSubentries } : {}),
-        ...(normalizedSharedUrls?.length ? { sharedURLs: normalizedSharedUrls } : {})
+        ...(normalizedSharedUrls?.length ? { sharedURLs: normalizedSharedUrls } : {}),
+        ...(normalizedAiChatState ? { aiChatState: normalizedAiChatState } : {})
     };
 }
 

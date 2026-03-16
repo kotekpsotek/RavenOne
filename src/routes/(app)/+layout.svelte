@@ -4,6 +4,9 @@
     import SideStripe from '$lib/sideStripe/SideStripe.svelte';
 	import SearchModal from '$lib/modals/SearchModal.svelte';
     import { isSharedRoute } from '$lib/stores/share';
+    import RightStripeChat from '$lib/sideStripe/RightStripeChat.svelte';
+    import { isChatSideStripeSelected } from '$lib/stores/selectedSideStripes';
+    import { selectedFile } from '$lib/stores/files';
 
 	let { children } = $props();
 </script>
@@ -21,4 +24,8 @@
 		{/if}
 		{@render children()}
 	</main>
+
+	{#if $isChatSideStripeSelected && $selectedFile}
+		<RightStripeChat />
+	{/if}
 </div>

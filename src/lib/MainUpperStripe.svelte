@@ -22,6 +22,7 @@
     import { File } from "@ravenlens/shared";
     import { canManageWorkspaceFiles } from "./stores/subscription";
     import { browser } from "$app/environment";
+    import { isChatSideStripeSelected, isFileListSideStripeSelected, isPointsStripeOpen } from "./stores/selectedSideStripes";
 
     type DropdownName = "model-settings" | "mcp-tools" | "play-settings" | "share";
 
@@ -662,6 +663,46 @@
                     </div>
                 </div>
             </details>
+
+            <div 
+                class="openable-list flex gap-2 text-2xl"
+            >
+                <div
+                    class="tooltip tooltip-bottom"
+                    data-tip={$isFileListSideStripeSelected ? `Collapse Filebar (Ctrl + .)` : 'Expand Filebar (Ctrl + .)'}
+                >
+                    <button 
+                        class="p-2 rounded-lg cursor-pointer {$isFileListSideStripeSelected ? "bg-base-300/70 text-primary" : "hover:bg-base-300"}"
+                        onclick={isFileListSideStripeSelected.onToggle}
+                    >
+                        <Icon icon="material-symbols:dock-to-right-outline"/>
+                    </button>
+                </div>
+                
+                <div
+                    class="tooltip tooltip-bottom"
+                    data-tip={$isFileListSideStripeSelected ? `Collapse Chatbar (Ctrl + ,)` : 'Expand Chatbar (Ctrl + ,)'}
+                >
+                    <button
+                        class="p-2 rounded-lg cursor-pointer {$isPointsStripeOpen ? "bg-base-300/70 text-primary" : "hover:bg-base-300"}"
+                        onclick={isPointsStripeOpen.onToggle}
+                    >
+                        <Icon icon="material-symbols:dock-to-bottom-outline"/>
+                    </button>
+                </div>
+                
+                <div
+                    class="tooltip tooltip-bottom"
+                    data-tip={$isFileListSideStripeSelected ? `Collapse Chatbar (Ctrl + ,)` : 'Expand Chatbar (Ctrl + ,)'}
+                >
+                    <button 
+                        class="p-2 rounded-lg cursor-pointer {$isChatSideStripeSelected ? "bg-base-300/70 text-primary" : "hover:bg-base-300"}"
+                        onclick={isChatSideStripeSelected.onToggle}
+                    >
+                        <Icon icon="material-symbols:dock-to-left-outline"/>
+                    </button>
+                </div>
+            </div>
         </div>
     </section>
 

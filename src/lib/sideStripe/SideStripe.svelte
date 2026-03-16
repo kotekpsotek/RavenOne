@@ -11,8 +11,8 @@
     import { isSearchModalOpen } from "$lib/stores/files";
     import { appName } from "$lib/config/app";
     import { isSharedRoute } from "$lib/stores/share";
+    import { isChatSideStripeSelected, isFileListSideStripeSelected } from "$lib/stores/selectedSideStripes";
 
-    let isExpanded = $state(false);
     const PANEL_WIDTH_STORAGE_KEY = 'expansion-panel-width';
     const PANEL_MIN_WIDTH = 260;
     const PANEL_MAX_WIDTH = 640;
@@ -60,16 +60,8 @@
         $isSearchModalOpen = !$isSearchModalOpen;
     }
 
-    function onToggleSidebar() {
-        if ($isSharedRoute) {
-            return;
-        }
-
-        isExpanded = !isExpanded;
-    }
-
     function onResizeHandleMouseDown(event: MouseEvent) {
-        if (!isExpanded) {
+        if (!$isFileListSideStripeSelected) {
             return;
         }
 
@@ -141,7 +133,11 @@
         }
 
         if (ev.ctrlKey && ev.key === '.') {
-            isExpanded = !isExpanded;
+            isFileListSideStripeSelected.onToggle();
+        }
+
+        if (ev.ctrlKey && ev.key === ",") {
+            isChatSideStripeSelected.onToggle();
         }
 
         if (ev.ctrlKey && ev.key === 'p') {
@@ -157,7 +153,7 @@
 
 <aside 
     class="relative flex h-full flex-col border-r border-base-300 bg-base-100 {isResizing ? '' : 'transition-all duration-300'}"
-    style={`width: ${$isSharedRoute ? COLLAPSED_WIDTH : isExpanded ? panelWidth + COLLAPSED_WIDTH : COLLAPSED_WIDTH}px`}
+    style={`width: ${$isSharedRoute ? COLLAPSED_WIDTH : $isFileListSideStripeSelected ? panelWidth + COLLAPSED_WIDTH : COLLAPSED_WIDTH}px`}
 >
     <div class="flex flex-1 overflow-hidden">
         <!-- Narrow Stripe (Activity Bar) -->
@@ -202,10 +198,10 @@
                             </button>
                         </div>
                         
-                        <div class="tooltip tooltip-right" data-tip={isExpanded ? `Collapse Sidebar (Ctrl + .)` : 'Expand Tasks Explorer (Ctrl + .)'}>
+                        <div class="tooltip tooltip-right" data-tip={$isFileListSideStripeSelected ? `Collapse Filebar (Ctrl + .)` : 'Expand Filebar (Ctrl + .)'}>
                             <button
-                                onclick={onToggleSidebar}
-                                class="btn btn-ghost btn-square btn-sm rounded-lg {isExpanded ? 'bg-base-100 text-primary' : 'text-base-content/70'} hover:bg-base-300 hover:text-primary active:scale-95 transition-colors"
+                                onclick={isFileListSideStripeSelected.onToggle}
+                                class="btn btn-ghost btn-square btn-sm rounded-lg {$isFileListSideStripeSelected ? 'bg-base-100 text-primary' : 'text-base-content/70'} hover:bg-base-300 hover:text-primary active:scale-95 transition-colors"
                                 aria-label="Toggle sidebar"
                             >
                                 <Icon icon="material-symbols:thumbnail-bar-outline" class="text-xl"/>
@@ -284,11 +280,11 @@
         <!-- Expansion Panel (Explorer) -->
         {#if !$isSharedRoute}
             <ExpansionPanel 
-                {isExpanded}
+                isExpanded={$isFileListSideStripeSelected}
             />
         {/if}
 
-        {#if !$isSharedRoute && isExpanded}
+        {#if !$isSharedRoute && $isFileListSideStripeSelected}
             <div
                 class="absolute right-0 top-0 z-20 h-full w-1.5 cursor-ew-resize transition-colors {isResizing || isResizeHandleHovered ? 'bg-primary/50' : 'bg-transparent hover:bg-primary/30'}"
                 onmouseenter={() => {

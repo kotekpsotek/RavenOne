@@ -9,6 +9,7 @@
     import ListTray from "./ListTray.svelte";
     import "./Editor.css";
     import { isSharedRoute } from "./stores/share";
+    import { isPointsStripeOpen } from "./stores/selectedSideStripes";
 
     let canEditWorkspaceContent = $derived(!$workspaceSubscriptionCheckInProgress && $workspaceHasActiveSubscription);
 
@@ -37,7 +38,10 @@
                 {/if}
 
                 <EditorContent editor={$editor} class="tiptap-editor" />
-                <ListTray isReadOnly={!canEditWorkspaceContent}/>
+
+                {#if $isPointsStripeOpen}
+                    <ListTray isReadOnly={!canEditWorkspaceContent}/>
+                {/if}
             </div>
         {/if}
     {:else}
