@@ -7,6 +7,8 @@ import { File } from "@ravenlens/shared";
 import { selectedWorkspace } from "./workspace";
 import { collaborationInterface, entriesCollaborators, onHandleJoinFile, onHandleLeaveFile, setSelectedFileIdInCollaboration } from "./collaboration";
 import { isSharedRoute } from "./share";
+import { FilePlayConnections, playInFile } from "$lib/play/connections";
+import { playableDocumentsAndListsWithPoints } from "./playModeStore";
 
 /** Entries */
 export const entriesList = (() => {
@@ -432,9 +434,187 @@ export const selectedFile = (() => {
                 const sInstance = new RecentlySelectedFileIdStore(sw.id);
                 sInstance.save(file.id);
             }
-            
+
             // Save to backend
             void transitionSelection(this, file);
+
+            // Playing file store and its operations
+            playInFile.update(filePlay => {
+                // Joins user to the file and leave previous file if exists
+                filePlay.automateFile(file);
+
+                // Downloads points are playing for selected file -> only when file and workspace was selected
+                /// WARNING: Doesn't worthy so much since points playing doesn't work in current version -> user left the file causes the all points to be automatically stopped
+                /* if (file && sw) {
+                    filePlay.downloadPlayingPoints(file)
+                        .then(playingPointsList => {
+                            const playingPointIds = new Set(
+                                playingPointsList
+                                    .map(point => point?.pointId)
+                                    .filter((pointId): pointId is string => {
+                                        return typeof pointId === "string" && pointId.trim().length > 0;
+                                    })
+                            );
+
+                            if (playingPointIds.size === 0) {
+                                return;
+                            }
+
+                            const now = Date.now();
+                            const playablePointsByListId = new Map<string, File.File.EditableListItem[]>();
+                            for (const list of file.lists) {
+                                const listPlayablePoints = list.items.filter(item => playingPointIds.has(item.id));
+                                if (listPlayablePoints.length > 0) {
+                                    playablePointsByListId.set(list.id, listPlayablePoints);
+                                }
+                            }
+
+                            if (playablePointsByListId.size === 0) {
+                                return;
+                            }
+
+                            const createPlayableItems = (items: File.File.EditableListItem[]) => {
+                                return items.map(item => {
+                                    return {
+                                        ...item,
+                                        startedAtTimestamp: now,
+                                        finishedAtTimestamp: undefined,
+                                    };
+                                });
+                            };
+
+                            const fallbackConfig = {
+                                model: (get(selectedModel) ?? {
+                                    model: "gpt-5-mini",
+                                    provider: "OpenAI",
+                                    isThinking: true,
+                                    text: { input: true, output: true },
+                                    image: { input: true, output: true },
+                                    sound: { input: true, output: true },
+                                    video: { input: true, output: false }
+                                }) as AI.RavenLensAvaiableAIModel,
+                                tools: get(selectedTools),
+                                context: {} as File.FileAI.ContextSpecificationPayload,
+                                selectedItemPlayMode: get(playMode)
+                            };
+
+                            playableDocumentsAndListsWithPoints.update(store => {
+                                // Step 1: Document does not exist in store -> create it with currently playing points.
+                                const documentIndex = store.findIndex(documentState => documentState.document.id === file.id);
+                                if (documentIndex < 0) {
+                                    const lists = file.lists
+                                        .filter(list => playablePointsByListId.has(list.id))
+                                        .map(list => {
+                                            const playableItems = createPlayableItems(playablePointsByListId.get(list.id) ?? []);
+
+                                            return {
+                                                ...list,
+                                                list: {
+                                                    ...list,
+                                                    items: playableItems,
+                                                    startedAtTimestamp: now,
+                                                    finishedAtTimestamp: undefined,
+                                                },
+                                                config: fallbackConfig,
+                                                scopePointIds: list.items.map(item => item.id)
+                                            };
+                                        });
+
+                                    if (!lists.length) {
+                                        return store;
+                                    }
+
+                                    return [
+                                        ...store,
+                                        {
+                                            document: file,
+                                            mode: get(playMode),
+                                            lists,
+                                            startAtTimestamp: now
+                                        }
+                                    ];
+                                }
+
+                                // Step 2: Document exists -> add/update only points from playingPointsList.
+                                const updatedStore = [...store];
+                                const documentState = updatedStore[documentIndex];
+                                const updatedLists = [...documentState.lists];
+
+                                for (const list of file.lists) {
+                                    const playablePoints = playablePointsByListId.get(list.id);
+                                    if (!playablePoints?.length) {
+                                        continue;
+                                    }
+
+                                    const listStateIndex = updatedLists.findIndex(listState => listState.list.id === list.id);
+                                    if (listStateIndex < 0) {
+                                        updatedLists.push({
+                                            ...list,
+                                            list: {
+                                                ...list,
+                                                items: createPlayableItems(playablePoints),
+                                                startedAtTimestamp: now,
+                                                finishedAtTimestamp: undefined,
+                                            },
+                                            config: fallbackConfig,
+                                            scopePointIds: list.items.map(item => item.id)
+                                        });
+
+                                        continue;
+                                    }
+
+                                    const listState = updatedLists[listStateIndex];
+                                    const incomingPointIds = new Set(playablePoints.map(point => point.id));
+                                    const existingPointIds = new Set(listState.list.items.map(point => point.id));
+
+                                    const updatedExistingItems = listState.list.items.map(point => {
+                                        if (!incomingPointIds.has(point.id)) {
+                                            return point;
+                                        }
+
+                                        return {
+                                            ...point,
+                                            startedAtTimestamp: point.startedAtTimestamp ?? now,
+                                            finishedAtTimestamp: undefined,
+                                        };
+                                    });
+
+                                    const missingItems = createPlayableItems(
+                                        playablePoints.filter(point => !existingPointIds.has(point.id))
+                                    );
+
+                                    updatedLists[listStateIndex] = {
+                                        ...listState,
+                                        list: {
+                                            ...listState.list,
+                                            items: [...updatedExistingItems, ...missingItems],
+                                            startedAtTimestamp: listState.list.startedAtTimestamp ?? now,
+                                            finishedAtTimestamp: undefined,
+                                        },
+                                        scopePointIds: Array.from(new Set([
+                                            ...(listState.scopePointIds ?? []),
+                                            ...list.items.map(item => item.id)
+                                        ]))
+                                    };
+                                }
+
+                                updatedStore[documentIndex] = {
+                                    ...documentState,
+                                    document: file,
+                                    lists: updatedLists,
+                                };
+
+                                return updatedStore;
+                            });
+                        })
+                } */
+                
+                //
+                return filePlay;
+            });
+
+            //
+
         },
         update(updater: (file: FileType) => FileType) {
             const nextFile = updater(get(store));

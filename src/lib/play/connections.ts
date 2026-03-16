@@ -74,7 +74,7 @@ const normalizePointResultPayload = (
     };
 };
 
-class FilePlayConnections {
+export class FilePlayConnections {
     file: File.File.File | undefined = undefined;
     connection: Socket;
     private readonly pointResultListeners = new Set<(payload: PointResultEventPayload) => void>();
@@ -229,8 +229,8 @@ class FilePlayConnections {
         });
     }
 
-    private emitDownloadPlayingPointsEvent(context: FileSocketContext): Promise<{ success: boolean; playPoints: unknown[] }> {
-        return new Promise((resolve, reject) => {
+    private emitDownloadPlayingPointsEvent(context: FileSocketContext) {
+        return new Promise<{ success: boolean; playPoints: Play.PlayingPointBackendService[] }>((resolve, reject) => {
             let isSettled = false;
 
             const timeoutId = setTimeout(() => {
@@ -246,7 +246,7 @@ class FilePlayConnections {
                 "download-playpoints",
                 context.workspaceId,
                 context.fileId,
-                (success: unknown, playPoints?: unknown[]) => {
+                (success: boolean, playPoints?: Play.PlayingPointBackendService[]) => {
                     if (isSettled) {
                         return;
                     }
@@ -320,7 +320,6 @@ class FilePlayConnections {
         else this.file = undefined;
     }
     
-    // TODO: Return true point answer context
     async play(playTarget: Play.PlayFile | Play.PlayPoint): Promise<Play.PlayPointAnswer> {
         const context = resolveFileSocketContext(playTarget.file ?? this.file);
         if (!context) {
@@ -371,7 +370,7 @@ class FilePlayConnections {
         return true;
     }
 
-    async downloadPlayingPoints(file?: File.File.File): Promise<unknown[]> {
+    async downloadPlayingPoints(file?: File.File.File) {
         const context = resolveFileSocketContext(file ?? this.file);
         if (!context) {
             throw new Error("Cannot download playing points without file and workspace identifiers.");
@@ -396,24 +395,12 @@ class FilePlayConnections {
     }
 }
 
-/* export const playInFile = (() => {
+export const playInFile = (() => {
     // Store
-    const store = writable<FilePlayConnections | undefined>(undefined);
-
-    // Joins to file
-    if (browser) {
-        selectedFile?.subscribe(sf => {
-            store?.update(connection => {
-                if (!connection && sf) {
-                    return new FilePlayConnections(sf);
-                }
-
-                connection?.automateFile(sf);
-                return connection;
-            })
-        });
-    }
+    const store = writable<FilePlayConnections>(
+        new FilePlayConnections()
+    );
 
     //
     return store;
-})(); */
+})();

@@ -2,7 +2,7 @@ import { browser } from "$app/environment";
 import { get, writable, type Updater } from "svelte/store";
 import { selectedFile } from "./files";
 import { findItemDirectSubitems } from "$lib/listItems/utils";
-import { /* playInFile, */ type PointResultEventPayload } from "$lib/play/connections";
+import { /* playInFile, */ playInFile, type PointResultEventPayload } from "$lib/play/connections";
 import type { AI, File, Play } from "@ravenlens/shared";
 
 interface PlayableListItem extends Omit<File.File.EditableListItem, "answers"> {
@@ -537,6 +537,22 @@ export const playableDocumentsAndListsWithPoints = (() => {
         } as unknown as Play.PlayPoint;
     };
 
+    /** Use to use the function to stop point playing -> Remove each point playing in async mode */
+    const stopPointPlay = (pointId: string, document: File.File.File) => {
+        // Stop remote point play
+        playInFile.update(pif => {
+            pif.stop(pointId, document)
+                .then(result => {
+                    if (!result) {
+                        console.error(`Cannot stop playing point: ${pointId}`)
+                    }
+                })
+                .catch(err => console.error(`Point stopping got a error. Emitted for point: ${pointId}`, err));
+            
+            return pif;
+        })
+    }
+
     return {
         ...playableStore,
         isDocumentPlaying(selectedDocumentLocal: File.File.File | undefined) {
@@ -1004,16 +1020,54 @@ export const playableDocumentsAndListsWithPoints = (() => {
                     ? createPlayFileTarget(selectedDocumentLocal, config, point.id)
                     : createPlayPointTarget(selectedDocumentLocal, point, config);
 
-                /* const playConnection = get(playInFile);
-                if (!playConnection) {
-                    console.warn(`Cannot play point \"${point.id}\" because play connection is unavailable.`);
-                }
-                else {
-                    const waitForPointResultTask = waitForPointResult(selectedDocumentLocal.id, point.id);
-                    await playConnection.play(playTarget);
-                    await waitForPointResultTask;
-                } */
+                /// ==== Playing ====
+                const addResultAnswerAnswerToFileSpawnedList = (answer: File.FileAI.AIAnswer) => {
+                    selectedFile.update(sf => {
+                        if (!sf || sf.id !== selectedDocumentLocal.id) {
+                            return sf;
+                        }
 
+                        return {
+                            ...sf,
+                            lists: sf.lists.map(list => {
+                                if (list.id !== listId) {
+                                    return list;
+                                }
+
+                                return {
+                                    ...list,
+                                    items: list.items.map(item => {
+                                        if (item.id !== point.id) {
+                                            return item;
+                                        }
+
+                                        return {
+                                            ...item,
+                                            checked: isTaskLikeListKind(list.kind) ? true : item.checked,
+                                            answers: [...(item.answers ?? []), answer],
+                                        };
+                                    })
+                                };
+                            })
+                        };
+                    })
+                }
+
+                //// ... Play file with non-blocking apporach ...
+                playInFile.update(filePlay => {
+                    filePlay.play(playTarget)
+                        .then(playResult => {
+                            if (playResult) {
+                                addResultAnswerAnswerToFileSpawnedList(playResult);
+                            }
+                            else console.error(`Cannot add play result since it's falsy value equal to`, playResult);
+                        })
+                        .catch(err => console.error(`Point playing got a error. Emitted for point: ${point.id}`, err));
+                    
+                    return filePlay;
+                })
+                /// ==== |||||| ====
+                
                 if (!isPointPlayingInCurrentRun(point.id)) {
                     return "don-not-allow-to-play-childs";
                 }
@@ -1031,63 +1085,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
                 // Every played checkpoint should become checked after execution.
                 checkPointStateUpdate(point, true);
                 
-                // Add answer to spawned list from file
-                /* selectedFile.update(sf => {
-                    if (!sf || sf.id !== selectedDocumentLocal.id) {
-                        return sf;
-                    }
-
-                    const now = Date.now();
-                    const dummyAnswer: NonNullable<File.File.EditableListItem["answers"]>[number] = {
-                        playMode: config.selectedItemPlayMode,
-                        startDateTimestamp: now - 5_000,
-                        endDateTimestamp: now,
-                        model: {
-                            id: `${config.model.provider}:${config.model.model}`,
-                            name: config.model.model,
-                            provider: config.model.provider,
-                            weight: 1,
-                        },
-                        context: point.context,
-                        mcp: config.selectedItemMcpServers.join(", ") ?? false,
-                        tools: (() => {
-                            const toolsSetExistsing = config.tools.filter(tool => availableTools.includes(tool));
-                            const toolsSetNotExistsing = config.tools.filter(tool => !availableTools.includes(tool));
-                            
-                            const existsingToolsMap: [File.FileAI.BrowserToolsUnion, true][] = toolsSetExistsing.map(tool => [tool, true]);
-                            const nonExistsingToolsMap: [File.FileAI.BrowserToolsUnion, false][] = toolsSetNotExistsing.map(tool => [tool, false]);
-
-                            return Object.fromEntries([...existsingToolsMap, ...nonExistsingToolsMap])
-                        })(),
-                        answerTipTapHTML: "<p>Dummy answer generated by play simulation.</p>"
-                    };
-                    console.log('DM', dummyAnswer)
-
-                    return {
-                        ...sf,
-                        lists: sf.lists.map(list => {
-                            if (list.id !== listId) {
-                                return list;
-                            }
-
-                            return {
-                                ...list,
-                                items: list.items.map(item => {
-                                    if (item.id !== point.id) {
-                                        return item;
-                                    }
-
-                                    return {
-                                        ...item,
-                                        checked: isTaskLikeListKind(list.kind) ? true : item.checked,
-                                        answers: [...(item.answers ?? []), dummyAnswer],
-                                    };
-                                })
-                            };
-                        })
-                    };
-                }) */
-
+                // Return successfull operation result
                 return true;
             }
             const checkPointStateUpdate = (point: File.File.EditableListItem, isChecked: boolean) => {
@@ -1332,11 +1330,19 @@ export const playableDocumentsAndListsWithPoints = (() => {
                 }
             }
 
+            // Stop parent point playing
+            stopPointPlay(pointId, selectedDocumentLocal);
+            
+            //
             let hasChanges = false;
             for (const pointToStop of pointsToStop) {
                 settlePointResultWaiter(selectedDocumentLocal.id, pointToStop);
+
+                // Stop subpoints remote play
+                stopPointPlay(pointToStop, selectedDocumentLocal);
             }
 
+            // Remove point from points playable store
             playableStore.update(store => {
                 const updatedStore = store
                     .map(documentState => {
@@ -1401,6 +1407,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
                 return hasChanges ? updatedStore : store;
             });
 
+            // Remove changes state
             return hasChanges;
         },
         stopPlayingDocument(document: File.File.File) {
@@ -1420,8 +1427,12 @@ export const playableDocumentsAndListsWithPoints = (() => {
 
             for (const pointId of pointsPlayingInDocument) {
                 settlePointResultWaiter(document.id, pointId);
+
+                // Remove each point playing
+                stopPointPlay(pointId, document);
             }
 
+            // Remove all points are playing from document
             playableStore.update(store => {
                 const updatedStore = store.filter(documentState => documentState.document.id !== document.id);
                 hasChanges = updatedStore.length !== store.length;
@@ -1429,6 +1440,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
                 return hasChanges ? updatedStore : store;
             });
 
+            // Emit event
             if (hasChanges) {
                 StopPlayEvent.dispatch({
                     kind: "document",
@@ -1436,6 +1448,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
                 } satisfies StopDocumentEvent);
             }
 
+            // Return state
             return hasChanges;
         }
     }
