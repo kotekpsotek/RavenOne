@@ -538,20 +538,21 @@ export const playableDocumentsAndListsWithPoints = (() => {
     };
 
     /** Use to use the function to stop point playing -> Remove each point playing in async mode */
-    const stopPointPlay = (pointId: string, document: File.File.File) => {
-        // Stop remote point play
-        playInFile.update(pif => {
-            pif.stop(pointId, document)
-                .then(result => {
-                    if (!result) {
-                        console.error(`Cannot stop playing point: ${pointId}`)
-                    }
-                })
-                .catch(err => console.error(`Point stopping got a error. Emitted for point: ${pointId}`, err));
-            
-            return pif;
-        })
-    }
+    const stopPointPlay = async (pointId: string, document: File.File.File): Promise<boolean> => {
+        try {
+            const result = await get(playInFile).stop(pointId, document);
+            if (!result) {
+                console.error(`Cannot stop playing point: ${pointId}`);
+                return false;
+            }
+
+            return true;
+        }
+        catch (err) {
+            console.error(`Point stopping got an error. Emitted for point: ${pointId}`, err);
+            return false;
+        }
+    };
 
     return {
         ...playableStore,
@@ -1053,19 +1054,14 @@ export const playableDocumentsAndListsWithPoints = (() => {
                     })
                 }
 
-                //// ... Play file with non-blocking apporach ...
-                playInFile.update(filePlay => {
-                    filePlay.play(playTarget)
-                        .then(playResult => {
-                            if (playResult) {
-                                addResultAnswerAnswerToFileSpawnedList(playResult);
-                            }
-                            else console.error(`Cannot add play result since it's falsy value equal to`, playResult);
-                        })
-                        .catch(err => console.error(`Point playing got a error. Emitted for point: ${point.id}`, err));
-                    
-                    return filePlay;
-                })
+                try {
+                    const playResult = await get(playInFile).play(playTarget);
+                    addResultAnswerAnswerToFileSpawnedList(playResult);
+                }
+                catch (err) {
+                    console.error(`Point playing got an error. Emitted for point: ${point.id}`, err);
+                    return "don-not-allow-to-play-childs";
+                }
                 /// ==== |||||| ====
                 
                 if (!isPointPlayingInCurrentRun(point.id)) {
@@ -1330,16 +1326,13 @@ export const playableDocumentsAndListsWithPoints = (() => {
                 }
             }
 
-            // Stop parent point playing
-            stopPointPlay(pointId, selectedDocumentLocal);
-            
-            //
+            const stopPointTasks: Promise<boolean>[] = [];
             let hasChanges = false;
             for (const pointToStop of pointsToStop) {
                 settlePointResultWaiter(selectedDocumentLocal.id, pointToStop);
 
                 // Stop subpoints remote play
-                stopPointPlay(pointToStop, selectedDocumentLocal);
+                stopPointTasks.push(stopPointPlay(pointToStop, selectedDocumentLocal));
             }
 
             // Remove point from points playable store
@@ -1407,12 +1400,15 @@ export const playableDocumentsAndListsWithPoints = (() => {
                 return hasChanges ? updatedStore : store;
             });
 
+            await Promise.all(stopPointTasks);
+
             // Remove changes state
             return hasChanges;
         },
         stopPlayingDocument(document: File.File.File) {
             let hasChanges = false;
             beginDocumentRun(document.id);
+            const stopPointTasks: Promise<boolean>[] = [];
 
             const pointsPlayingInDocument = new Set<string>();
             for (const documentState of get(playableStore)) {
@@ -1429,7 +1425,7 @@ export const playableDocumentsAndListsWithPoints = (() => {
                 settlePointResultWaiter(document.id, pointId);
 
                 // Remove each point playing
-                stopPointPlay(pointId, document);
+                stopPointTasks.push(stopPointPlay(pointId, document));
             }
 
             // Remove all points are playing from document
@@ -1447,6 +1443,8 @@ export const playableDocumentsAndListsWithPoints = (() => {
                     document
                 } satisfies StopDocumentEvent);
             }
+
+            void Promise.all(stopPointTasks);
 
             // Return state
             return hasChanges;
