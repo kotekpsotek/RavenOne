@@ -1,19 +1,23 @@
 <script lang="ts">
     import { goto } from "$app/navigation";
     import { UI } from "@ravenlens/frontend";
-    import { entriesList, moveEntry, selectedFile } from "$lib/stores/files";
-    import { canManageWorkspaceFiles, workspaceHasActiveSubscription, workspaceSubscriptionCheckInProgress } from "$lib/stores/subscription";
+    import { entriesList, isFileDownloading, moveEntry, selectedFile } from "$lib/stores/files";
+    import { canManageWorkspaceFiles, workspaceSubscriptionCheckInProgress } from "$lib/stores/subscription";
     import { selectedWorkspace } from "$lib/stores/workspace";
     import Icon from "@iconify/svelte";
     import IconSelectionModal from "$lib/modals/IconSelectionModal.svelte";
     import WallpaperSelectionModal from "$lib/modals/WallpaperSelectionModal.svelte";
     import IconValue from "$lib/IconValue.svelte";
     import { setAlert } from "$lib/utils/alert";
-    import { onMount, tick } from "svelte";
+    import { onMount } from "svelte";
     import { get } from "svelte/store";
-    import { File } from "@ravenlens/shared";
+    import { Collabortation, File } from "@ravenlens/shared";
+    import { collaborationInterface, entriesCollaborators } from "$lib/stores/collaboration";
+    import { userProfile } from "$lib/stores/user";
     import { changeFilePositionRequest, changeIconFileRequest, changeWalperFileRequest, deleteFileRequest, downloadFilesRequest, newFileRequest, renameFileRequest } from "$lib/files/connections/connections";
     import type { DropPosition } from "$lib/files/utils";
+    import { fetchAuthenticated } from "$lib/utils/fetch";
+    import { isCollaboratorEditor } from "../../../../../packages/shared/dist/collaboration/collab";
  
     let { isExpanded = false }: { isExpanded?: boolean } = $props();
     function getCurrentWorkspaceId(): string | null {
@@ -66,6 +70,7 @@
                 return;
             }
 
+            releaseContextMenuFileJoin(true);
             activeWorkspaceId = selectedWorkspaceId;
             entriesList.set([]);
             selectedFile.set(undefined);
@@ -83,7 +88,7 @@
     let draggedId = $state<string | null>(null);
     let dropTargetId = $state<string | null>(null);
     let dropPosition = $state<DropPosition>(null);
-    let contextMenu = $state<{ entryId: string; x: number; y: number } | null>(null);
+    let contextMenu = $state<{ entry: File.File.File; x: number; y: number } | null>(null);
     let renamingId = $state<string | null>(null);
     let renameValue = $state('');
     let deleteTarget = $state<File.File.File | null>(null);
@@ -92,7 +97,91 @@
     let walperPickerEntryId = $state<string | null>(null);
     let walperPickerInitialValue = $state("");
     let expandedEntries = $state<Record<string, boolean>>({});
-    let contextMenuEntry = $derived(contextMenu ? findFileById($entriesList, contextMenu.entryId) : null);
+    let contextMenuJoinedFileId = $state<string | null>(null);
+    let contextMenuElement = $state<HTMLDivElement | null>(null);
+    let contextMenuEntry = $derived(contextMenu ? findFileById($entriesList, contextMenu.entry.id) : null);
+    let contextMenuEntryIsEditor = $derived(contextMenuEntry ? isCurrentUserFileEditor(contextMenuEntry.id) : false);
+
+    function isFileEditorLockedByAnotherUser(fileId: string): boolean {
+        const currentUserId = get(userProfile)?.id;
+        const fileCollaboratorsEntry = get(entriesCollaborators).find((entry) => entry.fileId === fileId);
+        if (!fileCollaboratorsEntry) {
+            return false;
+        }
+
+        return fileCollaboratorsEntry.collaborators.some((collaborator) => {
+            return collaborator.id !== currentUserId && Collabortation.isCollaboratorEditor(collaborator);
+        });
+    }
+
+    function tryJoinFileFromContextMenu(entry: File.File.File) {
+        if (get(selectedFile)?.id === entry.id) {
+            return;
+        }
+
+        if (isFileEditorLockedByAnotherUser(entry.id)) {
+            return;
+        }
+
+        const collab = collaborationInterface.getInterface();
+        if (!collab) {
+            return;
+        }
+
+        const fileReference = { id: entry.id } as File.File.File;
+
+        void collab
+            .getCollabsFromFile(fileReference)
+            .then((collaborators) => {
+                entriesCollaborators.update((entries) => {
+                    const existingEntryIndex = entries.findIndex((candidate) => candidate.fileId === entry.id);
+
+                    if (existingEntryIndex < 0) {
+                        return [
+                            ...entries,
+                            {
+                                fileId: entry.id,
+                                collaborators,
+                            }
+                        ];
+                    }
+
+                    return entries.map((candidate, index) => {
+                        if (index !== existingEntryIndex) {
+                            return candidate;
+                        }
+
+                        return {
+                            ...candidate,
+                            collaborators,
+                        };
+                    });
+                });
+            })
+            .catch((error) => {
+                console.error("Cannot preload collaborators for file context menu", error);
+            });
+
+        contextMenuJoinedFileId = entry.id;
+    }
+
+    function releaseContextMenuFileJoin(force = false) {
+        if (!contextMenuJoinedFileId) {
+            return;
+        }
+
+        const joinedFileId = contextMenuJoinedFileId;
+        contextMenuJoinedFileId = null;
+
+        if (!force && get(selectedFile)?.id === joinedFileId) {
+            return;
+        }
+
+        const joinedFileExists = Boolean(findFileById(get(entriesList), joinedFileId));
+        if (!joinedFileExists) {
+            return;
+        }
+    }
 
     function ensureActiveWorkspaceSubscription(operationName: string): boolean {
         if ($canManageWorkspaceFiles) {
@@ -108,6 +197,36 @@
         }
 
         return false;
+    }
+
+    function isCurrentUserFileEditor(fileId: string | null | undefined): boolean {
+        return entriesCollaborators.isCurrentUserEditor(fileId);
+    }
+
+    function ensureCurrentUserFileEditor(fileId: string | null | undefined, operationName: string): boolean {
+        if (isCurrentUserFileEditor(fileId)) {
+            return true;
+        }
+
+        setAlert(
+            "warning",
+            "Editor access required",
+            `Cannot ${operationName} because you are not a file editor collaborator for this file.`
+        );
+
+        return false;
+    }
+
+    function getContextMenuActionBlockedReason(fileId: string, requiresSubscription = false): string | undefined {
+        if (!isCurrentUserFileEditor(fileId)) {
+            return "File editor collaborator access required";
+        }
+
+        if (requiresSubscription && !$canManageWorkspaceFiles) {
+            return "Active workspace subscription required";
+        }
+
+        return undefined;
     }
 
     function focusInputAttachment(node: HTMLInputElement) {
@@ -169,6 +288,16 @@
         }
 
         entriesList.update((list) => addToTarget(list));
+
+        function getEntiresToOneScope(value: File.File.File): File.File.File[] {
+            return [
+                value,
+                ...((value.subentries ? value.subentries.flatMap(getEntiresToOneScope) : []) as File.File.File[])
+            ]
+        }
+
+        const fullEntiresInOneScope = get(entriesList).flatMap(getEntiresToOneScope);
+        const targetEntry = fullEntiresInOneScope.find(entry => entry.id === targetId);
     }
 
     function getNextName(entries: File.File.File[], type: 'Task') {
@@ -193,6 +322,14 @@
     }
 
     function handleDragStart(e: DragEvent, id: string) {
+        if (!ensureCurrentUserFileEditor(id, "relocate this file")) {
+            draggedId = null;
+            dropTargetId = null;
+            dropPosition = null;
+            e.preventDefault();
+            return;
+        }
+
         draggedId = id;
         if (e.dataTransfer) {
             e.dataTransfer.setData('text/plain', id);
@@ -231,6 +368,13 @@
             const workspaceId = getCurrentWorkspaceId();
             const sourceId = draggedId;
             const nextDropPosition = dropPosition || 'inside';
+
+            if (!ensureCurrentUserFileEditor(sourceId, "relocate this file")) {
+                draggedId = null;
+                dropTargetId = null;
+                dropPosition = null;
+                return;
+            }
 
             if (workspaceId) {
                 const moveResult = await changeFilePositionRequest(
@@ -323,21 +467,64 @@
         return null;
     }
 
-    function onEntryContextMenu(e: MouseEvent, entry: File.File.File) {
+    async function onEntryContextMenu(e: MouseEvent, entry: File.File.File) {
         e.preventDefault();
         e.stopPropagation();
+
+        if (contextMenuJoinedFileId && contextMenuJoinedFileId !== entry.id) {
+            releaseContextMenuFileJoin(true);
+        }
+
+        tryJoinFileFromContextMenu(entry);
+
+        await new Promise((res) => {
+            collaborationInterface.getInterface()
+                ?.sendContextMenuLock(entry, (success) => {
+                    if (!success) {
+                        console.warn('Cannot lock context menu since other user is locking');
+                        res(false);
+                    }
+
+                    res(true);
+                });
+        })
+
         contextMenu = {
-            entryId: entry.id,
+            entry: entry,
             x: e.clientX,
             y: e.clientY
         };
     }
 
-    function closeContextMenu() {
+    function closeContextMenu(options: { keepJoinedFile?: boolean } = {}) {
+        if (contextMenu?.entry) {
+            collaborationInterface.getInterface()
+                ?.sendContextMenuUnlock(contextMenu.entry, (success) => {
+                    if (!success) {
+                        console.warn('Cannot unlock context menu since other user is locking');
+                    }
+                });
+        }
+        
+        const hadContextMenu = contextMenu !== null;
         contextMenu = null;
+
+        if (!hadContextMenu) {
+            return;
+        }
+
+        if (options.keepJoinedFile) {
+            return;
+        }
+
+        releaseContextMenuFileJoin();
     }
 
-    function onWindowClick() {
+    function onWindowClick(event: MouseEvent) {
+        if (contextMenuElement && event.target instanceof Node && contextMenuElement.contains(event.target)) {
+            return;
+        }
+
         closeContextMenu();
     }
 
@@ -348,6 +535,7 @@
             deleteTarget = null;
             closeIconPicker();
             closeWalperPicker();
+            releaseContextMenuFileJoin();
         }
         else if (e.ctrlKey && e.key === "r" && $selectedFile) {
             e.preventDefault();
@@ -356,14 +544,22 @@
     }
 
     function openRename(entry: File.File.File) {
+        if (!ensureCurrentUserFileEditor(entry.id, "rename this file")) {
+            return;
+        }
+
         renamingId = entry.id;
         renameValue = entry.name;
-        closeContextMenu();
+        closeContextMenu({ keepJoinedFile: true });
     }
 
     async function submitRename(fileId: string) {
         const nextName = renameValue.trim();
         if (!nextName) {
+            return;
+        }
+
+        if (!ensureCurrentUserFileEditor(fileId, "rename this file")) {
             return;
         }
 
@@ -382,27 +578,36 @@
             name: nextName
         })));
 
+        const renamedFile = findFileById(get(entriesList), fileId);
+
         renamingId = null;
+        releaseContextMenuFileJoin();
     }
 
     function cancelRename() {
         renamingId = null;
         renameValue = '';
+        releaseContextMenuFileJoin();
     }
 
     function openIconPicker(entry: File.File.File) {
+        if (!ensureCurrentUserFileEditor(entry.id, "change file icon")) {
+            return;
+        }
+
         if (!ensureActiveWorkspaceSubscription("change file icon")) {
             return;
         }
 
         iconPickerEntryId = entry.id;
         iconPickerInitialValue = entry.icon ?? "";
-        closeContextMenu();
+        closeContextMenu({ keepJoinedFile: true });
     }
 
     function closeIconPicker() {
         iconPickerEntryId = null;
         iconPickerInitialValue = "";
+        releaseContextMenuFileJoin();
     }
 
     async function applyPickedIcon(iconValue: string) {
@@ -415,6 +620,11 @@
         }
 
         const entryId = iconPickerEntryId;
+
+        if (!ensureCurrentUserFileEditor(entryId, "change file icon")) {
+            return;
+        }
+
         const normalizedIconValue = iconValue.trim();
 
         const workspaceId = getCurrentWorkspaceId();
@@ -455,6 +665,10 @@
 
         const entryId = iconPickerEntryId;
 
+        if (!ensureCurrentUserFileEditor(entryId, "change file icon")) {
+            return;
+        }
+
         const workspaceId = getCurrentWorkspaceId();
         if (!workspaceId) {
             return;
@@ -483,18 +697,23 @@
     }
 
     function openWalperPicker(entry: File.File.File) {
+        if (!ensureCurrentUserFileEditor(entry.id, "change file wallpaper")) {
+            return;
+        }
+
         if (!ensureActiveWorkspaceSubscription("change file wallpaper")) {
             return;
         }
 
         walperPickerEntryId = entry.id;
         walperPickerInitialValue = entry.walper ?? "";
-        closeContextMenu();
+        closeContextMenu({ keepJoinedFile: true });
     }
 
     function closeWalperPicker() {
         walperPickerEntryId = null;
         walperPickerInitialValue = "";
+        releaseContextMenuFileJoin();
     }
 
     async function applyWalperToFile(walperValue: string) {
@@ -507,6 +726,10 @@
         }
 
         const entryId = walperPickerEntryId;
+
+        if (!ensureCurrentUserFileEditor(entryId, "change file wallpaper")) {
+            return;
+        }
 
         const workspaceId = getCurrentWorkspaceId();
         if (!workspaceId) {
@@ -544,6 +767,10 @@
 
         const entryId = walperPickerEntryId;
 
+        if (!ensureCurrentUserFileEditor(entryId, "change file wallpaper")) {
+            return;
+        }
+
         const workspaceId = getCurrentWorkspaceId();
         if (!workspaceId) {
             return;
@@ -570,17 +797,26 @@
     }
 
     function openDeleteModal(entry: File.File.File) {
+        if (!ensureCurrentUserFileEditor(entry.id, "delete this file")) {
+            return;
+        }
+
         deleteTarget = entry;
-        closeContextMenu();
+        closeContextMenu({ keepJoinedFile: true });
     }
 
     function closeDeleteModal() {
         deleteTarget = null;
+        releaseContextMenuFileJoin();
     }
 
     async function confirmDelete() {
         const target = deleteTarget;
         if (!target) {
+            return;
+        }
+
+        if (!ensureCurrentUserFileEditor(target.id, "delete this file")) {
             return;
         }
 
@@ -602,12 +838,43 @@
 
         // playableDocumentsWithPoints.unsetFullDocumentPlaying(target);
         deleteTarget = null;
+        releaseContextMenuFileJoin();
     }
 
     function onEntryClick(entry: File.File.File) {
         return async () => {
             await goto("/");
-            $selectedFile = entry;
+            closeContextMenu({ keepJoinedFile: true });
+            selectedFile.selectFile(entry);
+
+            if (contextMenuJoinedFileId === entry.id) {
+                contextMenuJoinedFileId = null;
+            }
+
+            // Download the freshest file
+            const downloadTimeout = setTimeout(() => {
+                $isFileDownloading = true;
+            }, 400);
+
+            try {
+                const fileDownloadingResponse = await fetchAuthenticated("/files/api/download/file", {
+                    method: "POST",
+                    body: JSON.stringify({ workspaceId: $selectedWorkspace?.id, fileId: entry.id })
+                });
+    
+                if (fileDownloadingResponse.ok) {
+                    const body = await fileDownloadingResponse.json() as { file: File.File.File | undefined, ok: boolean };
+                    
+                    if (body.ok && body.file) {
+                        $selectedFile = body.file;
+                    }
+                }
+            }
+            catch {}
+            finally {
+                clearTimeout(downloadTimeout);
+                $isFileDownloading = false;
+            }
         }
     }
 
@@ -634,7 +901,12 @@
         if (e.key === 'Enter' || e.key === ' ') {
             await goto("/");
             e.preventDefault();
+            closeContextMenu({ keepJoinedFile: true });
             $selectedFile = entry;
+
+            if (contextMenuJoinedFileId === entry.id) {
+                contextMenuJoinedFileId = null;
+            }
         }
     }
 </script>
@@ -648,7 +920,7 @@
     <div class="w-full {isTarget && dropPosition === 'before' ? 'border-t-2 border-primary' : ''} {isTarget && dropPosition === 'after' ? 'border-b-2 border-primary' : ''}">
         <div
             class="group/file flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-base-300 {isTarget && dropPosition === 'inside' ? 'bg-primary/20' : ''} {$selectedFile?.id === entry.id ? 'bg-base-300/70' : ''}"
-            draggable="true"
+            draggable={isCurrentUserFileEditor(entry.id)}
             ondragstart={(e) => handleDragStart(e, entry.id)}
             ondragover={(e) => handleDragOver(e, entry)}
             ondrop={(e) => handleDrop(e, entry.id)}
@@ -763,38 +1035,57 @@
 
 {#if contextMenu}
     <div
+        bind:this={contextMenuElement}
         class="dropdown dropdown-open fixed z-50"
         style={`left: ${contextMenu.x}px; top: ${contextMenu.y}px;`}
     >
         <ul class="menu dropdown-content z-[1] w-52 rounded-box border border-base-300 bg-base-100 p-2 shadow-xl">
             {#if contextMenuEntry}
-                <li>
-                    <button
-                        onclick={() => openRename(contextMenuEntry)}
-                        disabled={!$canManageWorkspaceFiles}
-                    >
-                        Change name
-                    </button>
-                </li>
-                <li>
-                    <button
-                        onclick={() => openIconPicker(contextMenuEntry)}
-                        disabled={!$canManageWorkspaceFiles}
-                        title={!$canManageWorkspaceFiles ? "Active workspace subscription required" : undefined}
-                    >
-                        {contextMenuEntry.icon ? 'Change icon' : 'Add icon'}
-                    </button>
-                </li>
-                <li>
-                    <button
-                        onclick={() => openWalperPicker(contextMenuEntry)}
-                        disabled={!$canManageWorkspaceFiles}
-                        title={!$canManageWorkspaceFiles ? "Active workspace subscription required" : undefined}
-                    >
-                        {contextMenuEntry.walper ? 'Change walper' : 'Add walper'}
-                    </button>
-                </li>
-                <li><button class="text-error" onclick={() => openDeleteModal(contextMenuEntry)}>Delete</button></li>
+                {#await collaborationInterface.getInterface()?.getCollabsFromFile(contextMenuEntry)}
+                    <div>
+                        Loading...
+                    </div>
+                {:then collabs}
+                    {@const areBtnsDisabled = collabs?.length && collabs.some(collab => collab.id !== $userProfile?.id && isCollaboratorEditor(collab)) ? true : false}
+                
+                    <li>
+                        <button
+                            onclick={() => openRename(contextMenuEntry)}
+                            disabled={areBtnsDisabled}
+                            title={getContextMenuActionBlockedReason(contextMenuEntry.id)}
+                        >
+                            Change name
+                        </button>
+                    </li>
+                    <li>
+                        <button
+                            onclick={() => openIconPicker(contextMenuEntry)}
+                            disabled={areBtnsDisabled}
+                            title={getContextMenuActionBlockedReason(contextMenuEntry.id, true)}
+                        >
+                            {contextMenuEntry.icon ? 'Change icon' : 'Add icon'}
+                        </button>
+                    </li>
+                    <li>
+                        <button
+                            onclick={() => openWalperPicker(contextMenuEntry)}
+                            disabled={areBtnsDisabled}
+                            title={getContextMenuActionBlockedReason(contextMenuEntry.id, true)}
+                        >
+                            {contextMenuEntry.walper ? 'Change walper' : 'Add walper'}
+                        </button>
+                    </li>
+                    <li>
+                        <button
+                            class="text-error"
+                            onclick={() => openDeleteModal(contextMenuEntry)}
+                            disabled={areBtnsDisabled}
+                            title={getContextMenuActionBlockedReason(contextMenuEntry.id)}
+                        >
+                            Delete
+                        </button>
+                    </li>
+                {/await}
             {/if}
         </ul>
     </div>
@@ -871,11 +1162,11 @@
                 open={deleteTarget !== null}
                 closeOnBackdrop={true}
                 size="md"
-                on:close={_ => deleteTarget = null}
+                on:close={closeDeleteModal}
             >
                 <UI.Modals.ModalWrapperHeading
                     headingName="Delete file"
-                    on:close={_ => deleteTarget = null}
+                    on:close={closeDeleteModal}
                 />
 
                 <div class="pt-2">

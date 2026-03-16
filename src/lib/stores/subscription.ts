@@ -68,7 +68,6 @@ export async function refreshSelectedWorkspaceSubscriptionState(workspaceIdCandi
     });
 
     const subscriptionKind = await getWorkspaceActiveSubscription(workspaceId);
-    console.log('Sub kind', subscriptionKind)
     if (currentRequestId !== workspaceCheckRequestId) {
         return;
     }

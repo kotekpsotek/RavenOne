@@ -1,350 +1,449 @@
 import { browser } from "$app/environment";
 import { fetchAuthenticated } from "$lib/utils/fetch";
+import { setAlert } from "$lib/utils/alert";
 import type { AI } from "@ravenlens/shared";
 import { get, writable } from "svelte/store";
 import { File } from "@ravenlens/shared";
 import { selectedWorkspace } from "./workspace";
-import { canManageWorkspaceFiles } from "./subscription";
+import { collaborationInterface, entriesCollaborators, onHandleJoinFile, onHandleLeaveFile, setSelectedFileIdInCollaboration } from "./collaboration";
+import { isSharedRoute } from "./share";
 
-// Entries
-export const entriesList = writable<File.File.File[]>([]);
+/** Entries */
+export const entriesList = (() => {
+    const entriesStore = writable<File.File.File[]>([]);
+
+    if (browser) {
+        const registerEntryListeners = (interfaceCollab: NonNullable<ReturnType<typeof collaborationInterface.getInterface>>) => {
+            
+        };
+
+        // Delay access to collaborationInterface to avoid TDZ during circular module initialization.
+        queueMicrotask(() => {
+            const existingInterface = collaborationInterface.getInterface();
+            if (existingInterface) {
+                registerEntryListeners(existingInterface);
+                return;
+            }
+
+            const unsubscribe = collaborationInterface.subscribe((interfaceCollab) => {
+                if (!interfaceCollab) {
+                    return;
+                }
+
+                registerEntryListeners(interfaceCollab);
+                unsubscribe();
+            });
+        });
+    }
+
+    return entriesStore;
+})();
 /** Access saving state -> 'true' when file is actually saving, 'false' when is not */
-export const isFileSaving = writable<boolean>(false);
+export type SavingValues = boolean | "without-scardfolding";
+export const isFileSaving = writable<SavingValues>(false);
+export const isFileDownloading = writable<boolean>(false);
+
+class RecentlySelectedFileIdStore {
+    static StoreKeyPrefix = "RecentlySelectedFileId";
+    workspaceId: string;
+
+    constructor(workspaceId: string) {
+        this.workspaceId = workspaceId;
+    }
+
+    save(fileId: string) {
+        localStorage.setItem(`${RecentlySelectedFileIdStore.StoreKeyPrefix}:${this.workspaceId}`, fileId);
+    }
+
+    /** Retrives selected file id */
+    retriveId() {
+        const fileSelectedName = localStorage.getItem(`${RecentlySelectedFileIdStore.StoreKeyPrefix}:${this.workspaceId}`);
+        return fileSelectedName;
+    }
+}
 
 // File
 export const selectedFile = (() => {
     type FileType = File.File.File | undefined;
-    type UnsavedFile = { file: NonNullable<File.File.File>; date: number };
-    type SaveFilesOptions = { keepalive?: boolean; workspaceId?: string };
+    type SaveSingleFileOptions = {
+        keepalive?: boolean;
+        showFailureAlert?: boolean;
+        requireChangedContent?: boolean;
+        skipClientEditorCheck?: boolean;
+        allowBeaconFallback?: boolean;
+    };
 
-    const AUTO_SAVE_INTERVAL_MS = 30_000;
+    type SaveFilePayload = {
+        id: string;
+        content: string;
+        lists: File.File.SpawnedList[];
+    };
+
+    type SaveRequestPayload = {
+        workspaceId: string;
+        file: SaveFilePayload;
+    };
 
     const store = writable<FileType>(undefined);
+    const AUTOSAVE_INTERVAL_MS = 30000;
+    const EMPTY_FILE_CONTENT = "<p></p>";
+    let activeSaveRequests = 0;
+    const persistedFileSignatures = new Map<string, string>();
+
+    type SelectedFileStore = {
+        subscribe: typeof store.subscribe;
+        set(file: FileType): void;
+        update(updater: (file: FileType) => FileType): void;
+        selectFile(file: FileType): void;
+        updateFileListItems(spawnedListId: string, items: File.File.EditableListItem[]): Promise<boolean>;
+        requestSave(file: NonNullable<FileType>, saveValue?: SavingValues, options?: SaveSingleFileOptions): Promise<boolean>;
+    };
 
     const normalizeWorkspaceId = (workspaceId?: string): string | undefined => {
         if (!workspaceId) {
-            return undefined;
+            return undefined
         }
 
         const normalizedWorkspaceId = workspaceId.trim();
         return normalizedWorkspaceId.length ? normalizedWorkspaceId : undefined;
     }
 
+    const toCollabFileRef = (file: File.File.File): File.File.File => {
+        return {
+            id: file.id,
+        } as File.File.File;
+    }
+
     const getWorkspaceIdFromFile = (file?: FileType): string | undefined => {
         return normalizeWorkspaceId(file?.createdByAuthorId);
     }
 
-    const getPersistedStateSignature = (file?: FileType): string => {
-        if (!file) {
-            return "";
+    const normalizeContentForSignature = (contentCandidate: unknown): string => {
+        if (typeof contentCandidate !== "string") {
+            return EMPTY_FILE_CONTENT;
         }
 
+        if (!contentCandidate.trim()) {
+            return EMPTY_FILE_CONTENT;
+        }
+
+        return contentCandidate;
+    }
+
+    const getPersistedFileSignature = (file: NonNullable<FileType>): string => {
         return JSON.stringify({
-            content: file.content ?? "",
-            lists: file.lists ?? []
+            id: file.id,
+            content: normalizeContentForSignature(file.content),
+            lists: Array.isArray(file.lists) ? file.lists : []
         });
+    }
+
+    const rememberInitialPersistedSignature = (file: NonNullable<FileType>): void => {
+        if (persistedFileSignatures.has(file.id)) {
+            return;
+        }
+
+        persistedFileSignatures.set(file.id, getPersistedFileSignature(file));
+    }
+
+    const hasFileChangedSincePersisted = (file: NonNullable<FileType>): boolean => {
+        const candidateSignature = getPersistedFileSignature(file);
+        const persistedSignature = persistedFileSignatures.get(file.id);
+
+        if (!persistedSignature) {
+            persistedFileSignatures.set(file.id, candidateSignature);
+            return false;
+        }
+
+        return candidateSignature !== persistedSignature;
+    }
+
+    const canCurrentUserSaveFile = (file: NonNullable<FileType>): boolean => {
+        return entriesCollaborators.isCurrentUserEditor(file.id);
     }
 
     const syncEntryListWithFile = (file: File.File.File) => {
         entriesList.update(entries => updateEntryById(entries, file.id, file));
     }
 
-    const constructUnsavedFile = (file: File.File.File, dateTimestamp: number): UnsavedFile => {
+    const clearCollaboratorsForFile = (fileId: string): void => {
+        entriesCollaborators.update((entriesCollabs) => {
+            return entriesCollabs.filter((collabOfEntry) => collabOfEntry.fileId !== fileId);
+        });
+    }
+
+    const extractErrorMessage = async (response: Response): Promise<string> => {
+        try {
+            const body = await response.json() as { message?: unknown };
+            if (typeof body?.message === "string" && body.message.trim().length) {
+                return body.message;
+            }
+        } catch {
+            // Keep fallback message when response body cannot be parsed.
+            return "Cannot parse the response body";
+        }
+
+        return `Cannot save file because of: ${response.status}`;
+    }
+
+    const buildSaveFilePayload = (file: NonNullable<FileType>): SaveFilePayload => {
         return {
-            file: file,
-            date: dateTimestamp
+            id: file.id,
+            content: normalizeContentForSignature(file.content),
+            lists: Array.isArray(file.lists) ? file.lists : []
+        };
+    }
+
+    const trySaveWithBeacon = (requestPayload: SaveRequestPayload): boolean => {
+        if (!browser || typeof navigator?.sendBeacon !== "function") {
+            return false;
+        }
+
+        try {
+            const requestBody = JSON.stringify(requestPayload);
+            const requestBlob = new Blob([requestBody], { type: "application/json" });
+            return navigator.sendBeacon("/files/api/save_content", requestBlob);
+        } catch {
+            return false;
         }
     }
 
-    const dedupeUnsavedFiles = (files: UnsavedFile[]): UnsavedFile[] => {
-        const newestFiles = new Map<string, UnsavedFile>();
+    const saveSingleFileRequest = async (
+        fileToSave: NonNullable<FileType>,
+        saveValue: SavingValues = true,
+        options: SaveSingleFileOptions = {}
+    ): Promise<boolean> => {
+        if (options.requireChangedContent && !hasFileChangedSincePersisted(fileToSave)) {
+            return false;
+        }
 
-        for (const candidate of files) {
-            const workspaceId = getWorkspaceIdFromFile(candidate.file) ?? "unknown";
-            const dedupeKey = `${workspaceId}:${candidate.file.id}`;
-            const newestCandidate = newestFiles.get(dedupeKey);
+        const workspaceId = getWorkspaceIdFromFile(fileToSave)
+            ?? normalizeWorkspaceId(get(selectedWorkspace)?.id);
 
-            if (!newestCandidate || newestCandidate.date < candidate.date) {
-                newestFiles.set(dedupeKey, candidate);
+        if (!workspaceId) {
+            if (options.showFailureAlert !== false) {
+                setAlert("error", "Cannot save file", "Workspace id is missing for the selected file.");
             }
+
+            return false;
         }
 
-        return [...newestFiles.values()];
-    }
-
-    const unsavedFiles = (() => {
-        // Waiting list
-        const all = writable<UnsavedFile[]>([]);
-
-        const buildFilesToSave = (currentFile?: FileType): UnsavedFile[] => {
-            return dedupeUnsavedFiles([
-                ...get(all),
-                ...(currentFile ? [constructUnsavedFile(currentFile, Date.now())] : [])
-            ]);
+        if (!options.skipClientEditorCheck && !canCurrentUserSaveFile(fileToSave)) {
+            return false;
         }
-        
-        /**
-         * Save file by send to backend and after success remove from 'Waiting List' or console.error when file cannot be saved
-         * @param file - list with files will be send to save on backend
-         * @returns - status of operation
-        */
-        async function saveFiles(files: UnsavedFile[], options: SaveFilesOptions = {}): Promise<boolean> {
-            const canManageWorkspaceFilesLocal = get(canManageWorkspaceFiles);
-            if (!canManageWorkspaceFilesLocal) {
+
+        activeSaveRequests += 1;
+        isFileSaving.set(saveValue);
+        const filePayload = buildSaveFilePayload(fileToSave);
+        const requestPayload: SaveRequestPayload = {
+            workspaceId,
+            file: filePayload
+        };
+        const requestBody = JSON.stringify(requestPayload);
+
+        try {
+            const backendCall = await fetchAuthenticated(
+                `/files/api/save_content`,
+                {
+                    method: "POST",
+                    keepalive: options.keepalive,
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: requestBody
+                }
+            );
+
+            if (!backendCall.ok) {
+                let potentialType: unknown;
+                let errorMessage: string;
+
+                try {
+                    const errorBody = await backendCall.clone().json() as { message?: unknown; type?: unknown };
+                    potentialType = errorBody?.type;
+
+                    if (typeof errorBody?.message === "string" && errorBody.message.trim().length) {
+                        errorMessage = errorBody.message;
+                    } else {
+                        errorMessage = `Cannot save file because of: ${backendCall.status}`;
+                    }
+                } catch {
+                    potentialType = undefined;
+                    errorMessage = await extractErrorMessage(backendCall);
+                }
+
+                console.error(errorMessage);
+
+                if (options.showFailureAlert !== false && potentialType !== "collaboration_file") {
+                    setAlert("error", "Cannot save file", errorMessage);
+                }
+
                 return false;
-            };
-            
-            const requestedWorkspaceId = normalizeWorkspaceId(options.workspaceId);
-            const filesToSave = dedupeUnsavedFiles(files);
-            const filesGroupedByWorkspace = new Map<string, UnsavedFile[]>();
-
-            for (const candidate of filesToSave) {
-                const workspaceId = getWorkspaceIdFromFile(candidate.file) ?? requestedWorkspaceId;
-                if (!workspaceId) {
-                    continue;
-                }
-
-                if (requestedWorkspaceId && requestedWorkspaceId !== workspaceId) {
-                    continue;
-                }
-
-                const normalizedCandidate = getWorkspaceIdFromFile(candidate.file)
-                    ? candidate
-                    : {
-                        ...candidate,
-                        file: {
-                            ...candidate.file,
-                            createdByAuthorId: workspaceId
-                        }
-                    };
-
-                const groupedFiles = filesGroupedByWorkspace.get(workspaceId) ?? [];
-                groupedFiles.push(normalizedCandidate);
-                filesGroupedByWorkspace.set(workspaceId, groupedFiles);
             }
 
-            if (!filesGroupedByWorkspace.size) {
+            persistedFileSignatures.set(fileToSave.id, getPersistedFileSignature(fileToSave));
+            return true;
+        } catch (error) {
+            const canTryBeaconFallback = options.keepalive === true && options.allowBeaconFallback !== false;
+            if (canTryBeaconFallback && trySaveWithBeacon(requestPayload)) {
+                persistedFileSignatures.set(fileToSave.id, getPersistedFileSignature(fileToSave));
                 return true;
             }
 
-            isFileSaving.set(true);
-            let isSuccess = true;
+            console.error("Cannot save file because of:", error);
 
-            try {
-                for (const [workspaceId, workspaceFiles] of filesGroupedByWorkspace.entries()) {
-                    const backendCall = await fetchAuthenticated(
-                        `/files/api/save_content`,
-                        {
-                            method: "POST",
-                            keepalive: options.keepalive,
-                            headers: {
-                                "Content-Type": "application/json"
-                            },
-                            body: JSON.stringify({
-                                workspaceId,
-                                files: workspaceFiles
-                            })
-                        }
-                    );
-
-                    if (backendCall.status !== 200) {
-                        isSuccess = false;
-                        console.error(`Cannot save files because of: ${backendCall.status}`);
-                        continue;
-                    }
-
-                    const savedFileIds = (await backendCall.json()) as string[];
-                    const savedFileIdsSet = new Set(savedFileIds);
-
-                    // Remove saved files only from matching workspace.
-                    all.update(waitListFiles => {
-                        return waitListFiles.filter(waitListUnit => {
-                            const waitListWorkspaceId = getWorkspaceIdFromFile(waitListUnit.file);
-                            if (waitListWorkspaceId !== workspaceId) {
-                                return true;
-                            }
-
-                            return !savedFileIdsSet.has(waitListUnit.file.id);
-                        });
-                    });
-                }
-            } catch (error) {
-                isSuccess = false;
-                console.error("Cannot save files because of:", error);
+            if (options.showFailureAlert !== false) {
+                setAlert("error", "Cannot save file", "Network error occurred while saving file.");
             }
 
-            finally {
-                // Reset saving state
-                isFileSaving.set(false);
-            }
+            return false;
+        } finally {
+            activeSaveRequests = Math.max(0, activeSaveRequests - 1);
+            isFileSaving.set(activeSaveRequests > 0);
+        }
+    }
 
-            // Status
-            return isSuccess;
+    const transitionSelection = async (
+        selectedFileStore: Pick<SelectedFileStore, "set">,
+        nextFile: FileType
+    ): Promise<void> => {
+        const fileBefore = get(store);
+        const isShareRoute = get(isSharedRoute);
+
+        if (fileBefore?.id === nextFile?.id) {
+            selectedFileStore.set(nextFile);
+            return;
         }
 
-        async function flushPendingFiles(options: SaveFilesOptions = {}, currentFile?: FileType): Promise<boolean> {
-            return saveFiles(buildFilesToSave(currentFile), options);
-        }
-
-        function flushPendingFilesOnExit(currentFile?: FileType): void {
-            if (!get(all).length && !currentFile) {
-                return;
-            }
-
-            void flushPendingFiles({ keepalive: true }, currentFile);
-        }
-
-        function clear(workspaceId?: string) {
-            const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
-
-            if (!normalizedWorkspaceId) {
-                all.set([]);
-                return;
-            }
-
-            all.update(waitListFiles => {
-                return waitListFiles.filter(waitListUnit => getWorkspaceIdFromFile(waitListUnit.file) !== normalizedWorkspaceId);
+        if (fileBefore && !isShareRoute) {
+            await saveSingleFileRequest(fileBefore, true, {
+                requireChangedContent: true,
             });
+
+            collaborationInterface
+                .getInterface()
+                ?.sendLeaveFile(toCollabFileRef(fileBefore), onHandleLeaveFile);
+            clearCollaboratorsForFile(fileBefore.id);
         }
 
-        function hasPending(workspaceId?: string): boolean {
-            const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
-            const pendingFiles = get(all);
-
-            if (!normalizedWorkspaceId) {
-                return pendingFiles.length > 0;
-            }
-
-            return pendingFiles.some(waitListUnit => getWorkspaceIdFromFile(waitListUnit.file) === normalizedWorkspaceId);
+        if (nextFile && !isShareRoute) {
+            collaborationInterface
+                .getInterface()
+                ?.sendJoinFile(toCollabFileRef(nextFile), onHandleJoinFile);
         }
 
-        return {
-            ...all,
-            // Add files to waiting list
-            addNew(files: UnsavedFile[]) {
-                if (!files.length) {
-                    return;
-                }
-
-                all.update(storeFiles => [...storeFiles, ...files]);
-            },
-            // Manaually save the file
-            saveFiles,
-            flushPendingFiles,
-            flushPendingFilesOnExit,
-            clear,
-            hasPending,
-        }
-    })();
-    
-    if (browser) {
-        const flushPendingOnPageLeave = () => {
-            if (!unsavedFiles.hasPending()) {
-                return;
-            }
-
-            unsavedFiles.flushPendingFilesOnExit(get(store));
-        };
-
-        window.addEventListener("pagehide", flushPendingOnPageLeave);
-        window.addEventListener("beforeunload", flushPendingOnPageLeave);
-        document.addEventListener("visibilitychange", () => {
-            if (document.visibilityState === "hidden") {
-                flushPendingOnPageLeave();
-            }
-        });
-
-        let activeWorkspaceId = normalizeWorkspaceId(get(selectedWorkspace)?.id);
-
-        selectedWorkspace.subscribe(workspace => {
-            const nextWorkspaceId = normalizeWorkspaceId(workspace?.id);
-
-            if (activeWorkspaceId && activeWorkspaceId !== nextWorkspaceId) {
-                const currentFile = get(store);
-                const currentFileFromPreviousWorkspace = currentFile && getWorkspaceIdFromFile(currentFile) === activeWorkspaceId
-                    ? currentFile
-                    : undefined;
-
-                void unsavedFiles
-                    .flushPendingFiles({ keepalive: true, workspaceId: activeWorkspaceId }, currentFileFromPreviousWorkspace)
-                    .finally(() => {
-                        unsavedFiles.clear(activeWorkspaceId);
-                    });
-            }
-
-            // New workspace should always start with an empty waiting list.
-            if (nextWorkspaceId && activeWorkspaceId !== nextWorkspaceId) {
-                unsavedFiles.clear(nextWorkspaceId);
-            }
-
-            activeWorkspaceId = nextWorkspaceId;
-        });
-
-        // Interval loop to save all files and erase old
-        setInterval(async () => {
-            if (!unsavedFiles.hasPending()) {
-                return;
-            }
-
-            await unsavedFiles.flushPendingFiles();
-        }, AUTO_SAVE_INTERVAL_MS);
+        selectedFileStore.set(nextFile);
     }
     
-    return {
-        ...store,
-        /** Use this function to construct file ready to be passed to 'saveFiles' function */
-        constructUnsavedFile,
-        /** Use this to save file manually */
-        saveFiles: unsavedFiles.saveFiles,
-        /** Flush files waiting in queue */
-        flushPendingFiles: unsavedFiles.flushPendingFiles,
-        /** Set file */
-        set(file: FileType) {
-            const priorFile = get(store);
-            const shouldFlushPreviousFile = Boolean(priorFile && (!file || priorFile.id !== file.id));
+    if (browser) {
+        function findFileByIdRecursive(items: File.File.File[], id: string): File.File.File | undefined {
+            for (const item of items) {
+                if (item.id === id) return item;
+                if (item.subentries?.length) {
+                    const found = findFileByIdRecursive(item.subentries, id);
+                    if (found) return found;
+                }
+            }
+            return undefined;
+        }
 
-            if (shouldFlushPreviousFile && priorFile) {
-                // Ensure old file is included and flushed before focus moves away.
-                unsavedFiles.addNew([constructUnsavedFile(priorFile, Date.now())]);
-                void unsavedFiles.flushPendingFiles(
-                    { workspaceId: getWorkspaceIdFromFile(priorFile) },
-                    priorFile
-                );
+        // Load recently selected file
+        selectedWorkspace.subscribe(sw => {
+            if (!sw) return;
+
+            const sInstance = new RecentlySelectedFileIdStore(sw.id);
+            const retrievedFileId = sInstance.retriveId();
+            
+            if (retrievedFileId) {
+                let unsubscribe: () => void;
+                unsubscribe = entriesList.subscribe(entries => {
+                    if (entries.length > 0) {
+                        const file = findFileByIdRecursive(entries, retrievedFileId);
+                        if (file) {
+                            selectedFile.selectFile(file);
+                        }
+                        if (unsubscribe) {
+                            unsubscribe();
+                        }
+                    }
+                });
+            }
+        });
+        
+        // Save file to backend
+        window.setInterval(() => {
+            const selectedFileLocal = get(store);
+            if (!selectedFileLocal) {
+                return;
             }
 
-            // Setup new file version
+            void saveSingleFileRequest(selectedFileLocal, "without-scardfolding", {
+                showFailureAlert: false,
+                requireChangedContent: true,
+                keepalive: false
+            });
+        }, AUTOSAVE_INTERVAL_MS);
+
+        async function onPageHide() {
+            const file = get(store);
+            if (!file) {
+                return;
+            }
+            
+            // Tries to save the file
+            await saveSingleFileRequest(file, true, {
+                keepalive: true,
+                showFailureAlert: false,
+                requireChangedContent: true,
+                skipClientEditorCheck: true,
+                allowBeaconFallback: true
+            });
+        }
+        
+        window.addEventListener("pagehide", onPageHide);
+        window.addEventListener("beforeunload", onPageHide);
+        document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState === "hidden") {
+                void onPageHide();
+            }
+        });
+    }
+
+    const selectedFileStore: SelectedFileStore = {
+        subscribe: store.subscribe,
+        set(file: FileType) {
+            const selectedFileBefore = get(store);
             store.set(file);
+
+            if (file) {
+                // Keep explorer tree in sync with selected file changes (also nested entries).
+                syncEntryListWithFile(file);
+
+                if (selectedFileBefore?.id !== file.id) {
+                    rememberInitialPersistedSignature(file);
+                }
+            }
+        },
+        /** Selection of file with addition as joined file */
+        selectFile(file: FileType) {
+            // Load recently selected file
+            const sw = get(selectedWorkspace);
+            if (file && sw) {
+                const sInstance = new RecentlySelectedFileIdStore(sw.id);
+                sInstance.save(file.id);
+            }
+            
+            // Save to backend
+            void transitionSelection(this, file);
         },
         update(updater: (file: FileType) => FileType) {
-            const priorFile = get(store);
-            const priorPersistedState = getPersistedStateSignature(priorFile);
-            
-            store.update(updater);
-
-            const afterFile = get(store);
-            if (afterFile) {
-                // Keep explorer tree in sync with selected file changes (also nested entries).
-                syncEntryListWithFile(afterFile);
-            }
-
-            if (!afterFile || !priorFile || priorFile.id !== afterFile.id) {
-                return;
-            }
-
-            const afterPersistedState = getPersistedStateSignature(afterFile);
-            if (priorPersistedState === afterPersistedState) {
-                return;
-            }
-
-            // Schedule only persisted changes (content/lists) for autosave.
-            unsavedFiles.addNew([constructUnsavedFile(afterFile, Date.now())]);
+            const nextFile = updater(get(store));
+            this.set(nextFile);
         },
         updateFileListItems(spawnedListId: string, items: File.File.EditableListItem[]): Promise<boolean> {
-            const priorFile = get(store);
-            const priorPersistedState = getPersistedStateSignature(priorFile);
             let wasUpdated = false;
 
-            store.update(file => {
+            this.update(file => {
                 if (!file) {
                     return file;
                 }
@@ -371,25 +470,19 @@ export const selectedFile = (() => {
                 };
             });
 
-            if (!wasUpdated) {
-                return Promise.resolve(false);
-            }
-
-            const afterFile = get(store);
-            if (afterFile) {
-                syncEntryListWithFile(afterFile);
-            }
-
-            const afterPersistedState = getPersistedStateSignature(afterFile);
-
-            if (afterFile && priorPersistedState !== afterPersistedState) {
-                unsavedFiles.addNew([constructUnsavedFile(afterFile, Date.now())]);
-            }
-
-            return Promise.resolve(true);
+            return Promise.resolve(wasUpdated);
+        },
+        requestSave(file: NonNullable<FileType>, saveValue: SavingValues = true, options: SaveSingleFileOptions = {}): Promise<boolean> {
+            return saveSingleFileRequest(file, saveValue, options);
         },
     };
+
+    return selectedFileStore;
 })();
+
+selectedFile.subscribe((file) => {
+    setSelectedFileIdInCollaboration(file?.id);
+});
 
 export const availableTools = ["Web search", "Current Document", "RavenOne Documents"] as File.FileAI.BrowserToolsUnion[];
 
@@ -430,15 +523,20 @@ function updateEntryById(items: File.File.File[], fileId: string, patch: Partial
     });
 }
 
-export function patchFileById(fileId: string, patch: Partial<File.File.File>) {
+export function patchFileById(
+    fileId: string,
+    patch: Partial<File.File.File>
+) {
     entriesList.update(entries => updateEntryById(entries, fileId, patch));
-    selectedFile.update(file => {
-        if (!file || file.id !== fileId) {
-            return file;
-        }
+    selectedFile.update(
+        file => {
+            if (!file || file.id !== fileId) {
+                return file;
+            }
 
-        return { ...file, ...patch };
-    });
+            return { ...file, ...patch };
+        }
+    );
 }
 
 /**

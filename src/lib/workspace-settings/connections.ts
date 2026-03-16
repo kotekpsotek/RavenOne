@@ -116,7 +116,7 @@ export const sendDeleteWorkspace: ComponentProps<UI.Workspace.Settings.Workspace
         return remainingWorkspaces;
     });
 
-    selectedWorkspace.set(remainingWorkspaces[0]);
+    selectedWorkspace.selectWorkspace(remainingWorkspaces[0]);
     setAlert("success", "Workspace deleted", "Workspace was deleted successfully.");
     return true;
 }

@@ -8,7 +8,7 @@
     let { data }: { data: PageData } = $props();
 
     $effect(() => {
-        selectedWorkspace.set(data.workspace);
+        selectedWorkspace.selectWorkspace(data.workspace);
         entriesList.set([data.file]);
         selectedFile.set(data.file);
         isSearchModalOpen.set(false);

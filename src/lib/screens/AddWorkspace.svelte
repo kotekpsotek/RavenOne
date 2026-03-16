@@ -133,7 +133,7 @@
 
         if (isWorkspaceEntry(responseBody.workspace)) {
             upsertWorkspace(responseBody.workspace);
-            selectedWorkspace.set(responseBody.workspace);
+            selectedWorkspace.selectWorkspace(responseBody.workspace);
         }
 
         setAlert("success", "Workspace created", responseBody.message ?? "Workspace was created successfully.");

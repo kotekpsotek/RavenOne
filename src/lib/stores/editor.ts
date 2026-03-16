@@ -5,14 +5,15 @@ import { Placeholder } from "@tiptap/extension-placeholder";
 import { get, writable } from "svelte/store";
 import { StarterKit } from "@tiptap/starter-kit"
 import { patchFileById, selectedFile } from "./files";
-import { isWorkspaceInAddition, isWorkspaceSelectionOpen } from "./workspace";
+import { isWorkspaceInAddition, isWorkspaceSelectionOpen, SwitchWorkspaceEvent } from "./workspace";
 import { FileHeading } from "../editorComponents/components/Heading";
 import { SlashCommand } from "../editorComponents/components/Suggestions.js";
 import { StandardTaskList } from "../editorComponents/components/StandardTaskList.js";
 import { StandardTaskItem } from "../editorComponents/components/StandardTaskItem.js";
 import { CodeSnippet } from "../editorComponents/components/CodeSnippet.js";
 import { File } from "@ravenlens/shared";
-import { workspaceHasActiveSubscription } from "./subscription.js";
+import { collaborationInterface, isCurrentUserSelectedFileEditor } from "./collaboration.js";
+import { browser } from "$app/environment";
 
 function normalizeContent(content?: string): string {
     if (!content || !content.trim()) {
@@ -26,9 +27,27 @@ export const editor = (() => {
     const { subscribe, set, update } = writable<SvelteEditor | undefined>(undefined);
     let currentEditor: SvelteEditor | undefined;
     let activeFileId: string | undefined;
+    let fileUpdationTimer: NodeJS.Timeout | null = null;
 
+    /** Clear timer for scenarios:
+     * 1. User selects differnet file
+     * 2. User selects new workspace
+    */
+    function clearTimer() {
+        if (fileUpdationTimer) {
+            clearTimeout(fileUpdationTimer);
+        }
+    }
+
+    if (browser) {
+        SwitchWorkspaceEvent.listen((oldWorkspace, newWorkspace) => {
+            clearTimer();
+        })
+    }
+    
     const store = {
         subscribe,
+        update,
         selectFile(file: File.File.File) {
             const content = normalizeContent(file.content);
             activeFileId = file.id;
@@ -79,6 +98,24 @@ export const editor = (() => {
                         patchFileById(activeFileId, {
                             content: props.editor.getHTML()
                         });
+
+                        // Send file update once atime
+                        fileUpdationTimer = setTimeout(() => {
+                            const isCurrentUserSelectedFileEditorLocal = get(isCurrentUserSelectedFileEditor); 
+
+                            if (!isCurrentUserSelectedFileEditorLocal) {
+                                if (fileUpdationTimer) {
+                                    clearTimeout(fileUpdationTimer);
+                                };
+                                
+                                return;
+                            }
+
+                            if (fileUpdationTimer) {
+                                clearTimeout(fileUpdationTimer);
+                                fileUpdationTimer = null;
+                            }
+                        }, 2_500);
                     },
                 });
                 
@@ -102,6 +139,7 @@ export const editor = (() => {
     selectedFile.subscribe(file => {
         if (file && (file.id !== activeFileId || !currentEditor)) {
             store.selectFile(file);
+            clearTimer();   
         }
     });
 

@@ -1,6 +1,8 @@
 import {
     asNonEmptyString,
+    createFileCollaboration,
     findFileById,
+    hasUserEditorFileAccess,
     loadWorkspaceEntries,
     parseJsonBody,
     persistWorkspaceEntries,
@@ -43,6 +45,26 @@ export const PUT: RequestHandler = async ({ request, cookies, fetch }) => {
     }
 
     const workspaceEntries = await loadWorkspaceEntries(workspaceId);
+    const fileEntry = findFileById(workspaceEntries, fileId);
+    if (!fileEntry) {
+        return json({ ok: false, message: "File was not found" }, { status: 404 });
+    }
+
+    const collaboration = createFileCollaboration(access);
+    if (collaboration instanceof Response) {
+        return collaboration;
+    }
+
+    const hasNotUserAccessResponse = await hasUserEditorFileAccess({
+        request,
+        cookies,
+        file: fileEntry,
+        workspaceId: workspaceId
+    });
+    if (hasNotUserAccessResponse) {
+        return hasNotUserAccessResponse;
+    }
+
     const updateResult = updateFileById(workspaceEntries, fileId, (entry) => {
         return {
             ...entry,
