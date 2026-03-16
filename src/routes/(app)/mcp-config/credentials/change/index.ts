@@ -1,8 +1,9 @@
 import { getAndValidateAuthenticated } from "$lib/server/auth/request";
-import { assumeStatus, isMCPMiddlewareServerURLValid, isUserMCPConfigRouteAccessPermited, isUserMCPServerConnectable } from "../../common";
+import { assumeStatus, isMCPMiddlewareServerURLValid, isUserMCPConfigRouteAccessPermited } from "../../common";
 import { json, type RequestHandler } from "@sveltejs/kit";
-import type { MCPConnectionStatus, MCPCredentials, MCPCredentialsBackendWithoutStatus } from "@ravenlens/shared/mcp";
+import type { MCPCredentials, MCPCredentialsBackendWithoutStatus } from "@ravenlens/shared/mcp";
 import { DB_Models } from "@ravenlens/backend";
+import { ConnectWithMCPMiddlewareCustomerServer } from "@ravenlens/backend/mcp-interface";
 
 /**
  * Requirements:
@@ -51,7 +52,8 @@ export const PUT: RequestHandler = async ({ request, cookies }) => {
         }
     
         // 5. Check is server hosted by ping
-        const isServerHosted = await isUserMCPServerConnectable(credentials);
+        const mcpConnectionInterface = new ConnectWithMCPMiddlewareCustomerServer({ ...mutualObject, workspaceId: workspaceId });
+        const isServerHosted = await mcpConnectionInterface.isUserMCPServerConnectable();
         const assumedStatus = assumeStatus(credentials, isServerHosted);
         
         if (!isServerHosted) {

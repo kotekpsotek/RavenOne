@@ -1,7 +1,8 @@
 import { getAndValidateAuthenticated } from "$lib/server/auth/request";
 import type { Cookies } from "@sveltejs/kit";
-import { assumeStatus, isUserMCPConfigRouteAccessPermited, isUserMCPServerConnectable } from "./common";
+import { assumeStatus, isUserMCPConfigRouteAccessPermited } from "./common";
 import { DB_Models } from "@ravenlens/backend";
+import { ConnectWithMCPMiddlewareCustomerServer } from "@ravenlens/backend/mcp-interface";
 
 export async function performDownloadLikeOperation(request: Request, cookies: Cookies) {
     // 1. Verify request body
@@ -31,7 +32,8 @@ export async function performDownloadLikeOperation(request: Request, cookies: Co
     }
     
     // 6. Check is server online
-    const isConnectedOnline = await isUserMCPServerConnectable(mcpForWorkspace);
+    const mcpConnectionInterface = new ConnectWithMCPMiddlewareCustomerServer(mcpForWorkspace);
+    const isConnectedOnline = await mcpConnectionInterface.isUserMCPServerConnectable();
     
     // 7. Get status
     const status = assumeStatus(mcpForWorkspace, isConnectedOnline);

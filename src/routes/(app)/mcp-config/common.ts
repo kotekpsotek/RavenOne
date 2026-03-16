@@ -30,16 +30,6 @@ export function isMCPMiddlewareServerURLValid(serverURL: string): boolean {
     }
 }
 
-/** TODO: Internal util to Define it after specify the interface  */
-async function isUserMCPServerOnlinePingPong(credentials: MCPCredentialsBackendWithoutStatus): Promise<boolean> {
-    return false;
-}
-
-/** TODO: Check whether server is online and whether the server can be connected with use of specified credetnials */
-export async function isUserMCPServerConnectable(credentials: MCPCredentialsBackendWithoutStatus) {
-    return false;
-}
-
 /**
  * Check whether is member workspace member and whether is member permitted to do the action
 */
