@@ -1,6 +1,8 @@
 import { json, type Cookies } from '@sveltejs/kit';
 import type { JWTPayload } from './jwt';
 import { verifyToken } from './jwt';
+import type { Profile } from "@ravenlens/shared"
+import type { Document } from 'mongoose';
 
 export function extractBearerToken(request: Request, cookies?: Cookies): string | null {
 	const authorization = request.headers.get('authorization');
@@ -51,20 +53,41 @@ export async function ensureAuthenticatedViaRoute(request: Request, fetchFn: typ
     }
 }
 
-export async function getAndValidateAuthenticated(request: Request, cookies: Cookies) {
-	const authStatusResponse = await ensureAuthenticatedViaRoute(request, fetch);
-    if (!authStatusResponse) {
-        return json({ status: false, error: "Failed to validate authentication" }, { status: 500 });
-    }
+export async function ensureAuthenticatedAndDownloadProfile(request: Request, fetchFn: typeof fetch): Promise<{ user: Document & Profile } | null> {
+	try {
+        const response = await fetchFn("/auth/me", {
+            method: "GET",
+            headers: buildForwardedAuthHeaders(request)
+        });
 
-    if (!authStatusResponse.ok) {
-        return json({ status: false, error: "Unauthorized" }, { status: 401 });
-    }
+		if (response.ok) {
+			const { user } = await response.json();
+			return user;
+		}
 
-    const payload = getAuthenticatedPayload(request, cookies);
-    if (!payload) {
-        return json({ status: false, error: "Invalid or expired token" }, { status: 401 });
+        return null;
+    } catch {
+        return null;
     }
+}
 
-	return payload;
+export async function getAndValidateAuthenticated<T extends boolean = false>(
+	request: Request,
+	cookies: Cookies,
+	returnWithProfile?: T
+): Promise<(T extends true ? { jwtPayload: JWTPayload; user: Document & Profile } : JWTPayload) | Response> {
+	const userProfile = await ensureAuthenticatedAndDownloadProfile(request, fetch);
+	if (!userProfile || !userProfile.user) {
+		return json({ status: false, error: 'Failed to validate authentication' }, { status: 500 }) as any;
+	}
+
+	const payload = getAuthenticatedPayload(request, cookies);
+	if (!payload) {
+		return json({ status: false, error: 'Invalid or expired token' }, { status: 401 }) as any;
+	}
+
+	if (returnWithProfile) {
+		return { jwtPayload: payload, user: userProfile.user } as any;
+	}
+	else return payload as any;
 }
