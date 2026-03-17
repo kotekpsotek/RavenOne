@@ -1,25 +1,25 @@
 <script lang="ts">
+    import type { MCPConnectionStatusObject, MCPCredentials, MCPCredentialsBackendWithoutStatus } from "@ravenlens/shared/mcp";
 	import Icon from "@iconify/svelte";
 	import { UI } from "@ravenlens/frontend";
 	import McpSelectionModal from "$lib/mcp/components/McpSelectionModal.svelte";
-    import type { MCPConnectionStatusObject, MCPCredentials, MCPCredentialsBackendWithoutStatus } from "@ravenlens/shared/mcp";
-	import "./MCPWorkspaceConfig.css";
     import { fetchAuthenticated } from "$lib/utils/fetch";
     import { selectedWorkspace } from "$lib/stores/workspace";
     import { alertState } from "$lib/utils/alert";
+	import "./MCPWorkspaceConfig.css";
 
     const { 
         mcpCredentials = undefined 
     }: { mcpCredentials: MCPCredentials | undefined  } = $props();
     
 	const configurationSteps: string[] = [
-		`Download and setup on your publicly available machine RavenOne MCP Middleware Server. Download server from <a href="">Github</a> or <a href="">Docker</a>`,
-		`Establish <b>Secret Password</b> on side of MCP Middleware Server`,
+		"Download and setup on your publicly available machine RavenOne MCP Middleware Server. Download server from Github or Docker.",
+		"Establish Secret Password on side of MCP Middleware Server",
 		`Specify your server publicly available link at input url field in 'RavenOne > AI Models Settings'`,
 		`Specify at 'RavenOne > AI Models Settings' same password as you've specified for RavenOne MCP Server Middleware`,
 		`Specify the whitelist of available MCP servers with its configuration and required credentials in modal open with usage of 'Configure MCP Servers' button. Then click on "Save" button to save changes`,
 		`Accept all setup by flick on "Accept" button below all so far specified fields`,
-		`Verify connection state with specified <b>RavenOne MCP Middleware Server</b> by look on <u>"MCP RavenOne Server-Middleware URL" input</u> right-side <b>status-box</b>`
+		`Verify connection state with specified RavenOne MCP Middleware Server by look on "MCP RavenOne Server-Middleware URL" input right-side status-box`
 	];
 	
 	// Values of state
@@ -108,6 +108,113 @@
 		draftSecretPassword = mcpCredentials?.secretPassword ?? "";
 	}
 
+	function onServerURLBlur() {
+		const hadPersistedServerURL = Boolean(mcpCredentials?.serverURL?.trim().length);
+		const hasServerURLRemoved = !serverURL?.trim().length;
+
+		if (!hadPersistedServerURL || !hasServerURLRemoved || saving) {
+			return;
+		}
+
+		$alertState = {
+			alert: {
+				type: "warning",
+				name: "Remove MCP connection?",
+				description: "Do you want to remove mcp connection with its credentials configuration? This will clear the MCP server URL and secret password for this workspace.",
+				btns: [
+					{
+						name: "Keep",
+						classStyle: "btn-ghost",
+						onClick: onDeclineChanges
+					},
+					{
+						name: "Remove",
+						classStyle: "btn-error",
+						onClick: () => {
+							void onRemoveConnectionWithCredentials();
+						}
+					}
+				]
+			},
+			timeoutMs: 0
+		}
+	}
+
+	async function onRemoveConnectionWithCredentials() {
+		saving = true;
+		try {
+			const saveResponse = await fetchAuthenticated(
+				"/mcp-config/credentials/change",
+				{
+					method: "PUT",
+					headers: {
+						"Content-Type": "application/json"
+					},
+					body: JSON.stringify({
+						workspaceId: $selectedWorkspace?.id,
+						credentials: {
+							serverURL: "",
+							secretPassword: "",
+							workspaceId: $selectedWorkspace?.id ?? ""
+						} satisfies MCPCredentialsBackendWithoutStatus
+					})
+				}
+			);
+
+			try {
+				const { status } = await saveResponse.json() as {
+					status: MCPConnectionStatusObject
+				}
+
+				if (saveResponse.ok) {
+					connectionState = status;
+					draftSecretPassword = "";
+					serverURL = "";
+
+					if (mcpCredentials) {
+						mcpCredentials.secretPassword = "";
+						mcpCredentials.serverURL = "";
+						mcpCredentials.status = status;
+					}
+
+					$alertState = {
+						alert: {
+							type: "success",
+							name: "MCP connection removed",
+							description: "MCP server URL and secret password were removed for this workspace."
+						},
+						timeoutMs: 7_000
+					}
+				}
+				else {
+					console.error('Cannot clear credetials because of status: ', saveResponse.status);
+					$alertState = {
+						alert: {
+							type: "error",
+							name: "Cannot remove MCP Credentials",
+							description: `Cannot clear credetials because of response-status: ${saveResponse.status} while connection status is: ${status.status} and reason is: "${status.reason ?? "Not-Specified"}"`
+						},
+						timeoutMs: 12_000
+					}
+				}
+			}
+			catch(err) {
+				console.error('Cannot clear credetials because of status: ', saveResponse.status);
+				$alertState = {
+					alert: {
+						type: "error",
+						name: "Cannot remove MCP Credentials",
+						description: 'Cannot clear credetials because of response-status: ' + saveResponse.status
+					},
+					timeoutMs: 12_000
+				}
+			}
+		}
+		finally {
+			saving = false;
+		}
+	}
+
 	// Send credentials update to backend
 	async function onAcceptChanges() {
 		saving = true;
@@ -192,6 +299,7 @@
 					type="url"
 					placeholder="MCP RavenOne Server-Middleware URL"
 					bind:value={serverURL}
+					onblur={onServerURLBlur}
 				/>
 
 				<button 
@@ -320,8 +428,8 @@
 	<div class="mt-3 space-y-3 text-sm text-base-content/80">
 		<p>Step-by-step flow for this card:</p>
 		<ol class="help-list list-decimal space-y-1 pl-5">
-			{#each configurationSteps as step}
-				<li>{@html step}</li>
+			{#each configurationSteps as step (step)}
+				<li>{step}</li>
 			{/each}
 		</ol>
 	</div>

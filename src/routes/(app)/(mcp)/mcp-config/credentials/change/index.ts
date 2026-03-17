@@ -1,7 +1,7 @@
 import { getAndValidateAuthenticated } from "$lib/server/auth/request";
 import { assumeStatus, isMCPMiddlewareServerURLValid, isUserMCPConfigRouteAccessPermited } from "../../common";
 import { json, type RequestHandler } from "@sveltejs/kit";
-import type { MCPCredentials, MCPCredentialsBackendWithoutStatus } from "@ravenlens/shared/mcp";
+import type { MCPConnectionStatusObject, MCPCredentials, MCPCredentialsBackendWithoutStatus } from "@ravenlens/shared/mcp";
 import { DB_Models } from "@ravenlens/backend";
 import { ConnectWithMCPMiddlewareCustomerServer } from "@ravenlens/backend/mcp-interface";
 
@@ -22,17 +22,22 @@ export const PUT: RequestHandler = async ({ request, cookies, fetch }) => {
             workspaceId: string;
             credentials: MCPCredentialsBackendWithoutStatus;
         }
-        
-        // 1.5. Check specified credentials
+
+        const normalizedServerURL = String(credentials?.serverURL ?? "").trim();
+        const normalizedSecretPassword = String(credentials?.secretPassword ?? "").trim();
+        const isRemovalRequested = normalizedServerURL.length === 0 && normalizedSecretPassword.length === 0;
+
         const areCredentialsCorrect = Boolean(
-            credentials?.secretPassword?.trim().length
-            && credentials?.serverURL?.trim().length
-            && isMCPMiddlewareServerURLValid(credentials.serverURL)
+            normalizedSecretPassword.length
+            && normalizedServerURL.length
+            && isMCPMiddlewareServerURLValid(normalizedServerURL)
         );
-        if (!workspaceId || !credentials || !areCredentialsCorrect) {
+
+        const isPartialCredentialsProvided = normalizedServerURL.length === 0 || normalizedSecretPassword.length === 0;
+        if (!workspaceId || !credentials || (!isRemovalRequested && (!areCredentialsCorrect || isPartialCredentialsProvided))) {
             return new Response(null, { status: 400 });
         }
-    
+        
         // 2. Is user logged-in 
         const isAuth = await getAndValidateAuthenticated(request, cookies, true, fetch);
         if (isAuth instanceof Response) {
@@ -44,17 +49,34 @@ export const PUT: RequestHandler = async ({ request, cookies, fetch }) => {
         if (!isUserPermitted) {
             return new Response(null, { status: 401 });
         }
+
+        if (isRemovalRequested) {
+            await DB_Models.MCP.mcpCredentialsModal.deleteOne({ workspaceId });
+
+            const removedStatus: MCPConnectionStatusObject = {
+                status: "not-specified"
+            };
+
+            return json({ status: removedStatus }, { status: 200 });
+        }
     
         // 4. Object enjoying each property
         const mutualObject: Pick<MCPCredentials, "serverURL" | "secretPassword"> = {
-            serverURL: credentials.serverURL,
-            secretPassword: credentials.secretPassword
+            serverURL: normalizedServerURL,
+            secretPassword: normalizedSecretPassword
         }
     
         // 5. Check is server hosted by ping
         const mcpConnectionInterface = new ConnectWithMCPMiddlewareCustomerServer({ ...mutualObject, workspaceId: workspaceId });
         const isServerHosted = await mcpConnectionInterface.isUserMCPServerConnectable();
-        const assumedStatus = assumeStatus(credentials, isServerHosted);
+        const assumedStatus = assumeStatus(
+            {
+                ...credentials,
+                serverURL: normalizedServerURL,
+                secretPassword: normalizedSecretPassword
+            },
+            isServerHosted
+        );
         
         if (!isServerHosted) {
             return json({ status: assumedStatus }, { status: 403 });
