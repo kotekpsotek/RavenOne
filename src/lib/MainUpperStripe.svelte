@@ -1,17 +1,15 @@
 <script lang="ts">
     import Icon from "@iconify/svelte";
-    import CodeMirror from "svelte-codemirror-editor";
-    import { json } from "@codemirror/lang-json";
     import { avaiableModels, getProviderIconifyIcon } from "./config/models";
     import { availableTools, playMode, selectedFile, selectedTools } from "./stores/files";
     import { selectedModel } from "./stores/files";
     import { selectedWorkspace } from "./stores/workspace";
     import { contextSpecification } from "./stores/contextSpec";
-    import { mcpConfigurationStore, selectedMcpServers } from "./stores/mcpConfig";
+    import { mcpConfigurationStore } from "./stores/mcpConfig";
     import { alertState } from "./utils/alert";
     import { editor } from "./stores/editor";
     import { get } from "svelte/store";
-    import McpSelectionModal from "./modals/McpSelectionModal.svelte";
+    import McpSelectionModal from "./mcp/components/McpSelectionModal.svelte";
     import ContextSelectionModal from "./modals/ContextSelectionModal.svelte";
     import PlayModeDropdownContent from "./components/PlayModeDropdownContent.svelte";
     import { playableDocumentsAndListsWithPoints } from "./stores/playModeStore";
@@ -394,7 +392,7 @@
                                 </div>
                             </div>
 
-                            <div>
+                            <!-- <div>
                                 <p class="text-xs uppercase tracking-wide opacity-70 mb-1">MCP servers access</p>
                                 <label class="label cursor-pointer justify-between mb-1 px-0">
                                     <span class="label-text text-xs">Use MCP servers for tasks</span>
@@ -424,7 +422,7 @@
                                     </span>
                                     <button class="btn btn-xs btn-primary" onclick={openMcpConfigurationEditor}>Edit</button>
                                 </div>
-                            </div>
+                            </div> -->
                         </div>
                     </details>
                 {/if}

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { getAuthenticatedPayload } from "$lib/server/auth/request";
+import { ensureAuthenticatedViaRoute, getAuthenticatedPayload } from "$lib/server/auth/request";
 import { prefetchWorkspaceWithMembers } from "$lib/server/db";
 import { getWorkspaceActiveSubscription } from "$lib/server/subscription";
 import { DB_Models } from "@ravenlens/backend";
@@ -74,35 +74,6 @@ type RequireWorkspaceAccessArgs = {
     requireActiveWorkspaceSubscription?: boolean;
     activeWorkspaceSubscriptionFailureMessage?: string;
 };
-
-function buildForwardedAuthHeaders(request: Request): Headers {
-    const forwardedHeaders = new Headers();
-    const authorization = request.headers.get("authorization");
-    const cookieHeader = request.headers.get("cookie");
-
-    if (authorization) {
-        forwardedHeaders.set("authorization", authorization);
-    }
-
-    if (cookieHeader) {
-        forwardedHeaders.set("cookie", cookieHeader);
-    }
-
-    return forwardedHeaders;
-}
-
-async function ensureAuthenticatedViaRoute(request: Request, fetchFn: typeof fetch): Promise<Response | null> {
-    try {
-        const response = await fetchFn("/auth/is-authenticated", {
-            method: "GET",
-            headers: buildForwardedAuthHeaders(request)
-        });
-
-        return response;
-    } catch {
-        return null;
-    }
-}
 
 export function asNonEmptyString(value: unknown): string | undefined {
     if (typeof value !== "string") {

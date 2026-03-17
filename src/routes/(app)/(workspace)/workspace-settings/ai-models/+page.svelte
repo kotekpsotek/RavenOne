@@ -1,5 +1,6 @@
 <script lang="ts">
     import { UI } from "@ravenlens/frontend";
+    import MCPWorkspaceConfig from "$lib/mcp/components/MCPWorkspaceConfig.svelte";
     import { selectedWorkspace } from "$lib/stores/workspace";
     import { JWTAuth } from "$lib/utils/auth";
     import { fetchAuthenticated } from "$lib/utils/fetch";
@@ -13,6 +14,7 @@
         SaveWorkspaceModelRequest,
         SaveWorkspaceModelResponse
     } from "$lib/workspace-settings/ai-models/types";
+    import type { MCPCredentials } from "@ravenlens/shared/mcp";
 
     function handleGetJWT() {
         const jwt = JWTAuth.getToken();
@@ -47,6 +49,35 @@
         const responseBody = await response.json() as GetWorkspaceApiKeysResponse;
 
         return responseBody.apiKeys;
+    }
+
+    // Download credentials from backend
+    async function handleRetriveMCPCredentials(): Promise<MCPCredentials> {
+        const credetnialsRequest = await fetchAuthenticated(
+            "/mcp-config/credentials/download",
+            {
+                method: "POST",
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    workspaceId: $selectedWorkspace?.id
+                })
+            }
+        );
+
+        if (credetnialsRequest.ok) {
+            const credentials = await credetnialsRequest.json() as MCPCredentials
+            return credentials;
+        }
+
+        return {
+            status: {
+                status: "not-specified"
+            },
+            secretPassword: "",
+            serverURL: ""
+        } satisfies MCPCredentials
     }
 
     async function handleRetrieveModels() {
@@ -154,21 +185,27 @@
     };
 </script>
 
-{#await handleRetrieveAPIKeys()}
+{#await Promise.all([handleRetrieveAPIKeys(), handleRetriveMCPCredentials()])}
     Loading api keys..
-{:then apiKeys} 
-    <UI.Workspace.Settings.WorkspaceAIModelsScreen
-        bgColor="bg-base-200"
-        visibility={{
-            evaluationFrequency: false,
-            customModels: false,
-            gEval: false,
-            apiKeysTable: true
-        }}
-        apiKeysList={apiKeys ?? []}
-        on:apiKeySaved={handleAPIKeySaved}
-        on:apiKeyDeleted={handleAPIKeyDeleted}
-        on:modelSaved={handleModelSaved}
-        on:modelDeleted={handleModelDeleted}
-    />
+{:then results} 
+    {@const [apiKeys, mcpCredentials] = results as [GetWorkspaceApiKeysResponse["apiKeys"], MCPCredentials]}
+
+    <div class="space-y-6">
+        <UI.Workspace.Settings.WorkspaceAIModelsScreen
+            bgColor="bg-base-200"
+            visibility={{
+                evaluationFrequency: false,
+                customModels: false,
+                gEval: false,
+                apiKeysTable: true
+            }}
+            apiKeysList={apiKeys ?? []}
+            on:apiKeySaved={handleAPIKeySaved}
+            on:apiKeyDeleted={handleAPIKeyDeleted}
+            on:modelSaved={handleModelSaved}
+            on:modelDeleted={handleModelDeleted}
+        />
+
+        <MCPWorkspaceConfig {mcpCredentials}/>
+    </div>
 {/await}

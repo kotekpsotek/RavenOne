@@ -1,0 +1,9 @@
+@reference "../../../app.css";
+
+.help-list a {
+    @apply text-sky-400;
+}
+
+.help-list a:hover {
+    @apply underline;
+}
