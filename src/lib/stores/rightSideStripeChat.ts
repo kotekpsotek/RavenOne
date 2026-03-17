@@ -83,10 +83,19 @@ type ChatStateResponsePayload = {
 	selectedChatId?: unknown;
 };
 
-const CHAT_MODES: Record<AIChatMode, string> = {
-	"regular-ask": "Ask",
-	"document-manipulation": "Document Manipulation",
-	"questions-creation": "Create Document Questions"
+const CHAT_MODES: Record<AIChatMode, { modeName: string; modeDescription: string; }> = {
+	"regular-ask": {
+		modeName: "Ask",
+		modeDescription: "Talk with AI for whatever"
+	},
+	"document-manipulation": {
+		modeName: "Document Manipulation",
+		modeDescription: "Create, update RavenOne Document/s according to your specification"
+	},
+	"questions-creation": {
+		modeName: "Create Document Questions",
+		modeDescription: "Create Questions for actually selected RavenOne Document"
+	}
 };
 
 const MERMAID_TYPES: Record<MermaidDiagramType, string> = {
@@ -768,7 +777,7 @@ export const editorAIChat = {
 		return MERMAID_TYPES;
 	},
 	getTextFieldModeTranslation(mode: AIChatMode) {
-		return CHAT_MODES[mode] ?? CHAT_MODES["regular-ask"];
+		return CHAT_MODES[mode].modeName ?? CHAT_MODES["regular-ask"].modeName;
 	},
 	setTextFieldMode(mode: AIChatMode) {
 		editorAIChatStore.update((state) => ({

@@ -1,6 +1,7 @@
 <script lang="ts">
     import ModelsListSelection from "$lib/ai/ModelsListSelection.svelte";
     import McpServerSelectionModal from "$lib/mcp/components/McpServerSelectionModal.svelte";
+    import ContextSelectionModal from "$lib/modals/ContextSelectionModal.svelte";
     import { selectedFile } from "$lib/stores/files";
     import {
         activeChat,
@@ -17,6 +18,7 @@
     import { selectedWorkspace } from "$lib/stores/workspace";
     import { fetchAuthenticated } from "$lib/utils/fetch";
     import Icon from "@iconify/svelte";
+    import { File } from "@ravenlens/shared";
     import { get as getIndexedDBValue, set as setIndexedDBValue } from "idb-keyval";
     import { onMount } from "svelte";
 
@@ -35,18 +37,69 @@
     let mouseIsOnPreviewSelectedText = $state<{ from: number; to: number } | null>(null);
     let composerResetKey = $state(0);
     let chatHistoryElement = $state<HTMLDivElement | null>(null);
+
+    type ContextSpecificationPayload = File.FileAI.ContextSpecificationPayload;
+
+    interface MCPServersSpec {
+        mcpServers: Record<string, any>;
+    }
+    let downloadMCPServersSpecification = $state<MCPServersSpec>({ mcpServers: {} });
     
     let isMCPServersSelectionOpen = $state(false);
+    let isContextSelectionModalOpen = $state(false);
+    let isMCPSpecificationAvailableForWorkspace = $derived(getMCPServersList(downloadMCPServersSpecification).length > 0)
+    let selectedFileContextPayload = $state<ContextSpecificationPayload>(createEmptyContextPayload());
+    let contextModalSelectedFileId = $state<string | null>(null);
+    const selectedFileContextCache: Record<string, ContextSpecificationPayload> = {};
 
     function getStorageKeyName(fileId: string) {
         const storageKeyName = `mcpServers:${fileId}`;
         return storageKeyName;
     }
 
-    interface MCPServersSpec {
-        mcpServers: Record<string, any>;
+    function getContextStorageKeyName(fileId: string) {
+        const storageKeyName = `chatContext:${fileId}`;
+        return storageKeyName;
     }
-    let downloadMCPServersSpecification = $state<MCPServersSpec>({ mcpServers: {} });
+
+    function createEmptyContextPayload(): ContextSpecificationPayload {
+        return {
+            desktopFiles: [],
+            editorFiles: [],
+            networkUrls: []
+        };
+    }
+
+    function cloneContextPayload(payload: ContextSpecificationPayload): ContextSpecificationPayload {
+        return {
+            desktopFiles: [...payload.desktopFiles],
+            editorFiles: [...payload.editorFiles],
+            networkUrls: [...payload.networkUrls]
+        };
+    }
+
+    function isContextSpecificationPayload(value: unknown): value is ContextSpecificationPayload {
+        return Boolean(
+            value
+            && typeof value === "object"
+            && Array.isArray((value as ContextSpecificationPayload).desktopFiles)
+            && Array.isArray((value as ContextSpecificationPayload).editorFiles)
+            && Array.isArray((value as ContextSpecificationPayload).networkUrls)
+        );
+    }
+
+    function getCachedContextPayload(fileId: string): ContextSpecificationPayload | null {
+        const cachedContextPayload = selectedFileContextCache[fileId];
+        if (!cachedContextPayload) {
+            return null;
+        }
+
+        return cloneContextPayload(cachedContextPayload);
+    }
+
+    function setCachedContextPayload(fileId: string, contextPayload: ContextSpecificationPayload) {
+        selectedFileContextCache[fileId] = cloneContextPayload(contextPayload);
+    }
 
     type StoreSubscriber<T> = (value: T) => void;
 
@@ -120,6 +173,38 @@
         }
     }
 
+    async function readSelectedContextFromIndexedDB(fileId: string): Promise<ContextSpecificationPayload> {
+        if (typeof window === "undefined") {
+            return createEmptyContextPayload();
+        }
+
+        try {
+            const selectedContext = await getIndexedDBValue(getContextStorageKeyName(fileId));
+            if (!isContextSpecificationPayload(selectedContext)) {
+                return createEmptyContextPayload();
+            }
+
+            return cloneContextPayload(selectedContext);
+        }
+        catch (err) {
+            console.error("Error when reading selected context from IndexedDB", err);
+            return createEmptyContextPayload();
+        }
+    }
+
+    async function saveSelectedContextToIndexedDB(fileId: string, contextPayload: ContextSpecificationPayload): Promise<void> {
+        if (typeof window === "undefined") {
+            return;
+        }
+
+        try {
+            await setIndexedDBValue(getContextStorageKeyName(fileId), cloneContextPayload(contextPayload));
+        }
+        catch (err) {
+            console.error("Error when writing selected context to IndexedDB", err);
+        }
+    }
+
     const selectedMCPServerNames = (() => {
         const selectedMCPServersValues = createWritableStore<string[]>([]);
         let selectedMCPServersSyncId = 0;
@@ -180,6 +265,44 @@
         }
     })();
 
+    let selectedFileContextSyncId = 0;
+
+    $effect(() => {
+        const selectedFileId = $selectedFile?.id;
+
+        selectedFileContextSyncId += 1;
+        const currentSyncId = selectedFileContextSyncId;
+
+        if (isContextSelectionModalOpen && contextModalSelectedFileId && selectedFileId !== contextModalSelectedFileId) {
+            isContextSelectionModalOpen = false;
+            contextModalSelectedFileId = null;
+        }
+
+        if (!selectedFileId) {
+            selectedFileContextPayload = createEmptyContextPayload();
+            return;
+        }
+
+        const cachedContextPayload = getCachedContextPayload(selectedFileId);
+        if (cachedContextPayload) {
+            selectedFileContextPayload = cachedContextPayload;
+            return;
+        }
+
+        // Prevent context from one file being displayed for another file while async load is pending.
+        selectedFileContextPayload = createEmptyContextPayload();
+
+        void (async () => {
+            const downloadedContextPayload = await readSelectedContextFromIndexedDB(selectedFileId);
+            if (currentSyncId !== selectedFileContextSyncId) {
+                return;
+            }
+
+            setCachedContextPayload(selectedFileId, downloadedContextPayload);
+            selectedFileContextPayload = cloneContextPayload(downloadedContextPayload);
+        })();
+    });
+
     let chatBubblesList = $derived($activeChat?.bubbles ?? []);
     let isMessagingActive = $derived(Boolean($selectedFile && !$rightSideStripeChat.isLoading && $rightSideStripeChatLayout.isOpen));
     
@@ -207,6 +330,10 @@
 
     function getPromptHtml(inputText: string): string {
         return escapeHtml(inputText).replaceAll("\n", "<br />");
+    }
+
+    function getTextFieldModeName(mode: AIChatMode): string {
+        return editorAIChat.getTextFieldModeTranslation(mode);
     }
 
     function getGeneratingTime(chatBubble: AIChatBubble): string {
@@ -319,7 +446,7 @@
             {
                 id: crypto.randomUUID(),
                 applyTo: mode === "regular-ask" ? "chat" : "selection",
-                answerHTML: `<p><strong>Mode:</strong> ${escapeHtml(editorAIChat.getTextFieldModeTranslation(mode))}</p><p>Generated response for: ${escapedPrompt}</p>`,
+                answerHTML: `<p><strong>Mode:</strong> ${escapeHtml(getTextFieldModeName(mode))}</p><p>Generated response for: ${escapedPrompt}</p>`,
                 publishedDate: now
             }
         ];
@@ -366,6 +493,48 @@
 
     function onToggleMCPServersSelectionModal() {
         isMCPServersSelectionOpen = !isMCPServersSelectionOpen;
+    }
+
+    async function onContextSelection() {
+        const selectedFileId = $selectedFile?.id;
+        if (!selectedFileId) {
+            return;
+        }
+
+        const cachedContextPayload = getCachedContextPayload(selectedFileId);
+        if (cachedContextPayload) {
+            selectedFileContextPayload = cachedContextPayload;
+        }
+        else {
+            const downloadedContextPayload = await readSelectedContextFromIndexedDB(selectedFileId);
+            if ($selectedFile?.id !== selectedFileId) {
+                return;
+            }
+
+            setCachedContextPayload(selectedFileId, downloadedContextPayload);
+            selectedFileContextPayload = cloneContextPayload(downloadedContextPayload);
+        }
+
+        contextModalSelectedFileId = selectedFileId;
+        isContextSelectionModalOpen = true;
+    }
+
+    function onSaveSelectedFileContext(payload: ContextSpecificationPayload) {
+        const fileIdForContext = contextModalSelectedFileId ?? $selectedFile?.id;
+        if (!fileIdForContext) {
+            return;
+        }
+
+        const normalizedPayload = cloneContextPayload(payload);
+        setCachedContextPayload(fileIdForContext, normalizedPayload);
+
+        if ($selectedFile?.id === fileIdForContext) {
+            selectedFileContextPayload = cloneContextPayload(normalizedPayload);
+        }
+
+        void saveSelectedContextToIndexedDB(fileIdForContext, normalizedPayload);
+        contextModalSelectedFileId = null;
+
     }
 
     $effect(() => {
@@ -449,7 +618,7 @@
                 <article class="rounded-xl border border-base-300 bg-base-200/70 p-2" data-chatBubbleId={chatBubble.id}>
                     <div class="flex items-center justify-between px-1 mb-1">
                         <span class="text-xs text-primary font-semibold">
-                            {editorAIChat.getTextFieldModeTranslation(chatBubble.mode)}
+                            {getTextFieldModeName(chatBubble.mode)}
                         </span>
                         <div class="badge badge-sm gap-1 {getAboveBubbleStateColor(chatBubble)}">
                             {#if chatBubble.decision === "accepted"}
@@ -607,17 +776,22 @@
         <div class="mb-2 flex items-center gap-2 relative">
             <!-- Modes selection tray -->
             {#if isModeSelectingTrayOpen}
-                {@const allModes = Object.entries(editorAIChat.getModes()) as [AIChatMode, string][]}
+                {@const allModes = Object.entries(editorAIChat.getModes()) as [AIChatMode, { modeName: string; modeDescription: string; }][]}
                 <div class="absolute bottom-[calc(100%+6px)] left-0 z-20 rounded-lg border border-base-300 bg-base-100 shadow-xl p-2 min-w-44">
                     <div class="text-xs text-base-content/60 mb-1">Select mode</div>
                     <div class="flex flex-col gap-1">
-                        {#each allModes as [mode, modeName] (mode)}
-                            <button
-                                class="btn btn-ghost btn-xs justify-start {mode === $editorAIChat.textFieldMode ? 'btn-active' : ''}"
-                                onclick={() => onSelectNewMode(mode)}
+                        {#each allModes as [mode, modeValue] (mode)}
+                            <div
+                                class="tooltip tooltip-right"
+                                data-tip={modeValue.modeDescription}
                             >
-                                {modeName}
-                            </button>
+                                <button
+                                    class="btn btn-ghost btn-xs justify-start {mode === $editorAIChat.textFieldMode ? 'btn-active' : ''}"
+                                    onclick={() => onSelectNewMode(mode)}
+                                >
+                                    {modeValue.modeName}
+                                </button>
+                            </div>
                         {/each}
                     </div>
                 </div>
@@ -626,7 +800,7 @@
             <!-- Mode ignite btn -->
             <button class="btn btn-ghost btn-xs" disabled={!isMessagingActive} onclick={onClickSelectMode}>
                 <Icon icon="mdi:at" width="14" height="14" />
-                <span>{editorAIChat.getTextFieldModeTranslation($editorAIChat.textFieldMode)}</span>
+                <span>{getTextFieldModeName($editorAIChat.textFieldMode)}</span>
             </button>
 
             <!-- Context selection btn -->
@@ -634,18 +808,24 @@
                 class="btn btn-ghost btn-xs"
                 title="Context specification" 
                 disabled={!isMessagingActive}
+                onclick={onContextSelection}
             >
                 <Icon icon="material-symbols:note-stack-outline-rounded" width="14" height="14"/>
             </button>
 
             <!-- MCP Servers Selection -->
-            <button
-                class="btn btn-ghost btn-xs"
-                title="MCP Servers Selection for Action"
-                onclick={onToggleMCPServersSelectionModal}
+            <div
+                class="tooltip tooltip-top"
+                data-tip={!isMCPSpecificationAvailableForWorkspace ? "Workspace hasn't got specified MCP Servers. Specify MCP Servers for workspace first" : ""}
             >
-                <Icon icon="carbon:logo-model-context-protocol"/>
-            </button>
+                <button
+                    class="btn btn-ghost btn-xs"
+                    title="MCP Servers Selection for Action"
+                    onclick={onToggleMCPServersSelectionModal}
+                >
+                    <Icon icon="carbon:logo-model-context-protocol"/>
+                </button>
+            </div>
 
             <!-- Model spec -->
             <div class="w-fit">
@@ -682,6 +862,15 @@
     avaiableMCPServers={getMCPServersList(downloadMCPServersSpecification)}
     close={onToggleMCPServersSelectionModal}
 />
+
+{#if isContextSelectionModalOpen}
+    <ContextSelectionModal
+        bind:open={isContextSelectionModalOpen}
+        contextPayload={selectedFileContextPayload}
+        onSave={onSaveSelectedFileContext}
+        infoMessage="Context is saved for the currently selected file."
+    />
+{/if}
 
 <style>
     #writable-for-chat:empty::before {
