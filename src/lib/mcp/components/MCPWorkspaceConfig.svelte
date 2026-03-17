@@ -2,8 +2,11 @@
 	import Icon from "@iconify/svelte";
 	import { UI } from "@ravenlens/frontend";
 	import McpSelectionModal from "$lib/mcp/components/McpSelectionModal.svelte";
-    import type { MCPCredentials } from "@ravenlens/shared/mcp";
+    import type { MCPConnectionStatusObject, MCPCredentials, MCPCredentialsBackendWithoutStatus } from "@ravenlens/shared/mcp";
 	import "./MCPWorkspaceConfig.css";
+    import { fetchAuthenticated } from "$lib/utils/fetch";
+    import { selectedWorkspace } from "$lib/stores/workspace";
+    import { alertState } from "$lib/utils/alert";
 
     const { 
         mcpCredentials = undefined 
@@ -35,6 +38,10 @@
 	let mcpConfigurationEditorOpen = $state(false);
 	let invalidReasonModalOpen = $state(false);
 
+	let saving = $state(false);
+	let downloading = $state(false);
+	let initialServersSpecification = $state("");
+
 	// Helpers
 	function isServerURLValid(serverURL: string | undefined) {
 		try {
@@ -62,14 +69,37 @@
 		return (password?.length ?? 0) > 5
 	}
 
-	function openMcpConfiguration() {
-		mcpConfigurationEditorOpen = true;
+	async function openMcpConfiguration() {
+		downloading = true;
+		try {
+			initialServersSpecification = await downloadMCPServersSpecification();
+			mcpConfigurationEditorOpen = true;
+		} finally {
+			downloading = false;
+		}
 	}
 
 	// Rest handlers
-	// TODO: 
 	async function downloadMCPServersSpecification() {
-		return ""
+		try {
+			const res = await fetchAuthenticated("/mcp-config/servers-spec", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json"
+				},
+				body: JSON.stringify({
+					workspaceId: $selectedWorkspace?.id
+				})
+			});
+			if (res.ok) {
+				const data = await res.json();
+				return JSON.stringify(data, null, 2);
+			}
+			console.error("Failed to download MCP servers specification");
+		} catch (error) {
+			console.error("Error downloading MCP servers specification:", error);
+		}
+		return "";
 	}
 
 	// Handlers
@@ -78,9 +108,55 @@
 		draftSecretPassword = mcpCredentials?.secretPassword ?? "";
 	}
 
-	// TODO: Send changes to backend
+	// Send credentials update to backend
 	async function onAcceptChanges() {
-		
+		saving = true;
+		try {
+			const saveResponse = await fetchAuthenticated(
+				"/mcp-config/credentials/change",
+				{
+					method: "PUT",
+					headers: {
+						'Content-Type': 'application/json'
+					},
+					body: JSON.stringify({
+						workspaceId: $selectedWorkspace?.id,
+						credentials: {
+							serverURL: serverURL,
+							secretPassword: draftSecretPassword,
+							workspaceId: $selectedWorkspace?.id ?? ""
+						} satisfies MCPCredentialsBackendWithoutStatus
+					})
+				}
+			);
+
+			if (saveResponse.ok) {
+				const { status } = await saveResponse.json() as {
+					status: MCPConnectionStatusObject
+				}
+
+				// Setup new connection status
+				connectionState = status;
+
+				// Setup the initial properties to saved values
+				mcpCredentials!.secretPassword = draftSecretPassword;
+				mcpCredentials!.serverURL = serverURL;
+				mcpCredentials!.status = status;
+			}
+			else {
+				console.error('Cannot save credetials because of status: ', saveResponse.status);
+				$alertState = {
+					alert: {
+						type: "error",
+						name: "Cannot save MCP Credentials Changes",
+						description: 'Cannot save credetials because of response-status: ' + saveResponse.status
+					},
+					timeoutMs: 5_000
+				}
+			}
+		} finally {
+			saving = false;
+		}
 	}
 </script>
 
@@ -172,15 +248,18 @@
 		</div>
 	{/if}
 
-	{#if isServerURLValidState && isPasswordValidState}
+	{#if isServerURLValidState && isPasswordValidState && (mcpCredentials?.secretPassword && mcpCredentials.serverURL)}
 		<button
 			class="btn btn-neutral"
 			type="button"
 			title="Open MCP servers configuration"
 			aria-label="Open MCP servers configuration"
-			disabled={!isServerURLValidState}
+			disabled={!isServerURLValidState || downloading}
 			onclick={openMcpConfiguration}
 		>
+			{#if downloading}
+				<span class="loading loading-spinner loading-sm"></span>
+			{/if}
 			<Icon icon="material-symbols:settings-outline-rounded" class="h-4 w-4" />
 			<span>Configure MCP Servers</span>
 		</button>
@@ -193,6 +272,7 @@
 			<button 
 				class="btn btn-ghost"
 				onclick={onDeclineChanges}
+				disabled={saving}
 			>
 				Decline
 			</button>
@@ -200,7 +280,11 @@
 			<button 
 				class="btn btn-primary"
 				onclick={onAcceptChanges}
+				disabled={saving}
 			>
+				{#if saving}
+					<span class="loading loading-spinner loading-sm"></span>
+				{/if}
 				Accept
 			</button>
 		</div>
@@ -260,18 +344,11 @@
 
 <!-- MCP Config modal -->
 {#if mcpConfigurationEditorOpen}
-	{#await downloadMCPServersSpecification()}
-		<div class="w-screen h-screen absolute top-0 right-0">
-			<span class="loading-spinner loading-sm"></span>
-			<span>Loading</span>
-		</div>
-	{:then serversSpecification}
-		<McpSelectionModal
-			open={true}
-			mcpConfigurationDraft={serversSpecification}
-			mcpConfigurationError=""
-		/>
-	{/await}
+	<McpSelectionModal
+		bind:open={mcpConfigurationEditorOpen}
+		mcpConfigurationDraft={initialServersSpecification}
+		mcpConfigurationError=""
+	/>
 {/if}
 
 <style>

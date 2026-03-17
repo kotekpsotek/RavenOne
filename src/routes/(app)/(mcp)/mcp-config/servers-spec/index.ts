@@ -3,11 +3,11 @@ import { performDownloadLikeOperation } from "../downloadLike";
 import { ConnectWithMCPMiddlewareCustomerServer } from "@ravenlens/backend/mcp-interface";
 
 /**
- * Downloads the mcp connections from the server
+ * Downloads the mcp servers from the middleware server
 */
 export const POST: RequestHandler = async ({ request, cookies }) => {
     try {
-        // 1. Make download operation
+        // 1. Make credetnials download operation
         const resultDownloadOp = await performDownloadLikeOperation(request, cookies);
         if (resultDownloadOp instanceof Response) {
             return resultDownloadOp;
@@ -33,4 +33,34 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
         console.error(`Cannot download mcp connections because of error`, err);
         return new Response(null, { status: 500 });
     }
+}
+
+/**
+ * Updates the MCP Serves
+ */
+export const PUT: RequestHandler = async ({ request, cookies }) => {
+    // 1. Verify request body
+    const { workspaceId, mcpConfig } = await request.json() as {
+        workspaceId: string;
+        mcpConfig: string;
+    }
+    if (!workspaceId || !mcpConfig.trim().length) {
+        return new Response(null, { status: 400 });
+    }
+    
+    // 2. Make credetnials download operation
+    const resultDownloadOp = await performDownloadLikeOperation(request, cookies);
+    if (resultDownloadOp instanceof Response) {
+        return resultDownloadOp;
+    }
+
+    // 3. Save the MCP config
+    const mcpConnectionInterface = new ConnectWithMCPMiddlewareCustomerServer(resultDownloadOp.credentials);
+    const isSaved = await mcpConnectionInterface.saveMCPConfigJsonString(mcpConfig);
+
+    // 4. Return response
+    if (isSaved) {
+        return new Response(null, { status: 200 });
+    }
+    else return new Response(null, { status: 403 });
 }

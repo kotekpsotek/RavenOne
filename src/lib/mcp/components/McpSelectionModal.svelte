@@ -3,6 +3,9 @@
     import { UI } from "@ravenlens/frontend";
     import CodeMirror from "svelte-codemirror-editor";
     import { json } from "@codemirror/lang-json";
+    import { fetchAuthenticated } from "$lib/utils/fetch";
+    import { selectedWorkspace } from "$lib/stores/workspace";
+    import { alertState } from "$lib/utils/alert";
 
     let {
         open = $bindable(false),
@@ -14,24 +17,72 @@
         mcpConfigurationError: string;
     }>();
     
+    let saving = $state(false);
+
     function closeMcpConfigurationEditor() {
         open = false;
         mcpConfigurationError = "";
     }
 
-    // TODO: Modify save the mcp config to the server
-    function acceptMcpConfiguration() {
+    // Send modified MCP Configuration to server
+    async function acceptMcpConfiguration() {
         const validation = validateMcpConfiguration(mcpConfigurationDraft);
         if (!validation.valid) {
             mcpConfigurationError = validation.error;
             return;
         }
 
-        $mcpConfigurationStore = validation.normalized;
-        saveMcpConfiguration($mcpConfigurationStore);
-        $selectedMcpServers = validation.servers;
-        mcpConfigurationError = "";
-        open = false;
+        const frontendSave = () => {
+            $mcpConfigurationStore = validation.normalized;
+            saveMcpConfiguration($mcpConfigurationStore);
+            $selectedMcpServers = validation.servers;
+            mcpConfigurationError = "";
+            open = false;
+        }
+        
+        saving = true;
+        try {
+            const saveMCPConfigResponse = await fetchAuthenticated(
+                "/mcp-config/servers-spec",
+                {
+                    method: "PUT",
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        workspaceId: $selectedWorkspace?.id,
+                        mcpConfig: validation.normalized
+                    })
+                }
+            );
+
+            if (saveMCPConfigResponse.ok) {
+                $alertState = {
+                    alert: {
+                        type: "success",
+                        name: "Saved MCP Configuration Changes",
+                        description: 'MCP Configuration is changed'
+                    },
+                    timeoutMs: 3_000
+                }
+
+                // Save config on frontend side
+                frontendSave();
+            }
+            else {
+                console.error('Cannot save MCP-Configuration because of status: ', saveMCPConfigResponse.status);
+                $alertState = {
+                    alert: {
+                        type: "error",
+                        name: "Cannot save MCP Configuration Changes",
+                        description: 'Cannot save MCP-Configuration because of response-status: ' + saveMCPConfigResponse.status
+                    },
+                    timeoutMs: 8_000
+                }
+            }
+        } finally {
+            saving = false;
+        }
     }
 
     function validateMcpConfiguration(rawConfiguration: string): McpValidationResult {
@@ -124,8 +175,13 @@
                 </div>
 
                 <div class="mt-4 flex justify-end gap-2">
-                    <button class="btn btn-ghost" onclick={closeMcpConfigurationEditor}>Cancel</button>
-                    <button class="btn btn-primary" onclick={acceptMcpConfiguration}>Save</button>
+                    <button class="btn btn-ghost" onclick={closeMcpConfigurationEditor} disabled={saving}>Cancel</button>
+                    <button class="btn btn-primary" onclick={acceptMcpConfiguration} disabled={saving}>
+                        {#if saving}
+                            <span class="loading loading-spinner loading-sm"></span>
+                        {/if}
+                        Save
+                    </button>
                 </div>
             </UI.Modals.ModalWrapper>
         </div>

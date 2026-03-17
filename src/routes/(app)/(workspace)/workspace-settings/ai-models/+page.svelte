@@ -51,9 +51,33 @@
         return responseBody.apiKeys;
     }
 
-    // TODO: Download from backend
+    // Download credentials from backend
     async function handleRetriveMCPCredentials(): Promise<MCPCredentials> {
+        const credetnialsRequest = await fetchAuthenticated(
+            "/mcp-config/credentials/download",
+            {
+                method: "POST",
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    workspaceId: $selectedWorkspace?.id
+                })
+            }
+        );
 
+        if (credetnialsRequest.ok) {
+            const credentials = await credetnialsRequest.json() as MCPCredentials
+            return credentials;
+        }
+
+        return {
+            status: {
+                status: "not-specified"
+            },
+            secretPassword: "",
+            serverURL: ""
+        } satisfies MCPCredentials
     }
 
     async function handleRetrieveModels() {
