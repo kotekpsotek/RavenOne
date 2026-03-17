@@ -76,6 +76,8 @@ type ChatStoreState = {
 	loadError?: string;
 };
 
+type ChatDropPosition = "before" | "after";
+
 type ChatStateResponsePayload = {
 	chats?: unknown;
 	selectedChatId?: unknown;
@@ -379,6 +381,40 @@ function createEmptyState(): ChatStoreState {
 	};
 }
 
+function reorderChatsByPosition(
+	chats: AIChatThread[],
+	draggedChatId: string,
+	targetChatId: string,
+	position: ChatDropPosition
+): AIChatThread[] {
+	if (draggedChatId === targetChatId) {
+		return chats;
+	}
+
+	const sourceIndex = chats.findIndex((chat) => chat.id === draggedChatId);
+	const targetIndex = chats.findIndex((chat) => chat.id === targetChatId);
+
+	if (sourceIndex < 0 || targetIndex < 0) {
+		return chats;
+	}
+
+	const nextChats = [...chats];
+	const [draggedChat] = nextChats.splice(sourceIndex, 1);
+	if (!draggedChat) {
+		return chats;
+	}
+
+	const adjustedTargetIndex = sourceIndex < targetIndex
+		? targetIndex - 1
+		: targetIndex;
+	const insertionIndex = position === "before"
+		? adjustedTargetIndex
+		: adjustedTargetIndex + 1;
+
+	nextChats.splice(insertionIndex, 0, draggedChat);
+	return nextChats;
+}
+
 async function readChatStateFromBackend(workspaceId: string, fileId: string): Promise<FileChatStatePayload> {
 	const response = await fetchAuthenticated("/files/api/chat_state", {
 		method: "POST",
@@ -559,6 +595,16 @@ const chatStore = (() => {
 			withSaveSchedule((state) => ({
 				...state,
 				selectedChatId: normalizeSelectedChatId(selectedChatId, state.chats)
+			}));
+		},
+		reorderChats(draggedChatId: string, targetChatId: string, position: ChatDropPosition = "after") {
+			if (!draggedChatId || !targetChatId) {
+				return;
+			}
+
+			withSaveSchedule((state) => ({
+				...state,
+				chats: reorderChatsByPosition(state.chats, draggedChatId, targetChatId, position)
 			}));
 		},
 		createChat(type: AIChatMode, title?: string): string {
