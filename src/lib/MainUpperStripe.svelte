@@ -10,45 +10,22 @@
     import { mcpConfigurationStore, selectedMcpServers } from "./stores/mcpConfig";
     import { alertState } from "./utils/alert";
     import { editor } from "./stores/editor";
-    import { get, writable } from "svelte/store";
+    import { get } from "svelte/store";
     import McpSelectionModal from "./modals/McpSelectionModal.svelte";
-    import { UI } from "@ravenlens/frontend";
     import ContextSelectionModal from "./modals/ContextSelectionModal.svelte";
     import PlayModeDropdownContent from "./components/PlayModeDropdownContent.svelte";
     import { playableDocumentsAndListsWithPoints } from "./stores/playModeStore";
     import { isFilePlayable } from "./listItems/utils";
     import SaveFile from "./components/SaveFile.svelte";
-    import { downloadUnavaiableModelsRequest, shareFileRequest } from "./files/connections/connections";
+    import { shareFileRequest } from "./files/connections/connections";
     import { File } from "@ravenlens/shared";
     import { canManageWorkspaceFiles } from "./stores/subscription";
-    import { browser } from "$app/environment";
     import { isChatSideStripeSelected, isFileListSideStripeSelected, isPointsStripeOpen } from "./stores/selectedSideStripes";
+    import { modelWeights, selectedModelKey } from "./ai/model";
+    import ModelsListSelection from "./ai/ModelsListSelection.svelte";
 
     type DropdownName = "model-settings" | "mcp-tools" | "play-settings" | "share";
 
-    const selectedModelKey = (() => {
-        const initialModelKey = avaiableModels[0]?.model ?? "";
-        const selectedModelName = writable<string>(initialModelKey);
-
-        if (browser) {
-            const model = localStorage.getItem("localSelectedLLM");
-            selectedModelName.set(model ?? initialModelKey);
-        }
-
-        return {
-            ...selectedModelName,
-            set(model: string) {
-                if (browser) {
-                    localStorage.setItem('localSelectedLLM', model);
-                }
-                
-                selectedModelName.set(model ?? initialModelKey);
-            }
-        }
-    })();
-    let modelWeights = $state<Record<string, number>>(
-        get(selectedModelKey) ? { [get(selectedModelKey)]: 1 } : {}
-    );
     let useMcpServers = $state(true);
     let mcpConfigurationDraft = $state(get(mcpConfigurationStore));
     let mcpConfigurationError = $state("");
@@ -77,51 +54,13 @@
     const getModelByKey = (key: string) =>
         avaiableModels.find((model) => model.model === key);
 
-    const modelOrderByName = new Map(
-        avaiableModels.map((model, index) => [model.model, index])
-    );
-
-    function sortModelsByAvailability(disabledModels?: typeof avaiableModels) {
-        const unavailableModelNames = new Set((disabledModels ?? []).map((model) => model.model));
-
-        return [...avaiableModels].sort((leftModel, rightModel) => {
-            const isLeftUnavailable = unavailableModelNames.has(leftModel.model);
-            const isRightUnavailable = unavailableModelNames.has(rightModel.model);
-
-            if (isLeftUnavailable === isRightUnavailable) {
-                return (modelOrderByName.get(leftModel.model) ?? 0) - (modelOrderByName.get(rightModel.model) ?? 0);
-            }
-
-            return isLeftUnavailable ? 1 : -1;
-        });
-    }
-
     const currentModel = $derived(getModelByKey($selectedModelKey));
 
-    const getCurrentModelWeight = () => modelWeights[$selectedModelKey] ?? 1;
-
-    function ensureModelWeight(key: string) {
-        if (!key || modelWeights[key] !== undefined) {
-            return;
-        }
-
-        modelWeights = {
-            ...modelWeights,
-            [key]: 1
-        };
-    }
+    const getCurrentModelWeight = () => $modelWeights[$selectedModelKey] ?? 1;
 
     $effect(() => {
         $selectedModel = currentModel;
     });
-
-    function onModelChange(ev: Event) {
-        const target = ev.currentTarget as HTMLSelectElement | null;
-        const modelNameFromTarget = target?.value;
-        const modelNameFromDetail = (ev as CustomEvent<string | undefined>).detail;
-        const nextModelKey = modelNameFromTarget ?? modelNameFromDetail ?? get(selectedModelKey);
-        ensureModelWeight(nextModelKey);
-    }
 
     function toggleValue(state: File.FileAI.BrowserToolsUnion[], value: File.FileAI.BrowserToolsUnion): File.FileAI.BrowserToolsUnion[] {
         if (state.includes(value)) {
@@ -131,8 +70,8 @@
     }
 
     function updateCurrentModelWeight(weight: number) {
-        modelWeights = {
-            ...modelWeights,
+        $modelWeights = {
+            ...$modelWeights,
             [$selectedModelKey]: weight
         };
     }
@@ -390,29 +329,7 @@
         >
             <div class="flex items-center gap-2">
                 <div class="join">
-                    {#await downloadUnavaiableModelsRequest({ workspaceId: $selectedWorkspace?.id! })}
-                        <div>
-                            <span class="loading-spinner loading-sm"></span>
-                            <span>Loading Models...</span>
-                        </div>
-                    {:then unavaiableModels}
-                        {@const sortedModels = sortModelsByAvailability(unavaiableModels?.allNotAvaiableModels)}
-                    
-                        <UI.Common.AI.SelectAIModel
-                            bind:selectedModel={$selectedModelKey}
-                            avaiabaleModels={sortedModels}
-                            disabledModels={unavaiableModels?.allNotAvaiableModels}
-                            placeholder="Select model"
-                            onChange={onModelChange}
-                            disabled={!$canManageWorkspaceFiles}
-                            selectSize="sm"
-                        />
-                    {:catch err}
-                        <div class="text-xs text-error">
-                            <span>Cannot download unavaiable models:</span>
-                            {err}
-                        </div>
-                    {/await}
+                    <ModelsListSelection/>
 
                     {#if $canManageWorkspaceFiles}
                         <details
@@ -669,7 +586,7 @@
             >
                 <div
                     class="tooltip tooltip-bottom"
-                    data-tip={$isFileListSideStripeSelected ? `Collapse Filebar (Ctrl + .)` : 'Expand Filebar (Ctrl + .)'}
+                    data-tip={$isFileListSideStripeSelected ? `Collapse Filebar (Ctrl + ,)` : 'Expand Filebar (Ctrl + ,)'}
                 >
                     <button 
                         class="p-2 rounded-lg cursor-pointer {$isFileListSideStripeSelected ? "bg-base-300/70 text-primary" : "hover:bg-base-300"}"
@@ -681,7 +598,7 @@
                 
                 <div
                     class="tooltip tooltip-bottom"
-                    data-tip={$isFileListSideStripeSelected ? `Collapse Chatbar (Ctrl + ,)` : 'Expand Chatbar (Ctrl + ,)'}
+                    data-tip={$isFileListSideStripeSelected ? `Collapse Tasksbar (Ctrl + ;)` : 'Expand Tasksbar (Ctrl + ;)'}
                 >
                     <button
                         class="p-2 rounded-lg cursor-pointer {$isPointsStripeOpen ? "bg-base-300/70 text-primary" : "hover:bg-base-300"}"
@@ -693,7 +610,7 @@
                 
                 <div
                     class="tooltip tooltip-bottom"
-                    data-tip={$isFileListSideStripeSelected ? `Collapse Chatbar (Ctrl + ,)` : 'Expand Chatbar (Ctrl + ,)'}
+                    data-tip={$isFileListSideStripeSelected ? `Collapse Chatbar (Ctrl + .)` : 'Expand Chatbar (Ctrl + .)'}
                 >
                     <button 
                         class="p-2 rounded-lg cursor-pointer {$isChatSideStripeSelected ? "bg-base-300/70 text-primary" : "hover:bg-base-300"}"

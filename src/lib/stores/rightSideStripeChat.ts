@@ -3,7 +3,7 @@ import { fetchAuthenticated } from "$lib/utils/fetch";
 import { get, writable, type Readable } from "svelte/store";
 import { selectedFile } from "./files";
 
-export type AIChatMode = "regular-ask" | "terms-resolution" | "visualization" | "tldr";
+export type AIChatMode = "regular-ask" | "questions-creation" | "document-manipulation"; // "visualization" | "tldr"
 export type MermaidDiagramType = "flowchart" | "sequenceDiagram" | "classDiagram" | "stateDiagram-v2";
 export type AIChatDecision = "accepted" | "declined";
 
@@ -85,9 +85,8 @@ type ChatStateResponsePayload = {
 
 const CHAT_MODES: Record<AIChatMode, string> = {
 	"regular-ask": "Ask",
-	"terms-resolution": "Terms Resolution",
-	"visualization": "Visualization",
-	"tldr": "TL;DR"
+	"document-manipulation": "Document Manipulation",
+	"questions-creation": "Create Document Questions"
 };
 
 const MERMAID_TYPES: Record<MermaidDiagramType, string> = {
@@ -149,12 +148,11 @@ function normalizeText(valueCandidate: unknown): string {
 	return valueCandidate;
 }
 
-function normalizeAIChatMode(modeCandidate: unknown): AIChatMode {
+function normalizeAIChatMode(modeCandidate: AIChatMode): AIChatMode {
 	if (
 		modeCandidate === "regular-ask"
-		|| modeCandidate === "terms-resolution"
-		|| modeCandidate === "visualization"
-		|| modeCandidate === "tldr"
+		|| modeCandidate === "document-manipulation"
+		|| modeCandidate === "questions-creation"
 	) {
 		return modeCandidate;
 	}
@@ -415,6 +413,7 @@ function reorderChatsByPosition(
 	return nextChats;
 }
 
+// TODO: Verify this function
 async function readChatStateFromBackend(workspaceId: string, fileId: string): Promise<FileChatStatePayload> {
 	const response = await fetchAuthenticated("/files/api/chat_state", {
 		method: "POST",
@@ -440,6 +439,7 @@ async function readChatStateFromBackend(workspaceId: string, fileId: string): Pr
 	};
 }
 
+// TODO: Verify this function
 async function writeChatStateToBackend(state: ChatStoreState): Promise<void> {
 	if (!state.workspaceId || !state.fileId) {
 		return;
@@ -463,7 +463,7 @@ async function writeChatStateToBackend(state: ChatStoreState): Promise<void> {
 	}
 }
 
-const chatStore = (() => {
+export const rightSideStripeChat = (() => {
 	const store = writable<ChatStoreState>(createEmptyState());
 	let activeLoadRequestId = 0;
 	let saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -719,13 +719,12 @@ const chatStore = (() => {
 if (browser) {
 	selectedFile.subscribe((file) => {
 		const fileDescriptor = getFileDescriptor(file);
-		void chatStore.loadForFile(fileDescriptor);
+		void rightSideStripeChat.loadForFile(fileDescriptor);
 	});
 }
 
 export const displayContextForMessages = displayContextForMessagesStore;
 export const elementIsPreviewing = elementIsPreviewingStore;
-export const rightSideStripeChat = chatStore;
 
 export const rightSideStripeChatLayout = {
 	...chatLayoutStore,

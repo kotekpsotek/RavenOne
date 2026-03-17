@@ -11,7 +11,7 @@
     import { isSearchModalOpen } from "$lib/stores/files";
     import { appName } from "$lib/config/app";
     import { isSharedRoute } from "$lib/stores/share";
-    import { isChatSideStripeSelected, isFileListSideStripeSelected } from "$lib/stores/selectedSideStripes";
+    import { isChatSideStripeSelected, isFileListSideStripeSelected, isPointsStripeOpen } from "$lib/stores/selectedSideStripes";
 
     const PANEL_WIDTH_STORAGE_KEY = 'expansion-panel-width';
     const PANEL_MIN_WIDTH = 260;
@@ -132,12 +132,16 @@
             return;
         }
 
-        if (ev.ctrlKey && ev.key === '.') {
+        if (ev.ctrlKey && ev.key === ',') {
             isFileListSideStripeSelected.onToggle();
         }
 
-        if (ev.ctrlKey && ev.key === ",") {
+        if (ev.ctrlKey && ev.key === ".") {
             isChatSideStripeSelected.onToggle();
+        }
+
+        if (ev.ctrlKey && ev.key === ";") {
+            isPointsStripeOpen.onToggle();
         }
 
         if (ev.ctrlKey && ev.key === 'p') {
@@ -198,7 +202,7 @@
                             </button>
                         </div>
                         
-                        <div class="tooltip tooltip-right" data-tip={$isFileListSideStripeSelected ? `Collapse Filebar (Ctrl + .)` : 'Expand Filebar (Ctrl + .)'}>
+                        <div class="tooltip tooltip-right" data-tip={$isFileListSideStripeSelected ? `Collapse Filebar (Ctrl + ,)` : 'Expand Filebar (Ctrl + ,)'}>
                             <button
                                 onclick={isFileListSideStripeSelected.onToggle}
                                 class="btn btn-ghost btn-square btn-sm rounded-lg {$isFileListSideStripeSelected ? 'bg-base-100 text-primary' : 'text-base-content/70'} hover:bg-base-300 hover:text-primary active:scale-95 transition-colors"
