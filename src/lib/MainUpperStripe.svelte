@@ -9,7 +9,7 @@
     import { alertState } from "./utils/alert";
     import { editor } from "./stores/editor";
     import { get } from "svelte/store";
-    import McpSelectionModal from "./mcp/components/McpSelectionModal.svelte";
+    import McpSelectionModal from "./mcp/components/McpSpecificationModal.svelte";
     import ContextSelectionModal from "./modals/ContextSelectionModal.svelte";
     import PlayModeDropdownContent from "./components/PlayModeDropdownContent.svelte";
     import { playableDocumentsAndListsWithPoints } from "./stores/playModeStore";

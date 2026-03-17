@@ -1,5 +1,6 @@
 <script lang="ts">
     import ModelsListSelection from "$lib/ai/ModelsListSelection.svelte";
+    import McpServerSelectionModal from "$lib/mcp/components/McpServerSelectionModal.svelte";
     import { selectedFile } from "$lib/stores/files";
     import {
         activeChat,
@@ -13,8 +14,11 @@
         type AIChatResponse,
         type MermaidDiagramType
     } from "$lib/stores/rightSideStripeChat";
+    import { selectedWorkspace } from "$lib/stores/workspace";
+    import { fetchAuthenticated } from "$lib/utils/fetch";
     import Icon from "@iconify/svelte";
-    import { get } from "svelte/store";
+    import { get as getIndexedDBValue, set as setIndexedDBValue } from "idb-keyval";
+    import { onMount } from "svelte";
 
     let {
         isModeSelectingTrayOpen = $bindable(false),
@@ -24,18 +28,161 @@
         isMermaidModeSelectionTrayOpen: boolean;
     } = $props();
 
-    const mermaidModes: AIChatMode[] = ["visualization", "tldr"];
-    
     // State
     let textContent = $state("");
     let showFullPromptTextIds = $state<string[]>([]);
     let isSelectedTextPreviewOpen = $state(true);
     let mouseIsOnPreviewSelectedText = $state<{ from: number; to: number } | null>(null);
     let composerResetKey = $state(0);
+    let chatHistoryElement = $state<HTMLDivElement | null>(null);
+    
+    let isMCPServersSelectionOpen = $state(false);
+
+    function getStorageKeyName(fileId: string) {
+        const storageKeyName = `mcpServers:${fileId}`;
+        return storageKeyName;
+    }
+
+    interface MCPServersSpec {
+        mcpServers: Record<string, any>;
+    }
+    let downloadMCPServersSpecification = $state<MCPServersSpec>({ mcpServers: {} });
+
+    type StoreSubscriber<T> = (value: T) => void;
+
+    function createWritableStore<T>(initialValue: T) {
+        let currentValue = initialValue;
+        let subscribers: StoreSubscriber<T>[] = [];
+
+        return {
+            subscribe(subscriber: StoreSubscriber<T>) {
+                subscriber(currentValue);
+                subscribers = [...subscribers, subscriber];
+
+                return () => {
+                    subscribers = subscribers.filter((existingSubscriber) => existingSubscriber !== subscriber);
+                };
+            },
+            set(nextValue: T) {
+                currentValue = nextValue;
+                subscribers.forEach((subscriber) => subscriber(nextValue));
+            },
+            update(updater: (value: T) => T) {
+                const nextValue = updater(currentValue);
+                currentValue = nextValue;
+                subscribers.forEach((subscriber) => subscriber(nextValue));
+            },
+            getValue() {
+                return currentValue;
+            }
+        }
+    }
+
+    function normalizeSelectedMCPServerNames(serverNames: string[], availableMCPServers: string[]): string[] {
+        return serverNames.filter((serverName, index) => {
+            return availableMCPServers.includes(serverName) && serverNames.indexOf(serverName) === index;
+        });
+    }
+
+    function areStringArraysEqual(left: string[], right: string[]): boolean {
+        return left.length === right.length && left.every((item, itemIndex) => item === right[itemIndex]);
+    }
+
+    async function readSelectedMCPServerNamesFromIndexedDB(fileId: string): Promise<string[]> {
+        if (typeof window === "undefined") {
+            return [];
+        }
+
+        try {
+            const selectedServerNames = await getIndexedDBValue(getStorageKeyName(fileId));
+            if (!Array.isArray(selectedServerNames)) {
+                return [];
+            }
+
+            return selectedServerNames.filter((selectedServer): selectedServer is string => typeof selectedServer === "string");
+        }
+        catch (err) {
+            console.error("Error when reading selected MCP servers from IndexedDB", err);
+            return [];
+        }
+    }
+
+    async function saveSelectedMCPServerNamesToIndexedDB(fileId: string, serverNames: string[]): Promise<void> {
+        if (typeof window === "undefined") {
+            return;
+        }
+
+        try {
+            await setIndexedDBValue(getStorageKeyName(fileId), serverNames);
+        }
+        catch (err) {
+            console.error("Error when writing selected MCP servers to IndexedDB", err);
+        }
+    }
+
+    const selectedMCPServerNames = (() => {
+        const selectedMCPServersValues = createWritableStore<string[]>([]);
+        let selectedMCPServersSyncId = 0;
+
+        const setSelectedMCPServerNames = (serverNames: string[], shouldSaveToIndexedDB: boolean) => {
+            const availableMCPServers = getMCPServersList(downloadMCPServersSpecification);
+            const normalizedServerNames = normalizeSelectedMCPServerNames(serverNames, availableMCPServers);
+            selectedMCPServersValues.set(normalizedServerNames);
+
+            if (!shouldSaveToIndexedDB) {
+                return;
+            }
+
+            const selectedFileId = $selectedFile?.id;
+            if (!selectedFileId) {
+                return;
+            }
+
+            void saveSelectedMCPServerNamesToIndexedDB(selectedFileId, normalizedServerNames);
+        };
+
+        $effect(() => {
+            const selectedFileId = $selectedFile?.id;
+            const availableMCPServers = getMCPServersList(downloadMCPServersSpecification);
+
+            selectedMCPServersSyncId += 1;
+            const currentSyncId = selectedMCPServersSyncId;
+
+            if (!selectedFileId) {
+                selectedMCPServersValues.set([]);
+                return;
+            }
+
+            void (async () => {
+                const downloadedServerNames = await readSelectedMCPServerNamesFromIndexedDB(selectedFileId);
+                if (currentSyncId !== selectedMCPServersSyncId) {
+                    return;
+                }
+
+                const normalizedServerNames = normalizeSelectedMCPServerNames(downloadedServerNames, availableMCPServers);
+                selectedMCPServersValues.set(normalizedServerNames);
+
+                if (!areStringArraysEqual(downloadedServerNames, normalizedServerNames)) {
+                    await saveSelectedMCPServerNamesToIndexedDB(selectedFileId, normalizedServerNames);
+                }
+            })();
+        });
+
+        return {
+            subscribe: selectedMCPServersValues.subscribe,
+            set(serverNames: string[]) {
+                setSelectedMCPServerNames(serverNames, true);
+            },
+            update(updater: (serverNames: string[]) => string[]) {
+                const nextServerNames = updater(selectedMCPServersValues.getValue());
+                setSelectedMCPServerNames(nextServerNames, true);
+            }
+        }
+    })();
 
     let chatBubblesList = $derived($activeChat?.bubbles ?? []);
     let isMessagingActive = $derived(Boolean($selectedFile && !$rightSideStripeChat.isLoading && $rightSideStripeChatLayout.isOpen));
-
+    
     // Helpers
     function escapeHtml(text: string): string {
         return text
@@ -65,6 +212,16 @@
     function getGeneratingTime(chatBubble: AIChatBubble): string {
         const timeDeltaMs = Date.now() - new Date(chatBubble.createdAt).getTime();
         return `${Math.max(0, timeDeltaMs / 1000).toFixed(1)}s`;
+    }
+
+    function getMCPServersList(servers: MCPServersSpec): string[] {
+        try {
+            return Object.keys(servers.mcpServers) ?? [];
+        }
+        catch(err) {
+            console.error('Error when parsing mcp servers', err);
+            return [];
+        }
     }
 
     // Handlers
@@ -112,23 +269,6 @@
         isModeSelectingTrayOpen = false;
     }
 
-    function onMermaidSelect(event: MouseEvent) {
-        event.stopPropagation();
-        isMermaidModeSelectionTrayOpen = !isMermaidModeSelectionTrayOpen;
-        if (isMermaidModeSelectionTrayOpen) {
-            isModeSelectingTrayOpen = false;
-        }
-    }
-
-    function onChoosenMermaidMode(mode: MermaidDiagramType | "none") {
-        editorAIChat.setMermaidDiagramType(mode === "none" ? undefined : mode);
-        isMermaidModeSelectionTrayOpen = false;
-    }
-
-    function getMermaidTypes() {
-        return [...Object.entries(editorAIChat.getMermaidTypes()), ["none", "No visualization"]] as [MermaidDiagramType | "none", string][];
-    }
-
     function hasChatIndependentDecision(chatBubble: AIChatBubble): boolean {
         return chatBubble.aiResponse.some((response) => Boolean(response.decision));
     }
@@ -171,70 +311,16 @@
         textContent = target.innerText;
     }
 
-        function toMermaidTemplate(type: MermaidDiagramType): string {
-        if (type === "sequenceDiagram") {
-            return [
-                "sequenceDiagram",
-                "User->>RavenOne: Ask question",
-                "RavenOne->>AI: Build response",
-                "AI-->>RavenOne: Return proposal",
-                "RavenOne-->>User: Display answer"
-            ].join("\n");
-        }
-
-        if (type === "classDiagram") {
-            return [
-                "classDiagram",
-                "class File {",
-                "  +id: string",
-                "  +content: string",
-                "}",
-                "class ChatThread {",
-                "  +id: string",
-                "  +mode: string",
-                "}",
-                "File --> ChatThread : owns"
-            ].join("\n");
-        }
-
-        if (type === "stateDiagram-v2") {
-            return [
-                "stateDiagram-v2",
-                "[*] --> Draft",
-                "Draft --> Sent: send",
-                "Sent --> Accepted: accept",
-                "Sent --> Declined: decline"
-            ].join("\n");
-        }
-
-        return [
-            "flowchart TD",
-            "A[Prompt] --> B[Model processing]",
-            "B --> C[Text answer]",
-            "B --> D[Optional Mermaid]"
-        ].join("\n");
-    }
-
     function buildMockResponse(prompt: string, mode: AIChatMode): AIChatResponse[] {
         const now = new Date().toISOString();
         const escapedPrompt = escapeHtml(prompt || "context only prompt");
-        const selectedMermaid = get(editorAIChat).mermaidDiagramType;
-        const includeMermaid = mode === "visualization" && Boolean(selectedMermaid);
 
         return [
             {
                 id: crypto.randomUUID(),
                 applyTo: mode === "regular-ask" ? "chat" : "selection",
                 answerHTML: `<p><strong>Mode:</strong> ${escapeHtml(editorAIChat.getTextFieldModeTranslation(mode))}</p><p>Generated response for: ${escapedPrompt}</p>`,
-                publishedDate: now,
-                ...(includeMermaid
-                    ? {
-                        mermaid: {
-                            type: selectedMermaid!,
-                            definition: toMermaidTemplate(selectedMermaid!)
-                        }
-                    }
-                    : {})
+                publishedDate: now
             }
         ];
     }
@@ -245,13 +331,13 @@
         }
 
         const promptText = textContent.trim();
-        const selectedRanges = get(editorAIChat).selectedText?.ranges ?? [];
+        const selectedRanges = $editorAIChat.selectedText?.ranges ?? [];
         if (!promptText && !selectedRanges.length) {
             return;
         }
 
         const promptHTML = getPromptHtml(promptText);
-        const mode = get(editorAIChat).textFieldMode;
+        const mode = $editorAIChat.textFieldMode;
 
         const appended = rightSideStripeChat.appendPromptBubble({
             prompt: promptText,
@@ -278,29 +364,55 @@
         }, 900);
     }
 
-    function onMermaidClick(definition?: string, type?: MermaidDiagramType) {
-        if (!definition || !type) {
-            return;
-        }
-
-        const previewWindow = window.open("", "_blank", "width=900,height=640");
-        if (!previewWindow) {
-            return;
-        }
-
-        previewWindow.document.write(`<pre>${escapeHtml(definition)}</pre>`);
-        previewWindow.document.title = `Mermaid (${type})`;
+    function onToggleMCPServersSelectionModal() {
+        isMCPServersSelectionOpen = !isMCPServersSelectionOpen;
     }
 
-    // hooks
-    function useChatHistory(el: HTMLDivElement) {
-        const btmInteractionsElement = el.parentElement?.querySelector("#bottom-interactions");
+    $effect(() => {
+        const selectedRangesCount = $editorAIChat.selectedText?.ranges.length ?? 0;
+        const isSelectedTextOpen = isSelectedTextPreviewOpen;
+        void selectedRangesCount;
+        void isSelectedTextOpen;
+
+        if (!chatHistoryElement) {
+            return;
+        }
+
+        const btmInteractionsElement = chatHistoryElement.parentElement?.querySelector("#bottom-interactions");
         if (btmInteractionsElement) {
-            el.style.paddingBottom = `${btmInteractionsElement.clientHeight}px`;
+            chatHistoryElement.style.paddingBottom = `${btmInteractionsElement.clientHeight}px`;
         }
+    });
 
-        return {}
-    }
+    // Lifecycle hooks
+    onMount(async () => {
+        const mcpDownloadResponse = await fetchAuthenticated(
+            "/mcp-config/servers-spec",
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    workspaceId: $selectedWorkspace?.id
+                })
+            }
+        );
+
+        if (mcpDownloadResponse.ok) {
+            const serversSpec = await mcpDownloadResponse.json();
+            downloadMCPServersSpecification = serversSpec;
+        }
+        else console.error(`Cannot download MCP Servers specification with server response status: ${mcpDownloadResponse.status}`)
+
+        // downloadMCPServersSpecification = {
+        //     mcpServers: {
+        //         serverA: {},
+        //         serverB: {},
+        //         serverC: {}
+        //     }
+        // }
+    })
 </script>
 
 {#snippet displayDate(dateInput: Date | string)}
@@ -324,7 +436,7 @@
 <div 
     id="ai-chat-history"
     class="h-full flex-1 min-h-0 overflow-y-auto pr-1"
-    use:useChatHistory
+    bind:this={chatHistoryElement}
 >
     {#if $rightSideStripeChat.isLoading}
         <div class="h-full flex items-center justify-center text-base-content/60 gap-2">
@@ -399,17 +511,6 @@
                                             {htmlToText(aiResponse.answerHTML)}
                                         </div>
 
-                                        {#if aiResponse.mermaid && mermaidModes.includes(chatBubble.mode)}
-                                            <div class="mt-2 rounded-md border border-info/30 bg-base-100 p-2">
-                                                <div class="text-xs font-semibold text-info">Mermaid ({editorAIChat.getMermaidTypes()[aiResponse.mermaid.type]})</div>
-                                                <button class="btn btn-ghost btn-xs mt-1" onclick={() => onMermaidClick(aiResponse.mermaid?.definition, aiResponse.mermaid?.type)}>
-                                                    <Icon icon="mdi:eye-outline" width="14" height="14" />
-                                                    <span>Preview mermaid source</span>
-                                                </button>
-                                                <pre class="mt-2 text-xs whitespace-pre-wrap bg-base-200 p-2 rounded">{aiResponse.mermaid.definition}</pre>
-                                            </div>
-                                        {/if}
-
                                         <div class="mt-2 flex items-center justify-between">
                                             {#if aiResponse.applyTo !== "chat" && chatBubble.mode !== "regular-ask"}
                                                 {#if !aiResponse.decision && !chatBubble.decision}
@@ -453,7 +554,7 @@
         <div
             class="w-full h-full flex items-center justify-center"
         >
-            <div class="h-fit w-fit flex flex-col justify-center items-center">
+            <div class="h-fit w-fit flex flex-col justify-center text-center items-center">
                 <Icon icon="mdi:chat-outline" width="28" height="28" />
                 <h3 class="font-semibold">Start a conversation</h3>
                 <p class="text-black/50 theme-dark:text-white/50">Ask a question, request a summary, or generate a diagram.</p>
@@ -538,11 +639,10 @@
             </button>
 
             <!-- MCP Servers Selection -->
-            <!-- TODO: Show as 'disabled' when user has selected some mcp server -> Merge with MCP Servers branch -->
             <button
                 class="btn btn-ghost btn-xs"
                 title="MCP Servers Selection for Action"
-                disabled
+                onclick={onToggleMCPServersSelectionModal}
             >
                 <Icon icon="carbon:logo-model-context-protocol"/>
             </button>
@@ -574,6 +674,14 @@
         </div>
     </div>
 </div>
+
+<!-- MCP Servers selection modal -->
+<McpServerSelectionModal
+    bind:open={isMCPServersSelectionOpen}
+    bind:selectedMCPServerNames={$selectedMCPServerNames}
+    avaiableMCPServers={getMCPServersList(downloadMCPServersSpecification)}
+    close={onToggleMCPServersSelectionModal}
+/>
 
 <style>
     #writable-for-chat:empty::before {

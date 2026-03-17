@@ -2,7 +2,7 @@
     import type { MCPConnectionStatusObject, MCPCredentials, MCPCredentialsBackendWithoutStatus } from "@ravenlens/shared/mcp";
 	import Icon from "@iconify/svelte";
 	import { UI } from "@ravenlens/frontend";
-	import McpSelectionModal from "$lib/mcp/components/McpSelectionModal.svelte";
+	import McpSpecificationModal from "$lib/mcp/components/McpSpecificationModal.svelte";
     import { fetchAuthenticated } from "$lib/utils/fetch";
     import { selectedWorkspace } from "$lib/stores/workspace";
     import { alertState } from "$lib/utils/alert";
@@ -466,7 +466,7 @@
 
 <!-- MCP Config modal -->
 {#if mcpConfigurationEditorOpen}
-	<McpSelectionModal
+	<McpSpecificationModal
 		bind:open={mcpConfigurationEditorOpen}
 		mcpConfigurationDraft={initialServersSpecification}
 		mcpConfigurationError=""
