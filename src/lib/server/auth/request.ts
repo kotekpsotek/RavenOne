@@ -61,8 +61,8 @@ export async function ensureAuthenticatedAndDownloadProfile(request: Request, fe
         });
 
 		if (response.ok) {
-			const { user } = await response.json();
-			return user;
+			const responseOutput = await response.json() as { user: Profile & Document };
+			return responseOutput;
 		}
 
         return null;
@@ -74,11 +74,12 @@ export async function ensureAuthenticatedAndDownloadProfile(request: Request, fe
 export async function getAndValidateAuthenticated<T extends boolean = false>(
 	request: Request,
 	cookies: Cookies,
-	returnWithProfile?: T
+	returnWithProfile?: T,
+	fetchFn: typeof fetch = fetch
 ): Promise<(T extends true ? { jwtPayload: JWTPayload; user: Document & Profile } : JWTPayload) | Response> {
-	const userProfile = await ensureAuthenticatedAndDownloadProfile(request, fetch);
+	const userProfile = await ensureAuthenticatedAndDownloadProfile(request, fetchFn);
 	if (!userProfile || !userProfile.user) {
-		return json({ status: false, error: 'Failed to validate authentication' }, { status: 500 }) as any;
+		return json({ status: false, error: 'Failed to validate authentication' }, { status: 401 }) as any;
 	}
 
 	const payload = getAuthenticatedPayload(request, cookies);

@@ -4,7 +4,7 @@ import { assumeStatus, isUserMCPConfigRouteAccessPermited } from "./common";
 import { DB_Models } from "@ravenlens/backend";
 import { ConnectWithMCPMiddlewareCustomerServer } from "@ravenlens/backend/mcp-interface";
 
-export async function performDownloadLikeOperation(request: Request, cookies: Cookies) {
+export async function performDownloadLikeOperation(request: Request, cookies: Cookies, fetchFn: typeof fetch) {
     // 1. Verify request body
     const { workspaceId } = await request.json() as {
         workspaceId: string;
@@ -14,7 +14,7 @@ export async function performDownloadLikeOperation(request: Request, cookies: Co
     }
     
     // 2. Is user logged-in 
-    const isAuth = await getAndValidateAuthenticated(request, cookies, true);
+    const isAuth = await getAndValidateAuthenticated(request, cookies, true, fetchFn);
     if (isAuth instanceof Response) {
         return isAuth
     }

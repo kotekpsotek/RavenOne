@@ -15,7 +15,7 @@ import { ConnectWithMCPMiddlewareCustomerServer } from "@ravenlens/backend/mcp-i
  * 3. Check is server configured
  * 4. Check is server online
  */
-export const PUT: RequestHandler = async ({ request, cookies }) => {
+export const PUT: RequestHandler = async ({ request, cookies, fetch }) => {
     try {
         // 1. Verify request body
         const { workspaceId, credentials } = await request.json() as {
@@ -34,7 +34,7 @@ export const PUT: RequestHandler = async ({ request, cookies }) => {
         }
     
         // 2. Is user logged-in 
-        const isAuth = await getAndValidateAuthenticated(request, cookies, true);
+        const isAuth = await getAndValidateAuthenticated(request, cookies, true, fetch);
         if (isAuth instanceof Response) {
             return isAuth
         }

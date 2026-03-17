@@ -14,7 +14,7 @@ export function assumeStatus(serverCredentials: MCPCredentialsBackendWithoutStat
     }
     else return {
         status: "invalid-connection",
-        reason: "Server has wrong connection or isn't online"
+        reason: "You've specified wrong mcp server connection credentials or server isn't online"
     }
 }
 
@@ -55,5 +55,5 @@ export async function isUserMCPConfigRouteAccessPermited(workspaceId: string, us
     const hasRequiredPermission = workspaceMemberFetch.permissions.includes("manage_workspace_ai_models");
     
     // Return result
-    return hasRequiredPermission;
+    return hasRequiredPermission || userWorkspace.ownerUserId === user.id;
 }

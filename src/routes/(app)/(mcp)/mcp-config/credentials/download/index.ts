@@ -11,9 +11,9 @@ import { performDownloadLikeOperation } from "../../downloadLike";
  * 3. Check is server configured
  * 4. Check is server online
  */
-export const POST: RequestHandler = async ({ request, cookies }) => {
+export const POST: RequestHandler = async ({ request, cookies, fetch }) => {
     // 1. Make download operation
-    const resultDownloadOp = await performDownloadLikeOperation(request, cookies);
+    const resultDownloadOp = await performDownloadLikeOperation(request, cookies, fetch);
     if (resultDownloadOp instanceof Response) {
         return resultDownloadOp;
     }

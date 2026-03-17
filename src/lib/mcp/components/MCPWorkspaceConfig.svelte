@@ -130,20 +130,33 @@
 				}
 			);
 
-			if (saveResponse.ok) {
+			try {
 				const { status } = await saveResponse.json() as {
 					status: MCPConnectionStatusObject
 				}
 
-				// Setup new connection status
-				connectionState = status;
+				if (saveResponse.ok) {
+					// Setup new connection status
+					connectionState = status;
 
-				// Setup the initial properties to saved values
-				mcpCredentials!.secretPassword = draftSecretPassword;
-				mcpCredentials!.serverURL = serverURL;
-				mcpCredentials!.status = status;
+					// Setup the initial properties to saved values
+					mcpCredentials!.secretPassword = draftSecretPassword;
+					mcpCredentials!.serverURL = serverURL;
+					mcpCredentials!.status = status;
+				}
+				else {
+					console.error('Cannot save credetials because of status: ', saveResponse.status);
+					$alertState = {
+						alert: {
+							type: "error",
+							name: "Cannot save MCP Credentials Changes",
+							description: `Cannot save credetials because of response-status: ${saveResponse.status} while connection status is: ${status.status} and reason is: "${status.reason ?? "Not-Specified"}"` 
+						},
+						timeoutMs: 12_000
+					}
+				}
 			}
-			else {
+			catch(err) {
 				console.error('Cannot save credetials because of status: ', saveResponse.status);
 				$alertState = {
 					alert: {
@@ -151,9 +164,10 @@
 						name: "Cannot save MCP Credentials Changes",
 						description: 'Cannot save credetials because of response-status: ' + saveResponse.status
 					},
-					timeoutMs: 5_000
+					timeoutMs: 12_000
 				}
 			}
+			
 		} finally {
 			saving = false;
 		}

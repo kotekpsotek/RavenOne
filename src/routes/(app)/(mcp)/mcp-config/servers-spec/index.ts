@@ -5,10 +5,10 @@ import { ConnectWithMCPMiddlewareCustomerServer } from "@ravenlens/backend/mcp-i
 /**
  * Downloads the mcp servers from the middleware server
 */
-export const POST: RequestHandler = async ({ request, cookies }) => {
+export const POST: RequestHandler = async ({ request, cookies, fetch }) => {
     try {
         // 1. Make credetnials download operation
-        const resultDownloadOp = await performDownloadLikeOperation(request, cookies);
+        const resultDownloadOp = await performDownloadLikeOperation(request, cookies, fetch);
         if (resultDownloadOp instanceof Response) {
             return resultDownloadOp;
         }
@@ -38,7 +38,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 /**
  * Updates the MCP Serves
  */
-export const PUT: RequestHandler = async ({ request, cookies }) => {
+export const PUT: RequestHandler = async ({ request, cookies, fetch }) => {
     // 1. Verify request body
     const { workspaceId, mcpConfig } = await request.json() as {
         workspaceId: string;
@@ -49,7 +49,7 @@ export const PUT: RequestHandler = async ({ request, cookies }) => {
     }
     
     // 2. Make credetnials download operation
-    const resultDownloadOp = await performDownloadLikeOperation(request, cookies);
+    const resultDownloadOp = await performDownloadLikeOperation(request, cookies, fetch);
     if (resultDownloadOp instanceof Response) {
         return resultDownloadOp;
     }
