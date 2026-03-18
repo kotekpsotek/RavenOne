@@ -1,12 +1,14 @@
 import {
     asNullableString,
     asNonEmptyString,
+    createFileCollaboration,
     findFileById,
     loadWorkspaceEntries,
     parseJsonBody,
     persistWorkspaceEntries,
     requireWorkspaceAccess,
-    updateFileById
+    updateFileById,
+    hasUserEditorFileAccess
 } from "../server-utils";
 import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
@@ -46,6 +48,26 @@ export const PUT: RequestHandler = async ({ request, cookies, fetch }) => {
     }
 
     const workspaceEntries = await loadWorkspaceEntries(workspaceId);
+    const fileEntry = findFileById(workspaceEntries, fileId);
+    if (!fileEntry) {
+        return json({ ok: false, message: "File was not found" }, { status: 404 });
+    }
+
+    const collaboration = createFileCollaboration(access);
+    if (collaboration instanceof Response) {
+        return collaboration;
+    }
+
+    const hasNotUserAccessResponse = await hasUserEditorFileAccess({
+        request,
+        cookies,
+        file: fileEntry,
+        workspaceId: workspaceId
+    });
+    if (hasNotUserAccessResponse) {
+        return hasNotUserAccessResponse;
+    }
+
     const normalizedIcon = iconCandidate?.trim() || undefined;
 
     const updateResult = updateFileById(workspaceEntries, fileId, (entry) => {

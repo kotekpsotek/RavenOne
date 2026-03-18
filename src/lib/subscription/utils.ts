@@ -33,7 +33,6 @@ export async function getWorkspaceActiveSubscription(workspaceId: string): Promi
 			},
 			body: JSON.stringify({ workspaceId: normalizedWorkspaceId })
 		});
-		console.log('Response', response.status)
 	} catch {
 		return undefined;
 	}
@@ -49,7 +48,6 @@ export async function getWorkspaceActiveSubscription(workspaceId: string): Promi
 
 	try {
 		const responseBody = await response.json() as WorkspaceSubscriptionCheckResponse;
-		console.log('Body', responseBody)
 		return asSubscriptionKind(responseBody.subscriptionKind);
 	} catch {
 		return undefined;

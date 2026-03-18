@@ -9,7 +9,15 @@
     import { isSharedRoute } from "$lib/stores/share";
     import { canManageWorkspaceFiles, workspaceHasActiveSubscription, workspaceSubscriptionCheckInProgress } from "$lib/stores/subscription";
 
-    let { aiAnswers, itemId = "" }: { aiAnswers: File.FileAI.AIPoint["aiAnswers"]; itemId?: string } = $props();
+    let {
+        aiAnswers,
+        itemId = "",
+        isReadOnly = false
+    }: {
+        aiAnswers: File.FileAI.AIPoint["aiAnswers"];
+        itemId?: string;
+        isReadOnly?: boolean;
+    } = $props();
 
     let openAnswerIndices = $state<number[]>([]);
     let isAnswersListOpen = $state(true);
@@ -51,6 +59,10 @@
     }
 
     function openRemoveAnswer(index: number) {
+        if (isReadOnly) {
+            return;
+        }
+
         removeAnswerIndex = index;
     }
 
@@ -75,6 +87,11 @@
     }
 
     function removeAnswerFromItem() {
+        if (isReadOnly) {
+            closeRemoveAnswer();
+            return;
+        }
+
         if (!itemId || removeAnswerIndex === null) {
             closeRemoveAnswer();
             return;
@@ -588,7 +605,7 @@
                                             </span>
                                         </div>
 
-                                        {#if !$isSharedRoute && $canManageWorkspaceFiles}
+                                        {#if !$isSharedRoute && $canManageWorkspaceFiles && !isReadOnly}
                                             <button
                                                 type="button"
                                                 class="btn btn-error btn-xs h-5 gap-1"

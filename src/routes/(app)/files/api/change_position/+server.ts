@@ -1,12 +1,15 @@
 import {
     asNullableString,
     asNonEmptyString,
+    createFileCollaboration,
+    findFileById,
     loadWorkspaceEntries,
     moveFileEntry,
     parseJsonBody,
     persistWorkspaceEntries,
     requireWorkspaceAccess,
-    type MovePosition
+    type MovePosition,
+    hasUserEditorFileAccess
 } from "../server-utils";
 import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
@@ -59,6 +62,28 @@ export const PUT: RequestHandler = async ({ request, cookies, fetch }) => {
     }
 
     const workspaceEntries = await loadWorkspaceEntries(workspaceId);
+    const sourceFile = findFileById(workspaceEntries, sourceId);
+    if (!sourceFile) {
+        return json({ ok: false, message: "Source file was not found" }, { status: 404 });
+    }
+
+    const collaboration = createFileCollaboration(access);
+    if (collaboration instanceof Response) {
+        return collaboration;
+    }
+
+    const hasNotUserAccessResponse = await hasUserEditorFileAccess({
+        request,
+        cookies,
+        file: sourceFile,
+        workspaceId: workspaceId,
+        // To assure that recent file editor will be able to save file if leave page
+        checkIsRecentEditor: true
+    });
+    if (hasNotUserAccessResponse) {
+        return hasNotUserAccessResponse;
+    }
+
     const moveResult = moveFileEntry(workspaceEntries, sourceId, targetId, requestBody.position);
 
     if (!moveResult.moved) {

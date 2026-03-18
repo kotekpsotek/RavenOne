@@ -21,6 +21,9 @@
     import { isChatSideStripeSelected, isFileListSideStripeSelected, isPointsStripeOpen } from "./stores/selectedSideStripes";
     import { modelWeights, selectedModelKey } from "./ai/model";
     import ModelsListSelection from "./ai/ModelsListSelection.svelte";
+    import { isCurrentUserSelectedFileEditor } from "./stores/collaboration";
+    import CollaboratorsOfFile from "./collaboration/CollaboratorsOfFile.svelte";
+    import UserNotCollaborator from "./collaboration/UserNotCollaborator.svelte";
 
     type DropdownName = "model-settings" | "mcp-tools" | "play-settings" | "share";
 
@@ -320,6 +323,8 @@
     >
         <div class="right-side flex items-center gap-2">
             <SaveFile/>
+            <CollaboratorsOfFile />
+            <UserNotCollaborator/>
         </div>
 
         <div 
@@ -332,10 +337,17 @@
                     {#if $canManageWorkspaceFiles}
                         <details
                             class="dropdown dropdown-end join-item"
-                            open={openDropdown === "model-settings"}
-                            ontoggle={(event) => onDropdownToggle("model-settings", event)}
+                            class:opacity-50={!$isCurrentUserSelectedFileEditor}
+                            open={openDropdown === "model-settings" && $isCurrentUserSelectedFileEditor}
+                            ontoggle={(event) => {
+                                if (!$isCurrentUserSelectedFileEditor) {
+                                    (event.currentTarget as HTMLDetailsElement).open = false;
+                                    return;
+                                }
+                                onDropdownToggle("model-settings", event);
+                            }}
                         >
-                            <summary class="btn btn-sm h-full rounded-l-none bg-primary/95 text-white/70 border-primary px-1" aria-label="Model Settings" title="Model settings">
+                            <summary class="btn btn-sm h-full rounded-l-none bg-primary/95 text-white/70 border-primary px-1" class:cursor-not-allowed={!$isCurrentUserSelectedFileEditor} aria-label="Model Settings" title="Model settings">
                                 <Icon icon="material-symbols:settings-outline-rounded" class="w-3 h-3" />
                             </summary>
 
@@ -368,10 +380,17 @@
                 {#if $canManageWorkspaceFiles}
                     <details
                         class="dropdown dropdown-end"
-                        open={openDropdown === "mcp-tools"}
-                        ontoggle={(event) => onDropdownToggle("mcp-tools", event)}
+                        class:opacity-50={!$isCurrentUserSelectedFileEditor}
+                        open={openDropdown === "mcp-tools" && $isCurrentUserSelectedFileEditor}
+                        ontoggle={(event) => {
+                            if (!$isCurrentUserSelectedFileEditor) {
+                                (event.currentTarget as HTMLDetailsElement).open = false;
+                                return;
+                            }
+                            onDropdownToggle("mcp-tools", event);
+                        }}
                     >
-                        <summary class="btn btn-sm btn-ghost" title="MCP & tools" aria-label="MCP & tools">
+                        <summary class="btn btn-sm btn-ghost" class:cursor-not-allowed={!$isCurrentUserSelectedFileEditor} title="MCP & tools" aria-label="MCP & tools">
                             <Icon icon="material-symbols:build-outline-rounded" class="w-5 h-5" />
                         </summary>
                         <div class="dropdown-content p-3 shadow bg-base-200 rounded-box z-[20] w-80 space-y-3">
@@ -427,7 +446,18 @@
                     </details>
                 {/if}
 
-                <button class="btn btn-sm btn-ghost" disabled={!$canManageWorkspaceFiles} onclick={openContextModal} title="Context specification" aria-label="Context specification">
+                <button 
+                  class="btn btn-sm btn-ghost" 
+                  class:opacity-50={!$isCurrentUserSelectedFileEditor}
+                  disabled={!$canManageWorkspaceFiles || !$isCurrentUserSelectedFileEditor} 
+                  onclick={() => {
+                    if ($isCurrentUserSelectedFileEditor) {
+                        openContextModal();
+                    }
+                  }} 
+                  title="Context specification" 
+                  aria-label="Context specification"
+                >
                     <Icon icon="material-symbols:note-stack-outline-rounded" class="w-5 h-5" />
                 </button>
 
@@ -453,8 +483,9 @@
                             >
                                 <button
                                     class="btn btn-sm join-item btn-primary disabled:cursor-not-allowed"
+                                    class:opacity-70={isPlayingDisabled || !$isCurrentUserSelectedFileEditor || !$canManageWorkspaceFiles}
                                     onclick={onPlay}
-                                    disabled={isPlayingDisabled || !$canManageWorkspaceFiles}
+                                    disabled={isPlayingDisabled || !$canManageWorkspaceFiles || !$isCurrentUserSelectedFileEditor}
                                 >
                                     <Icon icon="material-symbols:play-circle-outline-rounded" class="w-5 h-5" />
                                     <span>Play</span>
@@ -464,10 +495,17 @@
                             {#if $canManageWorkspaceFiles}
                                 <details
                                     class="dropdown dropdown-end join-item"
-                                    open={openDropdown === "play-settings"}
-                                    ontoggle={(event) => onDropdownToggle("play-settings", event)}
+                                    class:opacity-50={!$isCurrentUserSelectedFileEditor}
+                                    open={openDropdown === "play-settings" && $isCurrentUserSelectedFileEditor}
+                                    ontoggle={(event) => {
+                                        if (!$isCurrentUserSelectedFileEditor) {
+                                            (event.currentTarget as HTMLDetailsElement).open = false;
+                                            return;
+                                        }
+                                        onDropdownToggle("play-settings", event);
+                                    }}
                                 >
-                                    <summary class="btn btn-sm rounded-l-none bg-primary/95 text-white/70 shadow-xl border-primary px-1" aria-label="Play settings" title="Play settings">
+                                    <summary class="btn btn-sm rounded-l-none bg-primary/95 text-white/70 shadow-xl border-primary px-1" class:cursor-not-allowed={!$isCurrentUserSelectedFileEditor} aria-label="Play settings" title="Play settings">
                                         <Icon icon="material-symbols:settings-outline-rounded" class="w-3 h-3" />
                                     </summary>
 

@@ -1,10 +1,12 @@
 import { get, writable } from "svelte/store";
 import { Workspace } from "@ravenlens/shared";
-import { userProfile as user } from "./user";
+import { userProfile as user, userProfile, waitTillProfileLoaded } from "./user";
 import type { ComponentProps } from "svelte";
 import type { UI } from "@ravenlens/frontend";
 import { browser } from "$app/environment";
 import { fetchAuthenticated } from "$lib/utils/fetch";
+import { collaborationInterface, workspaceCollabs } from "./collaboration";
+import { isSharedRoute } from "./share";
 
 type WorkspaceEntry = Workspace.Workspace.WorkspaceUserEntryLoaded;
 
@@ -158,22 +160,22 @@ function extractWorkspacesFromPayload(payload: unknown): WorkspaceEntry[] {
 
 function syncSelectedWorkspace(workspaces: WorkspaceEntry[]) {
     if (!workspaces.length) {
-        selectedWorkspace.set(undefined);
+        selectedWorkspace.selectWorkspace(undefined);
         return;
     }
 
     const currentSelectedWorkspace = get(selectedWorkspace);
-    const preferredWorkspaceId = currentSelectedWorkspace?.id ?? storedSelectedWorkspaceId;
+    const preferredWorkspaceId = currentSelectedWorkspace?.id ?? readSelectedWorkspaceIdFromStorage();
 
     if (preferredWorkspaceId) {
         const refreshedSelectedWorkspace = workspaces.find(workspace => workspace.id === preferredWorkspaceId);
         if (refreshedSelectedWorkspace) {
-            selectedWorkspace.set(refreshedSelectedWorkspace);
+            selectedWorkspace.selectWorkspace(refreshedSelectedWorkspace);
             return;
         }
     }
 
-    selectedWorkspace.set(workspaces[0]);
+    selectedWorkspace.selectWorkspace(workspaces[0]);
 }
 
 async function downloadWorkspacesFromBackend(): Promise<WorkspaceEntry[]> {
@@ -235,15 +237,88 @@ function onWorkspaceSelectionStateChange(isOpen: boolean) {
     });
 }
 
+interface WorkspaceSwitchEventData {
+    oldWorkspace: WorkspaceEntry | undefined;
+    newWorkspace: WorkspaceEntry | undefined;
+}
+
+export class SwitchWorkspaceEvent {
+    static EventName = "Change-Workspace";
+
+    static emit(oldWorkspace: WorkspaceEntry | undefined, newWorkspace: WorkspaceEntry | undefined) {
+        document.dispatchEvent(
+            new CustomEvent(
+                SwitchWorkspaceEvent.EventName,
+                {
+                    detail: {
+                        oldWorkspace,
+                        newWorkspace
+                    } satisfies WorkspaceSwitchEventData
+                }
+            )
+        )
+    }
+
+    static listen(handler: (oldWorkspace: WorkspaceEntry | undefined, newWorkspace: WorkspaceEntry | undefined) => any | Promise<any>) {
+        document.addEventListener(SwitchWorkspaceEvent.EventName, async ev => {
+            const { detail } = ev as CustomEvent<WorkspaceSwitchEventData>;
+            await handler(detail.oldWorkspace, detail.newWorkspace);
+        });
+    }
+}
+
 export const selectedWorkspace = (() => {
-    const { subscribe, set, update } = writable<WorkspaceEntry | undefined>(undefined);
+    const store = writable<WorkspaceEntry | undefined>(undefined);
+    const { set, update, subscribe } = store;
 
     return {
         subscribe,
         set: (value: WorkspaceEntry | undefined) => {
+            // Before workspace state
+            const workspaceStateBefore = get(store);
+
+            // Setup workspace and set to `localStorage`
             storedSelectedWorkspaceId = value?.id;
-            persistSelectedWorkspaceId(storedSelectedWorkspaceId);
             set(value);
+
+            if (workspaceStateBefore?.id !== value?.id) {
+                SwitchWorkspaceEvent.emit(workspaceStateBefore, value);
+            }
+        },
+        async selectWorkspace(workspace: WorkspaceEntry | undefined) {
+            if (!browser) {
+                return;
+            }
+
+            // Wait for profile to be loaded
+            await waitTillProfileLoaded();
+            
+            // Sharing mode doesn't work for collaboration
+            const isSharedRouteLocal = get(isSharedRoute);
+            if (browser && isSharedRouteLocal) {
+                return;
+            }
+            
+            // Collab SRC Feature
+            const collab = collaborationInterface.getInterface();
+            
+            // Leaves previously selected workspace
+            const workspaceBefore = get(store);
+            if (workspaceBefore && workspaceBefore.id !== workspace?.id) {
+                collab?.sendLeaveWorkspace(workspaceBefore.id, success => !success ? console.error("Cannot leave workspace: ", workspaceBefore.id) : undefined);
+            }
+
+            // Joins new workspace
+            if (workspace) {
+                // Save workspace for latter 
+                persistSelectedWorkspaceId(workspace.id);
+
+                // Join to workspace
+                collab?.sendJoinWorkspace(workspace.id, success => !success ? console.error("Cannot join workspace: ", workspace.id) : undefined);
+            }
+
+            // Selects new workspace
+            set(workspace);
         },
         update: (updater: (currentWorkspace: WorkspaceEntry | undefined) => WorkspaceEntry | undefined) => {
             update(currentWorkspace => {
@@ -261,22 +336,10 @@ export const isWorkspaceInAddition = writable<boolean>(false);
 export const isWorkspaceDownloadInProgress = writable<boolean>(false);
 
 if (browser) {
-    storedSelectedWorkspaceId = readSelectedWorkspaceIdFromStorage();
     isWorkspaceSelectionOpen.subscribe(onWorkspaceSelectionStateChange);
 
     // Resolve selected workspace from fresh backend payload instead of stale localStorage object snapshots.
-    void syncWorkspaces({
+    syncWorkspaces({
         showLoading: true
     });
-}
-
-/**
- * Checks whether user can add another workspace to workspaces list
-*/
-export function isAddNewWorkspaceBtnDisabled(): ComponentProps<UI.Workspace.WorkspaceTray>["newWorkspaceButtonDisabled"] {
-    const userState = get(user);
-
-    // TODO: Make the real check base on stores we've -> user has to have the subscription to do it
-
-    return false;
 }

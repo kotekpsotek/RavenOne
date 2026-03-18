@@ -24,8 +24,13 @@ export async function requestFilesApi<T>(
     }
 
     if (!response.ok) {
-        const message = await readFailureMessage(response, fallbackMessage);
-        setAlert("error", alertTitle, message);
+        const body = await response.json();
+
+        if (body.type === "collaboration_file") {
+            const message = await readFailureMessage(response, fallbackMessage);
+            setAlert("error", alertTitle, message);
+        }
+        
         return null;
     }
 

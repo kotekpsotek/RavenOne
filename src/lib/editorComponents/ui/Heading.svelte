@@ -7,11 +7,14 @@
 	import WallpaperSelectionModal from "$lib/modals/WallpaperSelectionModal.svelte";
 	import IconValue from "$lib/IconValue.svelte";
 	import { workspaceHasActiveSubscription, workspaceSubscriptionCheckInProgress } from "$lib/stores/subscription";
+	import { collaborationInterface, entriesCollaborators, isCurrentUserSelectedFileEditor, isUserEditorForFile } from "$lib/stores/collaboration";
     import { entriesList, selectedFile } from "$lib/stores/files";
 	import { setAlert } from "$lib/utils/alert";
-    import { renameFileRequest } from "$lib/files/connections/connections";
+    import { changeIconFileRequest, changeWalperFileRequest, renameFileRequest } from "$lib/files/connections/connections";
     import { selectedWorkspace } from "$lib/stores/workspace";
     import { isSharingModeOn } from "$lib/stores/share";
+    import { get } from "svelte/store";
+    import { userProfile } from "$lib/stores/user";
 
 	let { node, updateAttributes, editor, getPos }: NodeViewProps = $props();
 
@@ -26,9 +29,28 @@
 	let icon = $derived((node.attrs.icon as string | undefined) ?? "");
 	let walper = $derived($selectedFile?.walper ?? (node.attrs.walper as string | undefined) ?? "");
 	let isHeadingEmpty = $state(true);
-	let canEditHeadingAssets = $derived(!$workspaceSubscriptionCheckInProgress && $workspaceHasActiveSubscription);
+	let canEditHeadingContent = $derived($isCurrentUserSelectedFileEditor);
+	let canEditHeadingAssets = $derived(canEditHeadingContent && !$workspaceSubscriptionCheckInProgress && $workspaceHasActiveSubscription);
+
+	function ensureFileEditorForHeading(operationName: string): boolean {
+		if (canEditHeadingContent) {
+			return true;
+		}
+
+		setAlert(
+			"warning",
+			"Editor access required",
+			`Cannot ${operationName} because you are not a file editor collaborator for this file.`
+		);
+
+		return false;
+	}
 
 	function ensureWorkspaceSubscriptionForHeadingAssets(operationName: string): boolean {
+		if (!ensureFileEditorForHeading(operationName)) {
+			return false;
+		}
+
 		if (canEditHeadingAssets) {
 			return true;
 		}
@@ -100,6 +122,26 @@
 		});
 	}
 
+	function updateEntryWalperById(entries: any[], fileId: string, nextWalper: string): any[] {
+		return entries.map(entry => {
+			if (entry.id === fileId) {
+				return {
+					...entry,
+					walper: nextWalper || undefined
+				};
+			}
+
+			if (entry.subentries?.length) {
+				return {
+					...entry,
+					subentries: updateEntryWalperById(entry.subentries, fileId, nextWalper)
+				};
+			}
+
+			return entry;
+		});
+	}
+
 	function syncSelectedFileIcon(nextIcon: string) {
 		const selectedId = $selectedFile?.id;
 
@@ -119,6 +161,27 @@
 		});
 
 		entriesList.update(entries => updateEntryIconById(entries, selectedId, nextIcon));
+	}
+
+	function syncSelectedFileWalper(nextWalper: string) {
+		const selectedId = $selectedFile?.id;
+
+		if (!selectedId) {
+			return;
+		}
+
+		selectedFile.update(current => {
+			if (!current || current.id !== selectedId) {
+				return current;
+			}
+
+			return {
+				...current,
+				walper: nextWalper || undefined
+			};
+		});
+
+		entriesList.update(entries => updateEntryWalperById(entries, selectedId, nextWalper));
 	}
 
 	function getCurrentHeadingText() {
@@ -164,6 +227,14 @@
 
 	function onHeadingInput() {
 		const nextHeading = getCurrentHeadingText();
+
+		if (!canEditHeadingContent) {
+			const selectedFileHeading = ($selectedFile?.name ?? "").trim();
+			syncHeadingFromSelectedFile(selectedFileHeading);
+			dispatchHeadingTyping(false, selectedFileHeading);
+			return;
+		}
+
 		isHeadingEmpty = nextHeading.length === 0;
 		dispatchHeadingTyping(true, nextHeading);
 
@@ -175,24 +246,44 @@
 			dispatchHeadingTyping(false, nextHeading);
 			typingDebounceTimer = null;
 
+			const workspaceId = $selectedWorkspace?.id?.trim();
+			const selectedFileId = $selectedFile?.id;
+			if (!workspaceId || !selectedFileId) {
+				return;
+			}
+
+			if (!isUserEditorForFile(get(entriesCollaborators), selectedFileId, get(userProfile)!.id)) {
+				return false;
+			}
+
 			// Update selected file
 			selectedFile.update(current => (current ? { ...current, name: nextHeading } : current));
-
+			
 			// Update file content remotelly
-			renameFileRequest(
-				$selectedWorkspace?.id!,
-				$selectedFile?.id!,
-				nextHeading
-			).catch(err => console.error(`Cannot update file:`, err));
+			if ($isCurrentUserSelectedFileEditor) {
+				const renameResult = await renameFileRequest(
+					workspaceId,
+					selectedFileId,
+					nextHeading
+				);
+	
+				if (!renameResult) {
+					return;
+				}
+			}
 
 			// Update the file on entires list
 			entriesList.update(entries => {
-				if (!$selectedFile?.id) {
+				if (!selectedFileId) {
 					return entries;
 				}
 
-				return updateEntryNameById(entries, $selectedFile.id, nextHeading);
+				return updateEntryNameById(entries, selectedFileId, nextHeading);
 			});
+
+			const updatedFile = $selectedFile?.id === selectedFileId
+				? { ...$selectedFile, name: nextHeading }
+				: undefined;
 
 			if (nextHeading !== lastCommittedHeading) {
 				lastCommittedHeading = nextHeading;
@@ -207,6 +298,13 @@
 		if (typingDebounceTimer) {
 			clearTimeout(typingDebounceTimer);
 			typingDebounceTimer = null;
+		}
+
+		if (!canEditHeadingContent) {
+			const selectedFileHeading = ($selectedFile?.name ?? "").trim();
+			syncHeadingFromSelectedFile(selectedFileHeading);
+			dispatchHeadingTyping(false, selectedFileHeading);
+			return;
 		}
 
 		const nextHeading = getCurrentHeadingText();
@@ -233,21 +331,52 @@
 		isWallpaperPickerOpen = false;
 	}
 
-	function applyHeadingWallpaper(nextWalper: string) {
+	async function applyHeadingWallpaper(nextWalper: string) {
 		if (!ensureWorkspaceSubscriptionForHeadingAssets("change file wallpaper")) {
 			return;
 		}
 
-		updateAttributes({ walper: nextWalper.trim() });
+		const workspaceId = $selectedWorkspace?.id?.trim();
+		const selectedFileLocal = $selectedFile;
+		if (!workspaceId || !selectedFileLocal?.id) {
+			return;
+		}
+
+		const normalizedWalper = nextWalper.trim();
+		const walperUpdateResult = await changeWalperFileRequest(
+			workspaceId,
+			selectedFileLocal.id,
+			normalizedWalper || null
+		);
+		if (!walperUpdateResult) {
+			return;
+		}
+
+		updateAttributes({ walper: normalizedWalper });
+		syncSelectedFileWalper(normalizedWalper);
+
 		isWallpaperPickerOpen = false;
 	}
 
-	function removeHeadingWallpaper() {
+	async function removeHeadingWallpaper() {
 		if (!ensureWorkspaceSubscriptionForHeadingAssets("change file wallpaper")) {
+			return;
+		}
+
+		const workspaceId = $selectedWorkspace?.id?.trim();
+		const selectedFileLocal = $selectedFile;
+		if (!workspaceId || !selectedFileLocal?.id) {
+			return;
+		}
+
+		const walperUpdateResult = await changeWalperFileRequest(workspaceId, selectedFileLocal.id, null);
+		if (!walperUpdateResult) {
 			return;
 		}
 
 		updateAttributes({ walper: "" });
+		syncSelectedFileWalper("");
+
 		isWallpaperPickerOpen = false;
 	}
 
@@ -263,24 +392,48 @@
 		isIconPickerOpen = false;
 	}
 
-	function applyHeadingIcon(nextIcon: string) {
+	async function applyHeadingIcon(nextIcon: string) {
 		if (!ensureWorkspaceSubscriptionForHeadingAssets("change file icon")) {
 			return;
 		}
 
+		const workspaceId = $selectedWorkspace?.id?.trim();
+		const selectedFileLocal = $selectedFile;
+		if (!workspaceId || !selectedFileLocal?.id) {
+			return;
+		}
+
 		const normalizedIcon = nextIcon.trim();
+		const iconUpdateResult = await changeIconFileRequest(workspaceId, selectedFileLocal.id, normalizedIcon || null);
+		if (!iconUpdateResult) {
+			return;
+		}
+
 		updateAttributes({ icon: normalizedIcon });
 		syncSelectedFileIcon(normalizedIcon);
+
 		isIconPickerOpen = false;
 	}
 
-	function removeHeadingIcon() {
+	async function removeHeadingIcon() {
 		if (!ensureWorkspaceSubscriptionForHeadingAssets("change file icon")) {
+			return;
+		}
+
+		const workspaceId = $selectedWorkspace?.id?.trim();
+		const selectedFileLocal = $selectedFile;
+		if (!workspaceId || !selectedFileLocal?.id) {
+			return;
+		}
+
+		const iconUpdateResult = await changeIconFileRequest(workspaceId, selectedFileLocal.id, null);
+		if (!iconUpdateResult) {
 			return;
 		}
 
 		updateAttributes({ icon: "" });
 		syncSelectedFileIcon("");
+
 		isIconPickerOpen = false;
 	}
 
