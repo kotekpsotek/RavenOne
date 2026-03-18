@@ -25,23 +25,64 @@
     }>();
 
     // ...
-    const contextPayloadClone = cloneContextPayload(contextPayload);
-    let desktopContextFiles = $state<File.FileAI.ContextDeviceFile[]>(contextPayloadClone.desktopFiles);
+    let desktopContextFiles = $state<File.FileAI.ContextDeviceFile[]>([]);
     let isEditorCurrentFileSelected = $state(false);
-    let editorContextFiles = $state<File.FileAI.ContextEditorFile[]>(contextPayloadClone.editorFiles);
-    let networkContextUrls = $state<File.FileAI.ContextNetworkURL[]>(contextPayloadClone.networkUrls);
+    let editorContextFiles = $state<File.FileAI.ContextEditorFile[]>([]);
+    let networkContextUrls = $state<File.FileAI.ContextNetworkURL[]>([]);
     let networkUrlDraft = $state("");
 
     let isSelectFileModalOpen = $state(false);
     let selectedFiles: File.File.File[] = $state([]);
+    let initialContextSignature = $state("");
+    $effect(() => {
+        if (!open) {
+            return;
+        }
+
+        const contextPayloadClone = cloneContextPayload(contextPayload);
+        const uniqueDesktopFiles = deduplicateEntriesById(contextPayloadClone.desktopFiles);
+        const uniqueEditorFiles = deduplicateEntriesById(contextPayloadClone.editorFiles);
+        const uniqueNetworkUrls = deduplicateEntriesById(contextPayloadClone.networkUrls);
+
+        initialContextSignature = buildContextSignature({
+            desktopFiles: uniqueDesktopFiles,
+            editorFiles: uniqueEditorFiles,
+            networkUrls: uniqueNetworkUrls
+        });
+
+        desktopContextFiles = uniqueDesktopFiles;
+        editorContextFiles = uniqueEditorFiles;
+        networkContextUrls = uniqueNetworkUrls;
+
+        selectedFiles = deduplicateEntriesById(
+            uniqueEditorFiles.map((editorFile) => ({ id: editorFile.id, name: editorFile.name } as File.File.File))
+        );
+
+        isEditorCurrentFileSelected = Boolean($selectedFile && uniqueEditorFiles.some((entry) => entry.id === $selectedFile.id));
+    })
+
     $effect(() => {
         selectedFiles;
 
-        editorContextFiles = [
-            isEditorCurrentFileSelected ? { id: $selectedFile!.id, name: $selectedFile!.name } : undefined,
-            ...selectedFiles.map(sF => ({ id: sF.id, name: sF.name }))
-        ].filter(ecF => ecF !== undefined);
+        const currentFileContext = (isEditorCurrentFileSelected && $selectedFile)
+            ? [{ id: $selectedFile.id, name: $selectedFile.name }]
+            : [];
+
+        editorContextFiles = deduplicateEntriesById([
+            ...currentFileContext,
+            ...selectedFiles.map((selectedFileItem) => ({ id: selectedFileItem.id, name: selectedFileItem.name }))
+        ]);
     })
+
+    let hasContextChanges = $derived.by(() => {
+        const currentPayload: File.FileAI.ContextSpecificationPayload = {
+            desktopFiles: deduplicateEntriesById(desktopContextFiles),
+            editorFiles: deduplicateEntriesById(editorContextFiles),
+            networkUrls: deduplicateEntriesById(networkContextUrls)
+        };
+
+        return buildContextSignature(currentPayload) !== initialContextSignature;
+    });
 
     function cloneContextPayload(payload: File.FileAI.ContextSpecificationPayload): File.FileAI.ContextSpecificationPayload {
         return {
@@ -51,6 +92,18 @@
         };
     }
 
+    function deduplicateEntriesById<T extends { id: string }>(entries: T[]): T[] {
+        return entries.filter((entry, index, list) => list.findIndex((check) => check.id === entry.id) === index);
+    }
+
+    function buildContextSignature(payload: File.FileAI.ContextSpecificationPayload) {
+        const desktopFileIds = Array.from(new Set(payload.desktopFiles.map((entry) => entry.id))).sort((left, right) => left.localeCompare(right));
+        const editorFileIds = Array.from(new Set(payload.editorFiles.map((entry) => entry.id))).sort((left, right) => left.localeCompare(right));
+        const networkUrls = Array.from(new Set(payload.networkUrls.map((entry) => entry.url))).sort((left, right) => left.localeCompare(right));
+
+        return `${desktopFileIds.join("|")}::${editorFileIds.join("|")}::${networkUrls.join("|")}`;
+    }
+
     // ...
     function closeContextModal() {
         open = false;
@@ -58,6 +111,14 @@
 
     function removeDesktopContextFile(id: string) {
         desktopContextFiles = desktopContextFiles.filter((entry) => entry.id !== id);
+    }
+
+    function openDesktopContextFilePreview(file: File.FileAI.ContextDeviceFile) {
+        if (!file.previewDataUrl) {
+            return;
+        }
+
+        window.open(file.previewDataUrl, "_blank", "noopener,noreferrer");
     }
 
     async function fileToDataUrl(file: globalThis.File) {
@@ -80,7 +141,7 @@
 
         const filesToAdd = await Promise.all(
             fileList.map(async (file) => {
-                const isImage = file.type.startsWith("image/");
+                const previewDataUrl = await fileToDataUrl(file);
 
                 return {
                     id: `${file.name}-${file.lastModified}-${file.size}`,
@@ -88,7 +149,7 @@
                     type: file.type || "application/octet-stream",
                     size: file.size,
                     locationHint,
-                    previewDataUrl: isImage ? await fileToDataUrl(file) : undefined
+                    previewDataUrl
                 } satisfies File.FileAI.ContextDeviceFile;
             })
         );
@@ -166,9 +227,9 @@
 
     function handleSaveContext() {
         const payload: File.FileAI.ContextSpecificationPayload = {
-            desktopFiles: desktopContextFiles,
-            editorFiles: editorContextFiles,
-            networkUrls: networkContextUrls
+            desktopFiles: deduplicateEntriesById(desktopContextFiles),
+            editorFiles: deduplicateEntriesById(editorContextFiles),
+            networkUrls: deduplicateEntriesById(networkContextUrls)
         };
 
         if (onSave) {
@@ -263,14 +324,20 @@
 
                                 {#each desktopContextFiles as file (file.id)}
                                     <div class="flex items-center justify-between rounded border border-base-300 px-2 py-1" title={file.locationHint}>
-                                        <div class="flex items-center gap-2 min-w-0">
-                                            {#if file.previewDataUrl}
+                                        <button
+                                            type="button"
+                                            class="flex items-center gap-2 min-w-0 flex-1 text-left"
+                                            onclick={() => openDesktopContextFilePreview(file)}
+                                            disabled={!file.previewDataUrl}
+                                            title={file.previewDataUrl ? "Open file preview in a new tab" : "Preview unavailable for this file"}
+                                        >
+                                            {#if file.type.startsWith("image/") && file.previewDataUrl}
                                                 <img src={file.previewDataUrl} alt={file.name} class="w-8 h-8 rounded object-cover" />
                                             {:else}
                                                 <Icon icon="material-symbols:description-outline-rounded" class="w-5 h-5 opacity-70" />
                                             {/if}
                                             <span class="text-xs truncate">{file.name}</span>
-                                        </div>
+                                        </button>
                                         <button class="btn btn-ghost btn-xs" title="Remove file" onclick={() => removeDesktopContextFile(file.id)}>
                                             <Icon icon="material-symbols:close-rounded" class="w-4 h-4" />
                                         </button>
@@ -361,10 +428,12 @@
                         </div>
                     </div>
 
-                    <div class="mt-4 flex justify-end gap-2">
-                        <button class="btn btn-ghost" onclick={closeContextModal}>Cancel</button>
-                        <button class="btn btn-primary" onclick={handleSaveContext}>Save context</button>
-                    </div>
+                    {#if hasContextChanges}
+                        <div class="mt-4 flex justify-end gap-2">
+                            <button class="btn btn-ghost" onclick={closeContextModal}>Cancel</button>
+                            <button class="btn btn-primary" onclick={handleSaveContext}>Save context</button>
+                        </div>
+                    {/if}
                 </UI.Modals.ModalWrapper>
             </div>
         </div>

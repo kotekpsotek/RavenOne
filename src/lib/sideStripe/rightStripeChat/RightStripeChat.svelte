@@ -94,7 +94,7 @@
 <div
     id="ai-chat"
     class="ai-chat border border-base-300 bg-base-200 shadow-sm relative flex flex-col min-h-0 {isResizing ? 'select-none' : ''}"
-    style={screenWidth >= 1280 ? `width: ${chatStripeWidth}px;` : `height: ${chatStripeHeight}px;`}
+    style={screenWidth >= 1280 ? `width: ${chatStripeWidth}px;` : ``}
 >
     {#if screenWidth >= 1280}
         <button
