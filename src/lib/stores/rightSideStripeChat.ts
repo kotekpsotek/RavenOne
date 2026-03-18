@@ -3,86 +3,7 @@ import { fetchAuthenticated } from "$lib/utils/fetch";
 import { get, writable, type Readable } from "svelte/store";
 import { selectedFile } from "./files";
 import type { File } from "@ravenlens/shared";
-
-export type AIChatMode = "regular-ask" | "questions-creation" | "document-manipulation"; // "visualization" | "tldr"
-export type MermaidDiagramType = "flowchart" | "sequenceDiagram" | "classDiagram" | "stateDiagram-v2";
-export type AIChatDecision = "accepted" | "declined";
-
-export type SelectedTextRange = {
-	id: string;
-	from: number;
-	to: number;
-	html: string;
-};
-
-export type AIChatResponse = {
-	id: string;
-	answerHTML: string;
-	applyTo: "chat" | "selection";
-	decision?: AIChatDecision;
-	publishedDate: string;
-	mermaid?: {
-		definition: string;
-		type: MermaidDiagramType;
-	};
-};
-
-export type AIChatBubble = {
-	id: string;
-	mode: AIChatMode;
-	isActive: boolean;
-	decision?: AIChatDecision;
-	userPrompt: string;
-	userPromptHTML: string;
-	selectedTextForPrompt: SelectedTextRange[];
-	aiResponse: AIChatResponse[];
-	createdAt: string;
-};
-
-export type AIChatThread = {
-	id: string;
-	title: string;
-	type: AIChatMode;
-	bubbles: AIChatBubble[];
-	createdAt: string;
-	updatedAt: string;
-};
-
-export type FileChatStatePayload = {
-	chats: AIChatThread[];
-	selectedChatId?: string;
-};
-
-export type SelectedFileForChat = {
-	id: string;
-	name?: string;
-	createdByAuthorId: string;
-};
-
-export type EditorAIChatState = {
-	textFieldMode: AIChatMode;
-	mermaidDiagramType?: MermaidDiagramType;
-	selectedText?: {
-		ranges: SelectedTextRange[];
-	};
-};
-
-type ChatStoreState = {
-	fileId?: string;
-	workspaceId?: string;
-	chats: AIChatThread[];
-	selectedChatId?: string;
-	isLoading: boolean;
-	isSaving: boolean;
-	loadError?: string;
-};
-
-type ChatDropPosition = "before" | "after";
-
-type ChatStateResponsePayload = {
-	chats?: unknown;
-	selectedChatId?: unknown;
-};
+import type { AIChatMode, MermaidDiagramType, EditorAIChatState, AIChatDecision, SelectedTextRange, AIChatResponse, AIChatBubble, AIChatThread, SelectedFileForChat, ChatStoreState, FileChatStatePayload } from "@ravenlens/shared/chatai";
 
 const CHAT_MODES: Record<AIChatMode, { modeName: string; modeDescription: string; }> = {
 	"regular-ask": {
@@ -93,8 +14,8 @@ const CHAT_MODES: Record<AIChatMode, { modeName: string; modeDescription: string
 		modeName: "Document Manipulation",
 		modeDescription: "Create, update RavenOne Document/s according to your specification"
 	},
-	"questions-creation": {
-		modeName: "Create Document Questions",
+	"tasks-creation": {
+		modeName: "Create Document Tasks",
 		modeDescription: "Create Questions for actually selected RavenOne Document"
 	}
 };

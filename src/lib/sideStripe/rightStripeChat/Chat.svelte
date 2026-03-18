@@ -924,34 +924,38 @@
         <div
             class="flex flex-col gap-5"
         >
-            {#each $selectedChatAnswerIds as answerId}
-                {@const fetchedAnswer = selectedChatAnswerIds.retriveCurrentFileAnswer(answerId, true)}
+            {#if $selectedChatAnswerIds.length}
+                {#each $selectedChatAnswerIds as answerId}
+                    {@const fetchedAnswer = selectedChatAnswerIds.retriveCurrentFileAnswer(answerId, true)}
 
-                <!-- svelte-ignore a11y_click_events_have_key_events -->
-                <!-- svelte-ignore a11y_no_static_element_interactions -->
-                {#if fetchedAnswer}
                     <!-- svelte-ignore a11y_click_events_have_key_events -->
-                    <div 
-                        class="flex justify-between p-1 border border-base-300 rounded-lg items-center"
-                        data-answer-id={answerId}
-                        onclick={onClickAnswer(answerId)}
-                    >
-                        <div
-                            class="flex flex-col gap-0.5"
+                    <!-- svelte-ignore a11y_no_static_element_interactions -->
+                    {#if fetchedAnswer}
+                        <!-- svelte-ignore a11y_click_events_have_key_events -->
+                        <div 
+                            class="flex justify-between p-1 border border-base-300 rounded-lg items-center"
+                            data-answer-id={answerId}
+                            onclick={onClickAnswer(answerId)}
                         >
-                            <p class="text-xs text-gray-500 theme-dark:text-gray-400">{new Date(fetchedAnswer?.endDateTimestamp ?? Date.now()).toLocaleDateString("en-EN")}</p>
-                            <p class="text-medium">{getContextAnswerTextRepresentation(fetchedAnswer?.answerTipTapHTML ?? "")}</p>
-                        </div>
+                            <div
+                                class="flex flex-col gap-0.5"
+                            >
+                                <p class="text-xs text-gray-500 theme-dark:text-gray-400">{new Date(fetchedAnswer?.endDateTimestamp ?? Date.now()).toLocaleDateString("en-EN")}</p>
+                                <p class="text-medium">{getContextAnswerTextRepresentation(fetchedAnswer?.answerTipTapHTML ?? "")}</p>
+                            </div>
 
-                        <button
-                            class="btn btn-sm btn-ghost"
-                            onclick={onDeleteContextAnswer(answerId)}
-                        >
-                            <Icon icon="material-symbols:close-rounded" class="text-[13px]"/>
-                        </button>
-                    </div>
-                {/if}
-            {/each}
+                            <button
+                                class="btn btn-sm btn-ghost"
+                                onclick={onDeleteContextAnswer(answerId)}
+                            >
+                                <Icon icon="material-symbols:close-rounded" class="text-[13px]"/>
+                            </button>
+                        </div>
+                    {/if}
+                {/each}
+            {:else}
+                <p class="text-xs opacity-60">No ai-task-answer selected.</p>
+            {/if}
         </div>
     </div>
 </ContextSelectionModal>
