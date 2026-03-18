@@ -1,8 +1,9 @@
 <script lang="ts">
     import { File } from "@ravenlens/shared";
-    import { selectedFile } from "$lib/stores/files";
+    import { entriesList, selectedFile } from "$lib/stores/files";
     import Icon from "@iconify/svelte";
     import { UI } from "@ravenlens/frontend";
+    import FileSelectionModal from "./FileSelectionModal.svelte";
 
     // ...
     let {
@@ -26,9 +27,21 @@
     // ...
     const contextPayloadClone = cloneContextPayload(contextPayload);
     let desktopContextFiles = $state<File.FileAI.ContextDeviceFile[]>(contextPayloadClone.desktopFiles);
+    let isEditorCurrentFileSelected = $state(false);
     let editorContextFiles = $state<File.FileAI.ContextEditorFile[]>(contextPayloadClone.editorFiles);
     let networkContextUrls = $state<File.FileAI.ContextNetworkURL[]>(contextPayloadClone.networkUrls);
     let networkUrlDraft = $state("");
+
+    let isSelectFileModalOpen = $state(false);
+    let selectedFiles: File.File.File[] = $state([]);
+    $effect(() => {
+        selectedFiles;
+
+        editorContextFiles = [
+            isEditorCurrentFileSelected ? { id: $selectedFile!.id, name: $selectedFile!.name } : undefined,
+            ...selectedFiles.map(sF => ({ id: sF.id, name: sF.name }))
+        ].filter(ecF => ecF !== undefined);
+    })
 
     function cloneContextPayload(payload: File.FileAI.ContextSpecificationPayload): File.FileAI.ContextSpecificationPayload {
         return {
@@ -87,25 +100,57 @@
         target.value = "";
     }
 
-    function addSelectedEditorFile() {
-        if (!$selectedFile) {
-            return;
+    function onAddCurrentFile() {
+        if (!isEditorCurrentFileSelected) {
+            if (!$selectedFile) {
+                return;
+            }
+    
+            const nextFile: File.FileAI.ContextEditorFile = {
+                id: $selectedFile.id,
+                name: $selectedFile.name
+            };
+    
+            if (editorContextFiles.some((entry) => entry.id === nextFile.id)) {
+                return;
+            }
+    
+            const isFileContextAlreadySelected = editorContextFiles.some(eFC => eFC.id === nextFile.id);
+            if (!isFileContextAlreadySelected) {
+                editorContextFiles = [...editorContextFiles, nextFile];
+            }
+
+            // Add to reflect changes on File Selection Modal
+            const isFileAlreadySelected = selectedFiles.some(sF => sF.id === $selectedFile.id);
+            if (!isFileAlreadySelected) {
+                selectedFiles = [...selectedFiles, $selectedFile];
+            }
+        }
+        else if ($selectedFile && isEditorCurrentFileSelected) {
+            editorContextFiles = editorContextFiles.filter(ecF => ecF.id !== $selectedFile.id);
+
+            // Remove for reflect changes on File Selection Modal
+            selectedFiles = selectedFiles.filter(sF => sF.id !== $selectedFile.id);
         }
 
-        const nextFile: File.FileAI.ContextEditorFile = {
-            id: $selectedFile.id,
-            name: $selectedFile.name
-        };
+        isEditorCurrentFileSelected = !isEditorCurrentFileSelected;
+    }
 
-        if (editorContextFiles.some((entry) => entry.id === nextFile.id)) {
-            return;
-        }
-
-        editorContextFiles = [...editorContextFiles, nextFile];
+    function onSelectFileModalToggle() {
+        isSelectFileModalOpen = !isSelectFileModalOpen;
     }
 
     function removeEditorContextFile(id: string) {
+        // Unselects current file as selected
+        if (isEditorCurrentFileSelected && id === $selectedFile?.id) {
+            isEditorCurrentFileSelected = false;
+        }
+        
+        // Remove other files
         editorContextFiles = editorContextFiles.filter((entry) => entry.id !== id);
+
+        // Remove file from selected files list
+        selectedFiles = selectedFiles.filter(sF => sF.id !== id);
     }
 
     function normalizeNetworkUrl(rawUrl: string) {
@@ -166,139 +211,162 @@
     }
 </script>
 
-{#if open}
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="fixed inset-0 z-[60] bg-black/40" onclick={closeContextModal}>
+{#if isSelectFileModalOpen}
+    <FileSelectionModal
+        selectMultiple={true}
+        availableFiles={$entriesList}
+        onClose={onSelectFileModalToggle}
+        bind:open={isSelectFileModalOpen}
+        bind:selectedFiles
+    />
+{:else}
+    {#if open}
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div class="flex min-h-full items-center justify-center p-4" onclick={(event) => event.stopPropagation()}>
-            <UI.Modals.ModalWrapper
-                name="Context specification"
-                bind:open={open}
-                closeOnBackdrop={true}
-                size="md"
-                on:close={closeContextModal}
-            >
-                <UI.Modals.ModalWrapperHeading headingName="Context specification" on:close={closeContextModal} />
+        <div class="fixed inset-0 z-[60] bg-black/40" onclick={closeContextModal}>
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div class="flex min-h-full items-center justify-center p-4" onclick={(event) => event.stopPropagation()}>
+                <UI.Modals.ModalWrapper
+                    name="Context specification"
+                    bind:open={open}
+                    closeOnBackdrop={true}
+                    size="md"
+                    on:close={closeContextModal}
+                >
+                    <UI.Modals.ModalWrapperHeading headingName="Context specification" on:close={closeContextModal} />
 
-                {#if infoMessage}
-                    <p class="pt-2 text-xs opacity-70">{infoMessage}</p>
-                {/if}
+                    {#if infoMessage}
+                        <p class="pt-2 text-xs opacity-70">{infoMessage}</p>
+                    {/if}
 
-                <div class="pt-2 flex flex-col gap-3">
-                    <div class="space-y-2">
-                        <div class="flex items-center justify-between">
-                            <p class="text-xs uppercase tracking-wide opacity-70">Desktop files</p>
-                            <label class="btn btn-xs btn-ghost" title="Add files from desktop">
-                                <Icon icon="material-symbols:upload-file-outline-rounded" class="w-4 h-4" />
-                                <span>Add files</span>
+                    <div class="pt-2 flex flex-col gap-3">
+                        <div class="space-y-2">
+                            <div class="flex items-center justify-between">
+                                <p class="text-xs uppercase tracking-wide opacity-70">Desktop files</p>
+                                <label class="btn btn-xs btn-ghost" title="Add files from desktop">
+                                    <Icon icon="material-symbols:upload-file-outline-rounded" class="w-4 h-4" />
+                                    <span>Add files</span>
+                                    <input
+                                        type="file"
+                                        multiple
+                                        class="hidden"
+                                        onchange={onDesktopFilesChange}
+                                    />
+                                </label>
+                            </div>
+
+                            <div class="space-y-1 max-h-28 overflow-auto">
+                                {#if desktopContextFiles.length === 0}
+                                    <p class="text-xs opacity-60">No desktop files selected.</p>
+                                {/if}
+
+                                {#each desktopContextFiles as file (file.id)}
+                                    <div class="flex items-center justify-between rounded border border-base-300 px-2 py-1" title={file.locationHint}>
+                                        <div class="flex items-center gap-2 min-w-0">
+                                            {#if file.previewDataUrl}
+                                                <img src={file.previewDataUrl} alt={file.name} class="w-8 h-8 rounded object-cover" />
+                                            {:else}
+                                                <Icon icon="material-symbols:description-outline-rounded" class="w-5 h-5 opacity-70" />
+                                            {/if}
+                                            <span class="text-xs truncate">{file.name}</span>
+                                        </div>
+                                        <button class="btn btn-ghost btn-xs" title="Remove file" onclick={() => removeDesktopContextFile(file.id)}>
+                                            <Icon icon="material-symbols:close-rounded" class="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                {/each}
+                            </div>
+                        </div>
+
+                        <div class="space-y-2">
+                            <div class="flex items-center justify-between">
+                                <p class="text-xs uppercase tracking-wide opacity-70">Editor documents</p>
+
+                                <div class="flex gap-2">
+                                    <button
+                                        class="btn btn-xs btn-ghost {isEditorCurrentFileSelected ? "btn-active" : ""}"
+                                        onclick={onAddCurrentFile}
+                                        disabled={!$selectedFile}
+                                        title="Add currently selected editor file"
+                                    >
+                                        <Icon icon="material-symbols:add-rounded" class="w-4 h-4" />
+                                        <span>Add Current</span>
+                                    </button>
+
+                                    <button
+                                        class="btn btn-xs btn-ghost"
+                                        onclick={onSelectFileModalToggle}
+                                        disabled={!$selectedFile}
+                                        title="Add currently selected editor file"
+                                    >
+                                        <Icon icon="material-symbols:add-rounded" class="w-4 h-4" />
+                                        <span>Select Documents</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="space-y-1 max-h-24 overflow-auto">
+                                {#if editorContextFiles.length === 0}
+                                    <p class="text-xs opacity-60">No editor documents selected.</p>
+                                {/if}
+
+                                {#each editorContextFiles as file (file.id)}
+                                    <div class="flex items-center justify-between rounded border border-base-300 px-2 py-1">
+                                        <div class="flex items-center gap-2 min-w-0">
+                                            <Icon icon="material-symbols:article-outline-rounded" class="w-5 h-5 opacity-70" />
+                                            <span class="text-xs truncate">{file.name}</span>
+                                        </div>
+
+                                        <button class="btn btn-ghost btn-xs" title="Remove editor file" onclick={() => removeEditorContextFile(file.id)}>
+                                            <Icon icon="material-symbols:close-rounded" class="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                {/each}
+                            </div>
+                        </div>
+
+                        <div class="space-y-2">
+                            <p class="text-xs uppercase tracking-wide opacity-70">Network URLs</p>
+
+                            <div class="join w-full">
                                 <input
-                                    type="file"
-                                    multiple
-                                    class="hidden"
-                                    onchange={onDesktopFilesChange}
+                                    class="input input-sm input-bordered join-item w-full"
+                                    placeholder="https://youtube.com/..."
+                                    bind:value={networkUrlDraft}
                                 />
-                            </label>
-                        </div>
+                                <button class="btn btn-sm join-item" onclick={addNetworkUrl} title="Add URL">
+                                    <Icon icon="material-symbols:add-link-rounded" class="w-4 h-4" />
+                                </button>
+                            </div>
 
-                        <div class="space-y-1 max-h-28 overflow-auto">
-                            {#if desktopContextFiles.length === 0}
-                                <p class="text-xs opacity-60">No desktop files selected.</p>
-                            {/if}
+                            <div class="space-y-1 max-h-24 overflow-auto">
+                                {#if networkContextUrls.length === 0}
+                                    <p class="text-xs opacity-60">No URLs added.</p>
+                                {/if}
 
-                            {#each desktopContextFiles as file (file.id)}
-                                <div class="flex items-center justify-between rounded border border-base-300 px-2 py-1" title={file.locationHint}>
-                                    <div class="flex items-center gap-2 min-w-0">
-                                        {#if file.previewDataUrl}
-                                            <img src={file.previewDataUrl} alt={file.name} class="w-8 h-8 rounded object-cover" />
-                                        {:else}
-                                            <Icon icon="material-symbols:description-outline-rounded" class="w-5 h-5 opacity-70" />
-                                        {/if}
-                                        <span class="text-xs truncate">{file.name}</span>
+                                {#each networkContextUrls as entry (entry.id)}
+                                    <div class="flex items-center justify-between rounded border border-base-300 px-2 py-1">
+                                        <div class="flex items-center gap-2 min-w-0">
+                                            <img src={entry.favicon} alt="website favicon" class="w-4 h-4" />
+                                            <span class="text-xs truncate">{entry.url}</span>
+                                        </div>
+
+                                        <button class="btn btn-ghost btn-xs" title="Remove URL" onclick={() => removeNetworkUrl(entry.id)}>
+                                            <Icon icon="material-symbols:close-rounded" class="w-4 h-4" />
+                                        </button>
                                     </div>
-                                    <button class="btn btn-ghost btn-xs" title="Remove file" onclick={() => removeDesktopContextFile(file.id)}>
-                                        <Icon icon="material-symbols:close-rounded" class="w-4 h-4" />
-                                    </button>
-                                </div>
-                            {/each}
+                                {/each}
+                            </div>
                         </div>
                     </div>
 
-                    <div class="space-y-2">
-                        <div class="flex items-center justify-between">
-                            <p class="text-xs uppercase tracking-wide opacity-70">Editor files</p>
-                            <button
-                                class="btn btn-xs btn-ghost"
-                                onclick={addSelectedEditorFile}
-                                disabled={!$selectedFile}
-                                title="Add currently selected editor file"
-                            >
-                                <Icon icon="material-symbols:add-rounded" class="w-4 h-4" />
-                                <span>Add selected</span>
-                            </button>
-                        </div>
-
-                        <div class="space-y-1 max-h-24 overflow-auto">
-                            {#if editorContextFiles.length === 0}
-                                <p class="text-xs opacity-60">No editor files selected.</p>
-                            {/if}
-
-                            {#each editorContextFiles as file (file.id)}
-                                <div class="flex items-center justify-between rounded border border-base-300 px-2 py-1">
-                                    <div class="flex items-center gap-2 min-w-0">
-                                        <Icon icon="material-symbols:article-outline-rounded" class="w-5 h-5 opacity-70" />
-                                        <span class="text-xs truncate">{file.name}</span>
-                                    </div>
-
-                                    <button class="btn btn-ghost btn-xs" title="Remove editor file" onclick={() => removeEditorContextFile(file.id)}>
-                                        <Icon icon="material-symbols:close-rounded" class="w-4 h-4" />
-                                    </button>
-                                </div>
-                            {/each}
-                        </div>
+                    <div class="mt-4 flex justify-end gap-2">
+                        <button class="btn btn-ghost" onclick={closeContextModal}>Cancel</button>
+                        <button class="btn btn-primary" onclick={handleSaveContext}>Save context</button>
                     </div>
-
-                    <div class="space-y-2">
-                        <p class="text-xs uppercase tracking-wide opacity-70">Network URLs</p>
-
-                        <div class="join w-full">
-                            <input
-                                class="input input-sm input-bordered join-item w-full"
-                                placeholder="https://youtube.com/..."
-                                bind:value={networkUrlDraft}
-                            />
-                            <button class="btn btn-sm join-item" onclick={addNetworkUrl} title="Add URL">
-                                <Icon icon="material-symbols:add-link-rounded" class="w-4 h-4" />
-                            </button>
-                        </div>
-
-                        <div class="space-y-1 max-h-24 overflow-auto">
-                            {#if networkContextUrls.length === 0}
-                                <p class="text-xs opacity-60">No URLs added.</p>
-                            {/if}
-
-                            {#each networkContextUrls as entry (entry.id)}
-                                <div class="flex items-center justify-between rounded border border-base-300 px-2 py-1">
-                                    <div class="flex items-center gap-2 min-w-0">
-                                        <img src={entry.favicon} alt="website favicon" class="w-4 h-4" />
-                                        <span class="text-xs truncate">{entry.url}</span>
-                                    </div>
-
-                                    <button class="btn btn-ghost btn-xs" title="Remove URL" onclick={() => removeNetworkUrl(entry.id)}>
-                                        <Icon icon="material-symbols:close-rounded" class="w-4 h-4" />
-                                    </button>
-                                </div>
-                            {/each}
-                        </div>
-                    </div>
-                </div>
-
-                <div class="mt-4 flex justify-end gap-2">
-                    <button class="btn btn-ghost" onclick={closeContextModal}>Cancel</button>
-                    <button class="btn btn-primary" onclick={handleSaveContext}>Save context</button>
-                </div>
-            </UI.Modals.ModalWrapper>
+                </UI.Modals.ModalWrapper>
+            </div>
         </div>
-    </div>
+    {/if}
 {/if}

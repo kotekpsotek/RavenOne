@@ -863,14 +863,12 @@
     close={onToggleMCPServersSelectionModal}
 />
 
-{#if isContextSelectionModalOpen}
-    <ContextSelectionModal
-        bind:open={isContextSelectionModalOpen}
-        contextPayload={selectedFileContextPayload}
-        onSave={onSaveSelectedFileContext}
-        infoMessage="Context is saved for the currently selected file."
-    />
-{/if}
+<ContextSelectionModal
+    bind:open={isContextSelectionModalOpen}
+    contextPayload={selectedFileContextPayload}
+    onSave={onSaveSelectedFileContext}
+    infoMessage="Context is saved for the currently selected document."
+/>
 
 <style>
     #writable-for-chat:empty::before {

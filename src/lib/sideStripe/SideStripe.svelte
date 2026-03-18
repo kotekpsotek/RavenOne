@@ -5,7 +5,7 @@
     import { UI } from "@ravenlens/frontend"
     import { syncThemeMode, theme, toggleThemeMode } from "../stores/theme";
     import { goto } from "$app/navigation";
-    import ExpansionPanel from "./ExpansionPanel.svelte";
+    import ExpansionPanel from "./expansionPanel/ExpansionPanel.svelte";
     import { isWorkspaceSelectionOpen, selectedWorkspace } from "$lib/stores/workspace";
     import { getFirstAllowedWorkspaceSettingsPath } from "$lib/workspace-settings/permissions";
     import { isSearchModalOpen } from "$lib/stores/files";
