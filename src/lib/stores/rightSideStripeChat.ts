@@ -874,6 +874,13 @@ export class SelectedChatAnswersContext {
 			JSON.stringify(updated)
 		);
 	}
+
+	static saveAnswers(fileId: string, answerIdsList: string[]) {
+		localStorage.setItem(
+			SelectedChatAnswersContext.constructKey(fileId),
+			JSON.stringify(answerIdsList)
+		);
+	}
 }
 
 /**
@@ -908,7 +915,14 @@ export const selectedChatAnswerIds = (() => {
 			if (foundAnswerIndex) {
 				//
 				all.update(answersLocal => {
-					return answersLocal.filter(answerIdLocal => answerIdLocal !== answerId);
+					// Update locally
+					const filesWithoutRemoved = answersLocal.filter(answerIdLocal => answerIdLocal !== answerId);
+
+					// Save delete operation
+					SelectedChatAnswersContext.saveAnswers(get(selectedFile)?.id!, filesWithoutRemoved);
+
+					//
+					return filesWithoutRemoved;
 				});
 				
 				//
@@ -918,11 +932,28 @@ export const selectedChatAnswerIds = (() => {
 			return false;
 		},
 		/** Get AI Answer file id */
-		retriveCurrentFileAnswer(answerId: string) {
+		retriveCurrentFileAnswer(answerId: string, autoRemoveNonExistsing: boolean = false) {
 			const selectedFileLocal = get(selectedFile);
 			const foundAnswersCompundListless = selectedFileLocal?.lists.flatMap(list => list.items);
-			
-			return foundAnswersCompundListless?.find(answer => answer.id === answerId);
+			const withAllAnswersCompount = foundAnswersCompundListless?.flatMap(answer => answer.answers ?? []);
+
+			const seekFn: (answer: File.FileAI.AIAnswer) => void = answer => answer.id === answerId;
+			const foundAnswer = withAllAnswersCompount?.find(seekFn);
+			if (autoRemoveNonExistsing && !foundAnswer) {
+				const foundAnswerIndex = withAllAnswersCompount?.findIndex(seekFn);
+
+				if (foundAnswerIndex && foundAnswerIndex > -1) {
+					withAllAnswersCompount?.splice(foundAnswerIndex, 1);
+
+					// Save result
+					const answerIdsList = withAllAnswersCompount?.map(answer => answer.id) ?? [];
+					SelectedChatAnswersContext.saveAnswers(selectedFileLocal?.id!, answerIdsList);
+				}
+
+				return undefined;
+			}
+
+			return foundAnswer;
 		}
 	}
 })();

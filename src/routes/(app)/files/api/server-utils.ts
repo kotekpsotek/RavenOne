@@ -101,17 +101,23 @@ export async function hasUserEditorFileAccess(
         return json({ message: "JWT Payload isn't specified", ok: false }, { status: 400 });
     }
     
-    const hasEditorGradeAccess = await Collabortation.amIEditorOfFile(options.file, {
-        connectionURL: `${env.PUBLIC_SOCKET_IO_COLLABORATION_SERVICE_URL}/am-i-editor-of-file`,
-        userId: payload.userId,
-        workspaceId: options.workspaceId,
-        checkIsRecentEditor: options.checkIsRecentEditor
-    });
-    if (!hasEditorGradeAccess) {
-        return json({ type: "collaboration_file", message: "You've no access to save file: " + options.file.name, ok: false }, { status: 400 });
+    try {
+        const hasEditorGradeAccess = await Collabortation.amIEditorOfFile(options.file, {
+            connectionURL: `${env.PUBLIC_SOCKET_IO_COLLABORATION_SERVICE_URL}/am-i-editor-of-file`,
+            userId: payload.userId,
+            workspaceId: options.workspaceId,
+            checkIsRecentEditor: options.checkIsRecentEditor
+        });
+        if (!hasEditorGradeAccess) {
+            return json({ type: "collaboration_file", message: "You've no access to save file: " + options.file.name, ok: false }, { status: 400 });
+        }
+    
+        return undefined
     }
-
-    return undefined
+    catch(err) {
+        console.log('Error when checking is user editor in file', err)
+        return undefined;
+    }
 }
 
 function buildForwardedAuthHeaders(request: Request): Headers {

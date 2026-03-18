@@ -16,6 +16,7 @@
         type AIChatResponse,
         type MermaidDiagramType
     } from "$lib/stores/rightSideStripeChat";
+    import { isFileListSideStripeSelected, isPointsStripeOpen } from "$lib/stores/selectedSideStripes";
     import { selectedWorkspace } from "$lib/stores/workspace";
     import { fetchAuthenticated } from "$lib/utils/fetch";
     import Icon from "@iconify/svelte";
@@ -539,7 +540,28 @@
     }
 
     function onSelectTaskBarAnswer() {
+        $isPointsStripeOpen = true;
+        isContextSelectionModalOpen = false;
+    }
 
+    // Context answers
+    function getContextAnswerTextRepresentation(htmlAnswer: string) {
+        const domParsed = new DOMParser().parseFromString(htmlAnswer, "text/html");
+        const domText = domParsed.body.textContent;
+
+        const MAX_TEXT_LENGHT = 24;
+        
+        return `${domText.slice(0, MAX_TEXT_LENGHT)}${domText.length >= MAX_TEXT_LENGHT ? "..." : ""}`
+    }
+
+    function onDeleteContextAnswer(answerId: string) {
+        return () => {
+            const result = selectedChatAnswerIds.removeCurrentFileAnswerId(answerId);
+
+            if (!result) {
+                console.error(`Cannot remove answer from context`, answerId)
+            }
+        }
     }
 
     $effect(() => {
@@ -882,6 +904,7 @@
             <div>
                 <button
                     class="btn btn-xs btn-ghost"
+                    onclick={onSelectTaskBarAnswer}
                 >
                     <Icon icon="material-symbols:business-messages-outline-rounded"/>
                     <span>
@@ -892,11 +915,32 @@
         </div>
 
         <!-- List with answers -->
-         <!-- TODO: Show anser representation -->
-        <div>
+        <div
+            class="flex flex-col gap-5"
+        >
             {#each $selectedChatAnswerIds as answerId}
-                {@const fetchedAnswer = selectedChatAnswerIds.retriveCurrentFileAnswer(answerId)}
-                <p>{answerId}</p>
+                {@const fetchedAnswer = selectedChatAnswerIds.retriveCurrentFileAnswer(answerId, true)}
+
+                {#if fetchedAnswer}
+                    <div 
+                        class="flex justify-between p-1 border border-base-300 rounded-lg items-center"
+                        data-answer-id={answerId}
+                    >
+                        <div
+                            class="flex flex-col gap-0.5"
+                        >
+                            <p class="text-xs text-gray-500 theme-dark:text-gray-400">{new Date(fetchedAnswer?.endDateTimestamp ?? Date.now()).toLocaleDateString("en-EN")}</p>
+                            <p class="text-medium">{getContextAnswerTextRepresentation(fetchedAnswer?.answerTipTapHTML ?? "")}</p>
+                        </div>
+
+                        <button
+                            class="btn btn-sm btn-ghost"
+                            onclick={onDeleteContextAnswer(answerId)}
+                        >
+                            <Icon icon="material-symbols:close-rounded" class="text-[13px]"/>
+                        </button>
+                    </div>
+                {/if}
             {/each}
         </div>
     </div>

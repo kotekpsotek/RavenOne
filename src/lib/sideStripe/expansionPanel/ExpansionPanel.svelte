@@ -203,6 +203,10 @@
 
         resetDragState();
     }
+
+    function onSelectFile(clickedFile: File.File.File) {
+        selectedFile.selectFile(clickedFile)
+    }
 </script>
 
 {#if isExpanded}
@@ -241,6 +245,7 @@
                 <FileEntry
                     {entry}
                     {onNewFile}
+                    {onSelectFile}
                     selectedEntriesId={[$selectedFile?.id].filter(v => v !== undefined)}
                     bind:draggedId
                     bind:dropTargetId
