@@ -834,6 +834,26 @@ export const activeChat: Readable<AIChatThread | undefined> = {
 	}
 };
 
+export class SelectedAnswerFromChatContext {
+	static EventName = "selected-right-stripe-answer";
+
+	static listen(listener: (answerId: string) => void | Promise<void>) {
+		document.addEventListener(SelectedAnswerFromChatContext.EventName, (ev: Event) => {
+			const cev = ev as CustomEvent<string>;
+			const answerId = cev.detail;
+			listener(answerId);
+		});
+	}
+
+	static emit(answerId: string) {
+		document.dispatchEvent(
+			new CustomEvent(SelectedAnswerFromChatContext.EventName, {
+				detail: answerId
+			})
+		);
+	}
+}
+
 export class SelectedChatAnswersContext {
 	static KeyName = "selectedFileChatAnswers";
 	
@@ -892,7 +912,17 @@ export const selectedChatAnswerIds = (() => {
 
 	return {
 		...all,
-		selectAnswer(fileId: string, answer: File.FileAI.AIAnswer) {
+		isSelected(answerId: string) {
+			return get(all).some(answerIdLocal => answerIdLocal === answerId);
+		},
+		selectAnswer(fileId: string, answer: File.FileAI.AIAnswer, multiplySameAnswer: boolean = false) {
+			const answers = get(all);
+
+			// Prevents multiplication of save answer
+			if (!multiplySameAnswer && answers.some(answerId => answerId === answer.id)) {
+				return;
+			}
+			
 			// Save for store has selected files
 			SelectedChatAnswersContext.addNewAnswerForFile(fileId, answer.id);
 			

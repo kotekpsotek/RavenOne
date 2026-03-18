@@ -9,6 +9,7 @@
         editorAIChat,
         rightSideStripeChat,
         rightSideStripeChatLayout,
+        SelectedAnswerFromChatContext,
         selectedChatAnswerIds,
         type AIChatBubble,
         type AIChatDecision,
@@ -554,6 +555,12 @@
         return `${domText.slice(0, MAX_TEXT_LENGHT)}${domText.length >= MAX_TEXT_LENGHT ? "..." : ""}`
     }
 
+    function onClickAnswer(answerId: string) {
+        return () => {
+            SelectedAnswerFromChatContext.emit(answerId);
+        }
+    }
+    
     function onDeleteContextAnswer(answerId: string) {
         return () => {
             const result = selectedChatAnswerIds.removeCurrentFileAnswerId(answerId);
@@ -896,7 +903,6 @@
     onSave={onSaveSelectedFileContext}
     infoMessage="Context is saved for the currently selected document."
 >
-    <!-- TODO: Allow to select from answers, allow to display answer and select particular answer -->
     <div class="space-y-2">
         <div class="flex items-center justify-between">
             <p class="text-xs uppercase tracking-wide opacity-70">Taskbar Answers</p>
@@ -921,10 +927,14 @@
             {#each $selectedChatAnswerIds as answerId}
                 {@const fetchedAnswer = selectedChatAnswerIds.retriveCurrentFileAnswer(answerId, true)}
 
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
                 {#if fetchedAnswer}
+                    <!-- svelte-ignore a11y_click_events_have_key_events -->
                     <div 
                         class="flex justify-between p-1 border border-base-300 rounded-lg items-center"
                         data-answer-id={answerId}
+                        onclick={onClickAnswer(answerId)}
                     >
                         <div
                             class="flex flex-col gap-0.5"

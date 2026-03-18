@@ -5,7 +5,7 @@
     import { getPlayModeLabel } from "$lib/editorComponents/types/AIList";
     import { selectedFile } from "$lib/stores/files";
     import { hoveredListItemId } from "$lib/stores/hoveredListItem";
-    import { editorAIChat, selectedChatAnswerIds, type SelectedTextRange } from "$lib/stores/rightSideStripeChat";
+    import { editorAIChat, SelectedAnswerFromChatContext, selectedChatAnswerIds, type SelectedTextRange } from "$lib/stores/rightSideStripeChat";
     import { File } from "@ravenlens/shared";
     import { isSharedRoute } from "$lib/stores/share";
     import { canManageWorkspaceFiles, workspaceHasActiveSubscription, workspaceSubscriptionCheckInProgress } from "$lib/stores/subscription";
@@ -27,6 +27,23 @@
     let removeAnswerIndex = $state<number | null>(null);
     let answerContextMenu = $state<{ x: number; y: number; answer: File.FileAI.AIAnswer } | null>(null);
     let selectedContextSequence = 0;
+
+    let periodicalSelectedAnswerIds: string[] = $state([]);
+    SelectedAnswerFromChatContext.listen(answerId => {
+        // Set item as selected
+        periodicalSelectedAnswerIds.push(answerId);
+        periodicalSelectedAnswerIds = periodicalSelectedAnswerIds;
+
+        // Set removal timeout
+        setTimeout(() => {
+            const indexFirst = periodicalSelectedAnswerIds.findIndex(paId => paId === answerId);
+
+            if (indexFirst > -1) {
+                periodicalSelectedAnswerIds.splice(indexFirst, 1);
+                periodicalSelectedAnswerIds = periodicalSelectedAnswerIds;
+            }    
+        }, 5_000);
+    });
 
     function toggleAnswersList() {
         isAnswersListOpen = !isAnswersListOpen;
@@ -580,6 +597,11 @@
         closeAnswerContextMenu();
     }
 
+    function onRemoveFromContext() {
+        selectedChatAnswerIds.removeCurrentFileAnswerId(answerContextMenu?.answer.id!);
+        closeAnswerContextMenu();
+    }
+
     function onWindowClick(event: MouseEvent) {
         if (!answerContextMenu) {
             return;
@@ -640,103 +662,109 @@
                 <p class="px-4 py-3 text-xs opacity-70">No AI answers available.</p>
             {:else}
                 {#each aiAnswers as answer, index (answer.startDateTimestamp + index)}
-                    <div
-                        class="border-b border-base-300 last:border-b-0"
-                        oncontextmenu={onContextMenuChatAnswer(answer)}
-                    >
-                        <div class="flex items-start justify-between gap-3 px-4 py-3">
-                            <button
-                                type="button"
-                                onclick={() => toggleAnswer(index)}
-                            >
-                                {#if isExpanded(index)}
-                                    <div class="text-sm leading-6 whitespace-pre-wrap break-words">
-                                        <AIAnswerRichContent content={answer.answerTipTapHTML} />
-                                    </div>
-                                {:else}
-                                    <div class="relative max-h-20 overflow-hidden text-sm leading-6 whitespace-pre-wrap break-words">
-                                        <AIAnswerRichContent content={answer.answerTipTapHTML} />
-                                        <div class="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-base-100 to-transparent"></div>
-                                    </div>
-                                {/if}
-                            </button>
+                    {#key $selectedChatAnswerIds}
+                        {@const isSelectedInAnswerIds = selectedChatAnswerIds.isSelected(answer.id)}
+                        {@const isSelectedPeriodical = periodicalSelectedAnswerIds.includes(answer.id)}
 
-                            <div class="flex items-center gap-2 shrink-0">
+                        <div
+                            class="border-b last:border-b-0 {isSelectedPeriodical ? "border-sky-500 bg-sky-500/20" : "border-base-300"} {isSelectedInAnswerIds ? "bg-base-200" : ""}"
+                            oncontextmenu={onContextMenuChatAnswer(answer)}
+                            title={isSelectedInAnswerIds ? "Answer is attached to chat context" : ""}
+                        >
+                            <div class="flex items-start justify-between gap-3 px-4 py-3">
                                 <button
                                     type="button"
-                                    class="btn btn-ghost btn-xs"
-                                    title="Zoom answer"
-                                    aria-label="Zoom answer"
-                                    onclick={() => openZoom(index)}
+                                    onclick={() => toggleAnswer(index)}
                                 >
-                                    <Icon icon="material-symbols:zoom-in-map-rounded" width="14" height="14" />
+                                    {#if isExpanded(index)}
+                                        <div class="text-sm leading-6 whitespace-pre-wrap break-words">
+                                            <AIAnswerRichContent content={answer.answerTipTapHTML} />
+                                        </div>
+                                    {:else}
+                                        <div class="relative max-h-20 overflow-hidden text-sm leading-6 whitespace-pre-wrap break-words">
+                                            <AIAnswerRichContent content={answer.answerTipTapHTML} />
+                                            <div class="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-base-100 to-transparent"></div>
+                                        </div>
+                                    {/if}
                                 </button>
 
-                                <div class="text-right">
+                                <div class="flex items-center gap-2 shrink-0">
                                     <button
                                         type="button"
-                                        class="text-right"
-                                        onclick={() => toggleAnswer(index)}
+                                        class="btn btn-ghost btn-xs"
+                                        title="Zoom answer"
+                                        aria-label="Zoom answer"
+                                        onclick={() => openZoom(index)}
                                     >
-                                    <p class="text-sm font-semibold opacity-80">{formatDate(answer.endDateTimestamp)}</p>
+                                        <Icon icon="material-symbols:zoom-in-map-rounded" width="14" height="14" />
                                     </button>
 
-                                    <div class="flex items-center justify-end gap-2 mt-1">
-                                        <div class="badge badge-outline badge-xs">
-                                            <span title={getProviderName(answer.model.provider)}>
-                                                <Icon
-                                                    icon={getProviderIcon(answer.model.provider)}
-                                                    class="w-3 h-3"
-                                                />
-                                            </span>
-                                            <span>
-                                                {answer.model.name}
-                                            </span>
-                                        </div>
-
-                                        {#if !$isSharedRoute && $canManageWorkspaceFiles && !isReadOnly}
-                                            <button
-                                                type="button"
-                                                class="btn btn-error btn-xs h-5 gap-1"
-                                                title="Delete answer"
-                                                aria-label="Delete answer"
-                                                onclick={() => openRemoveAnswer(index)}
-                                            >
-                                                <Icon icon="mdi:trash-can-outline" width="14" height="14" />
-                                            </button>
-                                        {/if}
-                                        
-                                        <!-- Info Modal for Answer -->
+                                    <div class="text-right">
                                         <button
                                             type="button"
-                                            class="btn btn-xs h-4 btn-neutral"
-                                            title="Answer details"
-                                            aria-label="Open answer details"
-                                            onclick={() => openInfo(index)}
-                                        >
-                                            <Icon icon="material-symbols:info-i-rounded"/>
-                                        </button>
-
-                                        <button
-                                            type="button"
-                                            class="btn btn-xs h-5"
-                                            title={isExpanded(index) ? "Collapse answer" : "Expand answer"}
-                                            aria-label={isExpanded(index) ? "Collapse answer" : "Expand answer"}
+                                            class="text-right"
                                             onclick={() => toggleAnswer(index)}
                                         >
-                                            <Icon
-                                                icon={isExpanded(index) ? "mdi:chevron-up" : "mdi:chevron-down"}
-                                                width="18"
-                                                height="18"
-                                                class="opacity-90 shrink-0"
-                                            />
+                                        <p class="text-sm font-semibold opacity-80">{formatDate(answer.endDateTimestamp)}</p>
                                         </button>
+
+                                        <div class="flex items-center justify-end gap-2 mt-1">
+                                            <div class="badge badge-outline badge-xs">
+                                                <span title={getProviderName(answer.model.provider)}>
+                                                    <Icon
+                                                        icon={getProviderIcon(answer.model.provider)}
+                                                        class="w-3 h-3"
+                                                    />
+                                                </span>
+                                                <span>
+                                                    {answer.model.name}
+                                                </span>
+                                            </div>
+
+                                            {#if !$isSharedRoute && $canManageWorkspaceFiles && !isReadOnly}
+                                                <button
+                                                    type="button"
+                                                    class="btn btn-error btn-xs h-5 gap-1"
+                                                    title="Delete answer"
+                                                    aria-label="Delete answer"
+                                                    onclick={() => openRemoveAnswer(index)}
+                                                >
+                                                    <Icon icon="mdi:trash-can-outline" width="14" height="14" />
+                                                </button>
+                                            {/if}
+                                            
+                                            <!-- Info Modal for Answer -->
+                                            <button
+                                                type="button"
+                                                class="btn btn-xs h-4 btn-neutral"
+                                                title="Answer details"
+                                                aria-label="Open answer details"
+                                                onclick={() => openInfo(index)}
+                                            >
+                                                <Icon icon="material-symbols:info-i-rounded"/>
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                class="btn btn-xs h-5"
+                                                title={isExpanded(index) ? "Collapse answer" : "Expand answer"}
+                                                aria-label={isExpanded(index) ? "Collapse answer" : "Expand answer"}
+                                                onclick={() => toggleAnswer(index)}
+                                            >
+                                                <Icon
+                                                    icon={isExpanded(index) ? "mdi:chevron-up" : "mdi:chevron-down"}
+                                                    width="18"
+                                                    height="18"
+                                                    class="opacity-90 shrink-0"
+                                                />
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
 
-                    </div>
+                        </div>
+                    {/key}
                 {/each}
             {/if}
         </div>
@@ -801,16 +829,27 @@
             event.stopPropagation();
         }}
     >
-        <ul class="menu dropdown-content z-[1] w-56 rounded-box border border-base-300 bg-base-100 p-1 shadow-xl">
+        <ul class="menu dropdown-content z-[1] w-[200px] rounded-box border border-base-300 bg-base-100 p-1 shadow-xl">
             <li>
-                <button
-                    type="button"
-                    class="justify-start gap-2"
-                    onclick={onAddSelectionToAiChatContext}
-                >
-                    <Icon icon="material-symbols:add-notes-rounded" width="16" height="16" />
-                    <span>Add to AI-Chat Context</span>
-                </button>
+                {#if selectedChatAnswerIds.isSelected(answerContextMenu.answer.id)}
+                    <button
+                        type="button"
+                        class="justify-start gap-2"
+                        onclick={onRemoveFromContext}
+                    >
+                        <Icon icon="material-symbols:add-notes-rounded" width="16" height="16" />
+                        <span>Remove from AI-Chat Context</span>
+                    </button>
+                {:else}
+                    <button
+                        type="button"
+                        class="justify-start gap-2"
+                        onclick={onAddSelectionToAiChatContext}
+                    >
+                        <Icon icon="material-symbols:add-notes-rounded" width="16" height="16" />
+                        <span>Add to AI-Chat Context</span>
+                    </button>
+                {/if}
             </li>
         </ul>
     </div>
