@@ -5,6 +5,7 @@
     import { getPlayModeLabel } from "$lib/editorComponents/types/AIList";
     import { selectedFile } from "$lib/stores/files";
     import { hoveredListItemId } from "$lib/stores/hoveredListItem";
+    import { editorAIChat, selectedChatAnswerIds, type SelectedTextRange } from "$lib/stores/rightSideStripeChat";
     import { File } from "@ravenlens/shared";
     import { isSharedRoute } from "$lib/stores/share";
     import { canManageWorkspaceFiles, workspaceHasActiveSubscription, workspaceSubscriptionCheckInProgress } from "$lib/stores/subscription";
@@ -24,6 +25,8 @@
     let zoomedIndex = $state<number | null>(null);
     let infoIndex = $state<number | null>(null);
     let removeAnswerIndex = $state<number | null>(null);
+    let answerContextMenu = $state<{ x: number; y: number; answer: File.FileAI.AIAnswer } | null>(null);
+    let selectedContextSequence = 0;
 
     function toggleAnswersList() {
         isAnswersListOpen = !isAnswersListOpen;
@@ -165,6 +168,15 @@
         const hours = pad(d.getHours());
         const minutes = pad(d.getMinutes());
         return `${day}.${month}.${year}, ${hours}:${minutes}`;
+    }
+
+    function escapeHtml(text: string): string {
+        return text
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+            .replaceAll("'", '&#039;');
     }
 
     function getProviderName(provider: unknown) {
@@ -514,7 +526,81 @@
     function onMouseLeave() {
         hoveredListItemId.set(null);
     }
+
+    function closeAnswerContextMenu() {
+        answerContextMenu = null;
+    }
+
+    function onContextMenuChatAnswer(answer: File.FileAI.AIAnswer) {
+        return (event: MouseEvent) => {
+            const answersRoot = (event.currentTarget as HTMLElement | null)?.closest('[data-ai-answers-root="true"]') as HTMLElement | null;
+            if (!answersRoot) {
+                closeAnswerContextMenu();
+                return;
+            }
+    
+            event.preventDefault();
+            event.stopPropagation();
+    
+            answerContextMenu = {
+                x: event.clientX,
+                y: event.clientY,
+                answer: answer
+            };
+        }
+    }
+
+    function createSelectedTextContextRange(selectedText: string): SelectedTextRange {
+        const selectionBase = Date.now() + selectedContextSequence;
+        selectedContextSequence += 1;
+
+        const id = typeof crypto !== 'undefined' && 'randomUUID' in crypto
+            ? crypto.randomUUID()
+            : `selection-${selectionBase}-${Math.random().toString(16).slice(2)}`;
+
+        return {
+            id,
+            from: selectionBase,
+            to: selectionBase + Math.max(1, selectedText.length),
+            html: escapeHtml(selectedText).replaceAll('\n', '<br />')
+        };
+    }
+
+    function onAddSelectionToAiChatContext() {
+        const currentSelection = answerContextMenu;
+        if (!currentSelection) {
+            return;
+        }
+
+        selectedChatAnswerIds.selectAnswer(
+            $selectedFile?.id!,
+            answerContextMenu?.answer!
+        );
+
+        closeAnswerContextMenu();
+    }
+
+    function onWindowClick(event: MouseEvent) {
+        if (!answerContextMenu) {
+            return;
+        }
+
+        const target = event.target as HTMLElement | null;
+        if (target?.closest('.ai-answer-context-menu')) {
+            return;
+        }
+
+        closeAnswerContextMenu();
+    }
+
+    function onWindowKeydown(event: KeyboardEvent) {
+        if (event.key === 'Escape') {
+            closeAnswerContextMenu();
+        }
+    }
 </script>
+
+<svelte:window onclick={onWindowClick} onkeydown={onWindowKeydown} />
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <section 
@@ -554,7 +640,10 @@
                 <p class="px-4 py-3 text-xs opacity-70">No AI answers available.</p>
             {:else}
                 {#each aiAnswers as answer, index (answer.startDateTimestamp + index)}
-                    <div class="border-b border-base-300 last:border-b-0">
+                    <div
+                        class="border-b border-base-300 last:border-b-0"
+                        oncontextmenu={onContextMenuChatAnswer(answer)}
+                    >
                         <div class="flex items-start justify-between gap-3 px-4 py-3">
                             <button
                                 type="button"
@@ -694,6 +783,36 @@
                 </div>
             </UI.Modals.ModalWrapper>
         </div>
+    </div>
+{/if}
+
+{#if answerContextMenu}
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div
+        class="ai-answer-context-menu dropdown dropdown-open fixed z-[95]"
+        style={`left: ${answerContextMenu.x}px; top: ${answerContextMenu.y}px;`}
+        onclick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+        }}
+        oncontextmenu={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+        }}
+    >
+        <ul class="menu dropdown-content z-[1] w-56 rounded-box border border-base-300 bg-base-100 p-1 shadow-xl">
+            <li>
+                <button
+                    type="button"
+                    class="justify-start gap-2"
+                    onclick={onAddSelectionToAiChatContext}
+                >
+                    <Icon icon="material-symbols:add-notes-rounded" width="16" height="16" />
+                    <span>Add to AI-Chat Context</span>
+                </button>
+            </li>
+        </ul>
     </div>
 {/if}
 

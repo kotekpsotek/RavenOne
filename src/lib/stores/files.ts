@@ -9,6 +9,7 @@ import { collaborationInterface, entriesCollaborators, onHandleJoinFile, onHandl
 import { isSharedRoute } from "./share";
 import { FilePlayConnections, playInFile } from "$lib/play/connections";
 import { playableDocumentsAndListsWithPoints } from "./playModeStore";
+import { selectedChatAnswerIds } from "./rightSideStripeChat";
 
 /** Entries */
 export const entriesList = (() => {
@@ -445,6 +446,11 @@ export const selectedFile = (() => {
 
             // Save to backend
             void transitionSelection(this, file);
+
+            // Select the current file
+            if (file?.id) {
+                selectedChatAnswerIds.loadCurrentFile(file?.id!);
+            }
 
             // Playing file store and its operations
             playInFile.update(filePlay => {

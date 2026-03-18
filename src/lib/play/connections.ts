@@ -76,10 +76,15 @@ const normalizePointResultPayload = (
 
 export class FilePlayConnections {
     file: File.File.File | undefined = undefined;
-    connection: Socket;
+    connection: Socket | undefined;
     private readonly pointResultListeners = new Set<(payload: PointResultEventPayload) => void>();
     
     constructor(file?: File.File.File) {
+        if (!browser){
+            this.connection = undefined;
+            return
+        }
+        
         this.file = file;
         const connectionUrl = env.PUBLIC_SOCKET_IO_PLAY_CONNECTION_URL?.trim();
         if (!connectionUrl) {
@@ -116,8 +121,8 @@ export class FilePlayConnections {
     }
 
     private ensureConnected() {
-        if (!this.connection.connected) {
-            this.connection.connect();
+        if (!this.connection?.connected) {
+            this.connection?.connect();
         }
     }
 
@@ -145,7 +150,7 @@ export class FilePlayConnections {
                 reject(new Error(`Timed out waiting for \"${eventName}\" acknowledgement from play-service.`));
             }, SOCKET_ACK_TIMEOUT_MS);
 
-            this.connection.emit(eventName, context.workspaceId, context.fileId, (status: unknown) => {
+            this.connection?.emit(eventName, context.workspaceId, context.fileId, (status: unknown) => {
                 if (isSettled) {
                     return;
                 }
@@ -173,7 +178,7 @@ export class FilePlayConnections {
                 reject(new Error("Timed out waiting for \"play\" acknowledgement from play-service."));
             }, SOCKET_ACK_TIMEOUT_MS);
 
-            this.connection.emit(
+            this.connection?.emit(
                 "play",
                 context.workspaceId,
                 context.fileId,
@@ -208,7 +213,7 @@ export class FilePlayConnections {
                 reject(new Error("Timed out waiting for \"stop\" acknowledgement from play-service."));
             }, SOCKET_ACK_TIMEOUT_MS);
 
-            this.connection.emit(
+            this.connection?.emit(
                 "stop",
                 context.workspaceId,
                 context.fileId,
@@ -242,7 +247,7 @@ export class FilePlayConnections {
                 reject(new Error("Timed out waiting for \"download-playpoints\" acknowledgement from play-service."));
             }, SOCKET_ACK_TIMEOUT_MS);
 
-            this.connection.emit(
+            this.connection?.emit(
                 "download-playpoints",
                 context.workspaceId,
                 context.fileId,

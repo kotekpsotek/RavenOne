@@ -2,6 +2,7 @@ import { browser } from "$app/environment";
 import { fetchAuthenticated } from "$lib/utils/fetch";
 import { get, writable, type Readable } from "svelte/store";
 import { selectedFile } from "./files";
+import type { File } from "@ravenlens/shared";
 
 export type AIChatMode = "regular-ask" | "questions-creation" | "document-manipulation"; // "visualization" | "tldr"
 export type MermaidDiagramType = "flowchart" | "sequenceDiagram" | "classDiagram" | "stateDiagram-v2";
@@ -726,9 +727,12 @@ export const rightSideStripeChat = (() => {
 })();
 
 if (browser) {
-	selectedFile.subscribe((file) => {
-		const fileDescriptor = getFileDescriptor(file);
-		void rightSideStripeChat.loadForFile(fileDescriptor);
+	// Delay subscription to avoid TDZ when files.ts imports selectedChatAnswerIds.
+	queueMicrotask(() => {
+		selectedFile.subscribe((file) => {
+			const fileDescriptor = getFileDescriptor(file);
+			void rightSideStripeChat.loadForFile(fileDescriptor);
+		});
 	});
 }
 
@@ -829,3 +833,96 @@ export const activeChat: Readable<AIChatThread | undefined> = {
 		});
 	}
 };
+
+export class SelectedChatAnswersContext {
+	static KeyName = "selectedFileChatAnswers";
+	
+	static constructKey(fileId: string) {
+		return `${SelectedChatAnswersContext.KeyName}:${fileId}`;
+	}
+	
+	static loadForFile(fileId: string): string[] {
+		const answersKeyValue = localStorage.getItem(
+			SelectedChatAnswersContext.constructKey(fileId)
+		);
+
+		if (!answersKeyValue) {
+			return [];
+		}
+
+		try {
+			const parsed = JSON.parse(answersKeyValue) as string[];
+
+			if (!(parsed instanceof Array)) {
+				throw("AI Answers has to be the array");
+			}
+
+			return parsed;
+		}
+		catch {
+			return [];
+		}
+	}
+
+	static addNewAnswerForFile(fileId: string, answerId: string) {
+		const loaded = SelectedChatAnswersContext.loadForFile(fileId);
+		const updated = [...loaded, answerId];
+
+		// LocalStorage
+		localStorage.setItem(
+			SelectedChatAnswersContext.constructKey(fileId),
+			JSON.stringify(updated)
+		);
+	}
+}
+
+/**
+ * This set with answers is utilized in ai chat
+ * New file selected loads the context for specific file
+ */
+export const selectedChatAnswerIds = (() => {
+	const { ...all } = writable<string[]>();
+
+	return {
+		...all,
+		selectAnswer(fileId: string, answer: File.FileAI.AIAnswer) {
+			// Save for store has selected files
+			SelectedChatAnswersContext.addNewAnswerForFile(fileId, answer.id);
+			
+			// Update the file
+			all.update(answers => {
+				return [
+					...answers.map(answerId => answerId),
+					answer.id
+				];
+			})
+		},
+		/** Use to setup saved context for current file */
+		loadCurrentFile(fileId: string) {
+			const loaded = SelectedChatAnswersContext.loadForFile(fileId);
+			all.set(loaded);
+		},
+		/** Remove the file specific answer */
+		removeCurrentFileAnswerId(answerId: string): boolean {
+			const foundAnswerIndex = get(all).some(answerCheckId => answerCheckId === answerId);
+			if (foundAnswerIndex) {
+				//
+				all.update(answersLocal => {
+					return answersLocal.filter(answerIdLocal => answerIdLocal !== answerId);
+				});
+				
+				//
+				return true;
+			}
+			
+			return false;
+		},
+		/** Get AI Answer file id */
+		retriveCurrentFileAnswer(answerId: string) {
+			const selectedFileLocal = get(selectedFile);
+			const foundAnswersCompundListless = selectedFileLocal?.lists.flatMap(list => list.items);
+			
+			return foundAnswersCompundListless?.find(answer => answer.id === answerId);
+		}
+	}
+})();

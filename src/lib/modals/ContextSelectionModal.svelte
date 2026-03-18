@@ -16,12 +16,14 @@
             networkUrls: []
         },
         onSave,
-        infoMessage = ""
+        infoMessage = "",
+        children
     } = $props<{
         open: boolean;
         contextPayload: File.FileAI.ContextSpecificationPayload;
         onSave?: (payload: File.FileAI.ContextSpecificationPayload) => void;
         infoMessage?: string;
+        children: HTMLDivElement;
     }>();
 
     // ...
@@ -426,6 +428,8 @@
                                 {/each}
                             </div>
                         </div>
+
+                        {@render children()}
                     </div>
 
                     {#if hasContextChanges}

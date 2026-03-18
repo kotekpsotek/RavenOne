@@ -9,6 +9,7 @@
         editorAIChat,
         rightSideStripeChat,
         rightSideStripeChatLayout,
+        selectedChatAnswerIds,
         type AIChatBubble,
         type AIChatDecision,
         type AIChatMode,
@@ -537,6 +538,10 @@
 
     }
 
+    function onSelectTaskBarAnswer() {
+
+    }
+
     $effect(() => {
         const selectedRangesCount = $editorAIChat.selectedText?.ranges.length ?? 0;
         const isSelectedTextOpen = isSelectedTextPreviewOpen;
@@ -868,7 +873,34 @@
     contextPayload={selectedFileContextPayload}
     onSave={onSaveSelectedFileContext}
     infoMessage="Context is saved for the currently selected document."
-/>
+>
+    <!-- TODO: Allow to select from answers, allow to display answer and select particular answer -->
+    <div class="space-y-2">
+        <div class="flex items-center justify-between">
+            <p class="text-xs uppercase tracking-wide opacity-70">Taskbar Answers</p>
+
+            <div>
+                <button
+                    class="btn btn-xs btn-ghost"
+                >
+                    <Icon icon="material-symbols:business-messages-outline-rounded"/>
+                    <span>
+                        Select Taskbar Answer
+                    </span>
+                </button>
+            </div>
+        </div>
+
+        <!-- List with answers -->
+         <!-- TODO: Show anser representation -->
+        <div>
+            {#each $selectedChatAnswerIds as answerId}
+                {@const fetchedAnswer = selectedChatAnswerIds.retriveCurrentFileAnswer(answerId)}
+                <p>{answerId}</p>
+            {/each}
+        </div>
+    </div>
+</ContextSelectionModal>
 
 <style>
     #writable-for-chat:empty::before {

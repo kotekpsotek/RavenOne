@@ -10,6 +10,7 @@
     import TaskListItem from '$lib/listItems/TaskListItem.svelte';
     import { createListId } from './listItems/utils';
     import { File } from "@ravenlens/shared";
+    import { dev } from '$app/environment';
 
     let { isReadOnly = false }: { isReadOnly?: boolean } = $props();
 
@@ -246,6 +247,66 @@
         const unsubscribe = selectedFile.subscribe((file) => {
             loadTrayHeight(file?.id ?? '');
         });
+
+        // FIXME: Remove then for testing
+        if (dev) {
+            $selectedFile!.lists = [
+                {
+                    id: 'list-dev-1',
+                    kind: 'unordered',
+                    name: 'AI Bullet list',
+                    icon: 'material-symbols:auto-awesome',
+                    items: [
+                        {
+                            id: 'item-dev-1',
+                            text: 'What are the main benefits of using Svelte 5?',
+                            depth: 0,
+                            answers: [
+                                {
+                                    id: '11',
+                                    answerTipTapHTML: "Hi",
+                                    playMode: "run-non-runned",
+                                    startDateTimestamp: Date.now(),
+                                    endDateTimestamp: Date.now(),
+                                    tools: {
+                                        "x": true
+                                    },
+                                    model: {
+                                        id: "gpt-4o",
+                                        name: 'gpt-4o',
+                                        provider: "OpenAI",
+                                        weight: 1.0
+                                    },
+                                }
+                            ]
+                        },
+                        {
+                            id: 'item-dev-2',
+                            text: 'How do Runes work?',
+                            depth: 0,
+                            answers: [
+                                {
+                                    id: '12',
+                                    answerTipTapHTML: "Hi",
+                                    playMode: "run-non-runned",
+                                    startDateTimestamp: Date.now(),
+                                    endDateTimestamp: Date.now(),
+                                    tools: {
+                                        "x": true
+                                    },
+                                    model: {
+                                        id: "gpt-4o",
+                                        name: 'gpt-4o',
+                                        provider: "OpenAI",
+                                        weight: 1.0
+                                    },
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
 
         return () => {
             unsubscribe();
