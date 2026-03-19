@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { getAuthenticatedPayload } from "$lib/server/auth/request";
+import { ensureAuthenticatedViaRoute, getAuthenticatedPayload } from "$lib/server/auth/request";
 import { getUserActiveSubscription } from "$lib/server/subscription";
 import { getWorkspaceMembersLimit, getWorkspaceOwnershipLimit } from "$lib/subscription/limits";
 import { DB_Models } from "@ravenlens/backend";
@@ -49,35 +49,6 @@ function toErrorMessage(error: unknown): string {
 		return JSON.stringify(error);
 	} catch {
 		return "Unknown error";
-	}
-}
-
-function buildForwardedAuthHeaders(request: Request): Headers {
-	const forwardedHeaders = new Headers();
-	const authorization = request.headers.get("authorization");
-	const cookieHeader = request.headers.get("cookie");
-
-	if (authorization) {
-		forwardedHeaders.set("authorization", authorization);
-	}
-
-	if (cookieHeader) {
-		forwardedHeaders.set("cookie", cookieHeader);
-	}
-
-	return forwardedHeaders;
-}
-
-async function ensureAuthenticatedViaRoute(request: Request, fetchFn: typeof fetch): Promise<Response | null> {
-	try {
-		const response = await fetchFn("/auth/is-authenticated", {
-			method: "GET",
-			headers: buildForwardedAuthHeaders(request)
-		});
-
-		return response;
-	} catch {
-		return null;
 	}
 }
 

@@ -11,7 +11,7 @@
     import { alertState } from "./utils/alert";
     import { editor } from "./stores/editor";
     import { get, writable } from "svelte/store";
-    import McpSelectionModal from "./modals/McpSelectionModal.svelte";
+    import McpSelectionModal from "./mcp/components/McpSelectionModal.svelte";
     import { UI } from "@ravenlens/frontend";
     import ContextSelectionModal from "./modals/ContextSelectionModal.svelte";
     import PlayModeDropdownContent from "./components/PlayModeDropdownContent.svelte";
@@ -495,7 +495,7 @@
                                 </div>
                             </div>
 
-                            <div>
+                            <!-- <div>
                                 <p class="text-xs uppercase tracking-wide opacity-70 mb-1">MCP servers access</p>
                                 <label class="label cursor-pointer justify-between mb-1 px-0">
                                     <span class="label-text text-xs">Use MCP servers for tasks</span>
@@ -525,7 +525,7 @@
                                     </span>
                                     <button class="btn btn-xs btn-primary" onclick={openMcpConfigurationEditor}>Edit</button>
                                 </div>
-                            </div>
+                            </div> -->
                         </div>
                     </details>
                 {/if}

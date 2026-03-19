@@ -11,7 +11,7 @@ node_modules
 .npmrc
 
 # Credentials of all kinds
-credentials
+/credentials
 
 # OS
 .DS_Store
