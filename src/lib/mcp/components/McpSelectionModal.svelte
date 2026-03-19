@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { mcpConfigurationStore, saveMcpConfiguration, selectedMcpServers, type McpConfiguration, type McpServerConfig, type McpValidationResult } from "$lib/stores/mcpConfig";
+    import { mcpConfigurationStore, saveMcpConfiguration, selectedMcpServers, type McpConfiguration, type McpValidationResult } from "$lib/stores/mcpConfig";
     import { UI } from "@ravenlens/frontend";
     import CodeMirror from "svelte-codemirror-editor";
     import { json } from "@codemirror/lang-json";
@@ -85,40 +85,91 @@
         }
     }
 
+    function isObjectRecord(value: unknown): value is Record<string, unknown> {
+        return typeof value === "object" && value !== null;
+    }
+
+    function isNonEmptyString(value: unknown): value is string {
+        return typeof value === "string" && value.trim().length > 0;
+    }
+
+    function isStringArray(value: unknown): value is string[] {
+        return Array.isArray(value) && value.every((item) => typeof item === "string");
+    }
+
+    function isStringRecord(value: unknown): value is Record<string, string> {
+        return isObjectRecord(value)
+            && !Array.isArray(value)
+            && Object.values(value).every((recordValue) => typeof recordValue === "string");
+    }
+
+    function isValidURL(url: string): boolean {
+        try {
+            new URL(url);
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
     function validateMcpConfiguration(rawConfiguration: string): McpValidationResult {
         try {
             const parsed = JSON.parse(rawConfiguration) as Partial<McpConfiguration>;
 
-            if (!parsed || typeof parsed !== "object") {
+            if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
                 return { valid: false, error: "Configuration must be a JSON object." };
             }
 
-            if (!parsed.mcpServers || typeof parsed.mcpServers !== "object") {
+            if (!parsed.mcpServers || typeof parsed.mcpServers !== "object" || Array.isArray(parsed.mcpServers)) {
                 return { valid: false, error: 'Configuration must contain a "mcpServers" object.' };
             }
 
-            const serverEntries = Object.entries(parsed.mcpServers);
+            const serverEntries = Object.entries(parsed.mcpServers as Record<string, unknown>);
 
-            for (const [serverName, serverConfig] of serverEntries) {
-                if (!serverConfig || typeof serverConfig !== "object") {
+            for (const [serverName, serverConfigValue] of serverEntries) {
+                if (!serverConfigValue || !isObjectRecord(serverConfigValue) || Array.isArray(serverConfigValue)) {
                     return { valid: false, error: `Server "${serverName}" must be an object.` };
                 }
 
-                if (typeof (serverConfig as McpServerConfig).command !== "string" ||
-                    !(serverConfig as McpServerConfig).command.trim()) {
-                    return { valid: false, error: `Server "${serverName}" must include a non-empty "command" string.` };
+                const serverConfig = serverConfigValue as Record<string, unknown>;
+
+                const hasCommand = isNonEmptyString(serverConfig.command);
+                const hasUrl = isNonEmptyString(serverConfig.url);
+
+                if (!hasCommand && !hasUrl) {
+                    return { valid: false, error: `Server "${serverName}" must include a non-empty "command" (stdio) or "url" (remote).` };
                 }
 
-                const args = (serverConfig as McpServerConfig).args;
-                if (!Array.isArray(args) || args.some((arg) => typeof arg !== "string")) {
-                    return { valid: false, error: `Server "${serverName}" must include an "args" array of strings.` };
-                }
+                if (hasCommand) {
+                    const args = serverConfig.args;
+                    if (args !== undefined && !isStringArray(args)) {
+                        return { valid: false, error: `Server "${serverName}" has invalid "args". It must be an array of strings when provided.` };
+                    }
 
-                if ((serverConfig as McpServerConfig).env !== undefined) {
-                    const envValue = (serverConfig as McpServerConfig).env;
-                    const isRecord = !!envValue && typeof envValue === "object" && !Array.isArray(envValue);
-                    if (!isRecord || Object.values(envValue as Record<string, unknown>).some((value) => typeof value !== "string")) {
+                    const envValue = serverConfig.env;
+                    if (envValue !== undefined && !isStringRecord(envValue)) {
                         return { valid: false, error: `Server "${serverName}" has invalid "env". It must be an object of string values.` };
+                    }
+                }
+
+                if (hasUrl) {
+                    const url = serverConfig.url;
+                    if (!isNonEmptyString(url)) {
+                        return { valid: false, error: `Server "${serverName}" has invalid "url". It must be a valid absolute URL.` };
+                    }
+
+                    if (!isValidURL(url)) {
+                        return { valid: false, error: `Server "${serverName}" has invalid "url". It must be a valid absolute URL.` };
+                    }
+
+                    const typeValue = serverConfig.type;
+                    if (typeValue !== undefined && !isNonEmptyString(typeValue)) {
+                        return { valid: false, error: `Server "${serverName}" has invalid "type". It must be a non-empty string when provided.` };
+                    }
+
+                    const headersValue = serverConfig.headers;
+                    if (headersValue !== undefined && !isStringRecord(headersValue)) {
+                        return { valid: false, error: `Server "${serverName}" has invalid "headers". It must be an object of string values.` };
                     }
                 }
             }

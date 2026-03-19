@@ -12,13 +12,24 @@ function getInitialMcpConfig() {
 }
 
 export type McpServerConfig = {
+    type?: "stdio";
     command: string;
-    args: string[];
+    args?: string[];
     env?: Record<string, string>;
+    cwd?: string;
+    stderr?: string | number;
 };
 
+export type McpRemoteServerConfig = {
+    type?: "http" | "streamable-http" | "streamableHttp" | "sse" | string;
+    url: string;
+    headers?: Record<string, string>;
+};
+
+export type McpAnyServerConfig = McpServerConfig | McpRemoteServerConfig;
+
 export type McpConfiguration = {
-    mcpServers: Record<string, McpServerConfig>;
+    mcpServers: Record<string, McpAnyServerConfig>;
 };
 
 export type McpValidationResult =
