@@ -1,6 +1,7 @@
 import { browser } from "$app/environment";
 import { get, writable, type Updater } from "svelte/store";
 import { selectedFile } from "./files";
+import { selectedWorkspace } from "./workspace";
 import { findItemDirectSubitems } from "$lib/listItems/utils";
 import { /* playInFile, */ playInFile, type PointResultEventPayload } from "$lib/play/connections";
 import type { AI, File, Play } from "@ravenlens/shared";
@@ -496,45 +497,71 @@ export const playableDocumentsAndListsWithPoints = (() => {
             : playableList.list.items.map(item => item.id);
     };
 
+    const resolveWorkspaceIdFromDocument = (selectedDocumentLocal: File.File.File) => {
+        const workspaceIdFromDocument = selectedDocumentLocal.createdByAuthorId?.trim();
+        if (workspaceIdFromDocument) {
+            return workspaceIdFromDocument;
+        }
+
+        const workspaceIdFromSelection = get(selectedWorkspace)?.id?.trim();
+        if (workspaceIdFromSelection) {
+            return workspaceIdFromSelection;
+        }
+
+        throw new Error("Cannot play document without workspace id.");
+    };
+
+    const toPlayModel = (model: AI.RavenLensAvaiableAIModel): File.FileAI.AIAnswer["model"] => {
+        return {
+            id: model.model,
+            name: model.model,
+            provider: model.provider,
+            weight: 1,
+        };
+    };
+
     const createCommonPlayTargetPayload = (
         selectedDocumentLocal: File.File.File,
-        config: PlayableList["config"],
-        playModeLaunch: PlayInvocationSource
-    ) => ({
-        playModeLaunch,
-        workspaceId: selectedDocumentLocal.createdByAuthorId,
-        model: config.model,
+        list: File.File.SpawnedList,
+        point: File.File.EditableListItem,
+        config: PlayableList["config"]
+    ): Play.PlayContextBasic => ({
+        workspaceId: resolveWorkspaceIdFromDocument(selectedDocumentLocal),
+        model: toPlayModel(config.model),
         playMode: config.selectedItemPlayMode,
-        llm: config.model,
         file: selectedDocumentLocal,
         fileContext: config.context,
-        fileMcpConfigJson: "{}",
         tools: config.tools,
+        listId: list.id,
+        listKind: list.kind,
+        pointId: point.id,
+        pointContent: point.text,
+        pointContext: point.context ?? config.context,
+        answeredListsAndPoints: selectedDocumentLocal.lists,
     });
 
     const createPlayFileTarget = (
         selectedDocumentLocal: File.File.File,
+        list: File.File.SpawnedList,
+        point: File.File.EditableListItem,
         config: PlayableList["config"],
-        pointId?: string
     ) => {
         return {
-            playFor: "play-document",
-            ...createCommonPlayTargetPayload(selectedDocumentLocal, config, "document"),
-            pointId,
-        } as unknown as Play.PlayFile;
+            ...createCommonPlayTargetPayload(selectedDocumentLocal, list, point, config),
+            playModeLaunch: "play-file",
+        } satisfies Play.PlayFile;
     };
 
     const createPlayPointTarget = (
         selectedDocumentLocal: File.File.File,
+        list: File.File.SpawnedList,
         point: File.File.EditableListItem,
         config: PlayableList["config"]
     ) => {
         return {
-            playFor: "play-point",
-            ...createCommonPlayTargetPayload(selectedDocumentLocal, config, "point"),
-            pointId: point.id,
-            pointContext: point.context ?? config.context,
-        } as unknown as Play.PlayPoint;
+            ...createCommonPlayTargetPayload(selectedDocumentLocal, list, point, config),
+            playModeLaunch: "play-point",
+        } satisfies Play.PlayPoint;
     };
 
     /** Use to use the function to stop point playing -> Remove each point playing in async mode */
@@ -1018,8 +1045,8 @@ export const playableDocumentsAndListsWithPoints = (() => {
                 });
 
                 const playTarget = playInvocationSource === "document"
-                    ? createPlayFileTarget(selectedDocumentLocal, config, point.id)
-                    : createPlayPointTarget(selectedDocumentLocal, point, config);
+                    ? createPlayFileTarget(selectedDocumentLocal, fileList, point, config)
+                    : createPlayPointTarget(selectedDocumentLocal, fileList, point, config);
 
                 /// ==== Playing ====
                 const addResultAnswerAnswerToFileSpawnedList = (answer: File.FileAI.AIAnswer) => {

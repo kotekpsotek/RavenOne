@@ -1,10 +1,11 @@
 import { browser } from "$app/environment";
 import { env } from "$env/dynamic/public";
 import { selectedFile } from "$lib/stores/files";
+import { selectedWorkspace } from "$lib/stores/workspace";
 import { JWTAuth } from "$lib/utils/auth";
 import type { File, Play } from "@ravenlens/shared";
 import io, { Socket } from "socket.io-client";
-import { writable } from "svelte/store";
+import { get, writable } from "svelte/store";
 
 export type PointResultEventPayload = {
     answer: File.FileAI.AIAnswer;
@@ -23,15 +24,58 @@ type FileSocketContext = {
     fileId: string;
 };
 
-const resolveFileSocketContext = (file: File.File.File | undefined): FileSocketContext | undefined => {
-    if (!file) {
-        return undefined;
+const resolveWorkspaceId = (workspaceIdCandidate: unknown, fileCandidate?: File.File.File): string | undefined => {
+    if (isNonEmptyString(workspaceIdCandidate)) {
+        return workspaceIdCandidate;
     }
 
-    const workspaceId = file.createdByAuthorId;
-    const fileId = file.id;
+    if (isNonEmptyString(fileCandidate?.createdByAuthorId)) {
+        return fileCandidate.createdByAuthorId;
+    }
 
-    if (!isNonEmptyString(workspaceId) || !isNonEmptyString(fileId)) {
+    const selectedFileWorkspaceId = get(selectedFile)?.createdByAuthorId;
+    if (isNonEmptyString(selectedFileWorkspaceId)) {
+        return selectedFileWorkspaceId;
+    }
+
+    const selectedWorkspaceId = get(selectedWorkspace)?.id;
+    if (isNonEmptyString(selectedWorkspaceId)) {
+        return selectedWorkspaceId;
+    }
+
+    return undefined;
+};
+
+const resolveFileId = (fileIdCandidate: unknown, fileCandidate?: File.File.File): string | undefined => {
+    if (isNonEmptyString(fileIdCandidate)) {
+        return fileIdCandidate;
+    }
+
+    if (isNonEmptyString(fileCandidate?.id)) {
+        return fileCandidate.id;
+    }
+
+    const selectedFileId = get(selectedFile)?.id;
+    if (isNonEmptyString(selectedFileId)) {
+        return selectedFileId;
+    }
+
+    return undefined;
+};
+
+const resolveFileSocketContext = (
+    file: File.File.File | undefined,
+    options?: {
+        workspaceId?: unknown;
+        fileId?: unknown;
+        fallbackFile?: File.File.File | undefined;
+    }
+): FileSocketContext | undefined => {
+    const fileCandidate = file ?? options?.fallbackFile;
+    const workspaceId = resolveWorkspaceId(options?.workspaceId, fileCandidate);
+    const fileId = resolveFileId(options?.fileId, fileCandidate);
+
+    if (!workspaceId || !fileId) {
         return undefined;
     }
 
@@ -136,22 +180,12 @@ export class FilePlayConnections {
         return new Promise((resolve, reject) => {
             let isSettled = false;
 
-            const timeoutId = setTimeout(() => {
-                if (isSettled) {
-                    return;
-                }
-
-                isSettled = true;
-                reject(new Error(`Timed out waiting for \"${eventName}\" acknowledgement from play-service.`));
-            }, SOCKET_ACK_TIMEOUT_MS);
-
             this.connection.emit(eventName, context.workspaceId, context.fileId, (status: unknown) => {
                 if (isSettled) {
                     return;
                 }
 
                 isSettled = true;
-                clearTimeout(timeoutId);
                 resolve(Boolean(status));
             });
         });
@@ -164,15 +198,6 @@ export class FilePlayConnections {
         return new Promise((resolve, reject) => {
             let isSettled = false;
 
-            const timeoutId = setTimeout(() => {
-                if (isSettled) {
-                    return;
-                }
-
-                isSettled = true;
-                reject(new Error("Timed out waiting for \"play\" acknowledgement from play-service."));
-            }, SOCKET_ACK_TIMEOUT_MS);
-
             this.connection.emit(
                 "play",
                 context.workspaceId,
@@ -184,7 +209,6 @@ export class FilePlayConnections {
                     }
 
                     isSettled = true;
-                    clearTimeout(timeoutId);
                     resolve({
                         success: success === true,
                         result,
@@ -199,15 +223,6 @@ export class FilePlayConnections {
         return new Promise((resolve, reject) => {
             let isSettled = false;
 
-            const timeoutId = setTimeout(() => {
-                if (isSettled) {
-                    return;
-                }
-
-                isSettled = true;
-                reject(new Error("Timed out waiting for \"stop\" acknowledgement from play-service."));
-            }, SOCKET_ACK_TIMEOUT_MS);
-
             this.connection.emit(
                 "stop",
                 context.workspaceId,
@@ -219,7 +234,6 @@ export class FilePlayConnections {
                     }
 
                     isSettled = true;
-                    clearTimeout(timeoutId);
                     resolve({
                         success: success === true,
                         reason: isNonEmptyString(reason) ? reason : undefined,
@@ -233,15 +247,6 @@ export class FilePlayConnections {
         return new Promise<{ success: boolean; playPoints: Play.PlayingPointBackendService[] }>((resolve, reject) => {
             let isSettled = false;
 
-            const timeoutId = setTimeout(() => {
-                if (isSettled) {
-                    return;
-                }
-
-                isSettled = true;
-                reject(new Error("Timed out waiting for \"download-playpoints\" acknowledgement from play-service."));
-            }, SOCKET_ACK_TIMEOUT_MS);
-
             this.connection.emit(
                 "download-playpoints",
                 context.workspaceId,
@@ -252,7 +257,6 @@ export class FilePlayConnections {
                     }
 
                     isSettled = true;
-                    clearTimeout(timeoutId);
                     resolve({
                         success: success === true,
                         playPoints: Array.isArray(playPoints) ? playPoints : [],
@@ -264,7 +268,9 @@ export class FilePlayConnections {
     
     joinFile(file: File.File.File) {
         this.file = file;
-        const context = resolveFileSocketContext(file);
+        const context = resolveFileSocketContext(file, {
+            fallbackFile: get(selectedFile),
+        });
         if (!context) {
             console.warn("Cannot join play-service room because file/workspace identifiers are missing.");
             return;
@@ -288,7 +294,9 @@ export class FilePlayConnections {
             return;
         }
 
-        const context = resolveFileSocketContext(this.file);
+        const context = resolveFileSocketContext(this.file, {
+            fallbackFile: get(selectedFile),
+        });
         this.file = undefined;
 
         if (!context) {
@@ -321,7 +329,11 @@ export class FilePlayConnections {
     }
     
     async play(playTarget: Play.PlayFile | Play.PlayPoint): Promise<Play.PlayPointAnswer> {
-        const context = resolveFileSocketContext(playTarget.file ?? this.file);
+        const context = resolveFileSocketContext(playTarget.file ?? this.file, {
+            workspaceId: playTarget.workspaceId,
+            fileId: playTarget.file?.id,
+            fallbackFile: get(selectedFile),
+        });
         if (!context) {
             throw new Error("Cannot play point without file and workspace identifiers.");
         }
@@ -351,7 +363,9 @@ export class FilePlayConnections {
     }
 
     async stop(pointId: string, file?: File.File.File): Promise<boolean> {
-        const context = resolveFileSocketContext(file ?? this.file);
+        const context = resolveFileSocketContext(file ?? this.file, {
+            fallbackFile: get(selectedFile),
+        });
         if (!context) {
             throw new Error("Cannot stop point without file and workspace identifiers.");
         }
@@ -371,7 +385,9 @@ export class FilePlayConnections {
     }
 
     async downloadPlayingPoints(file?: File.File.File) {
-        const context = resolveFileSocketContext(file ?? this.file);
+        const context = resolveFileSocketContext(file ?? this.file, {
+            fallbackFile: get(selectedFile),
+        });
         if (!context) {
             throw new Error("Cannot download playing points without file and workspace identifiers.");
         }
@@ -398,7 +414,7 @@ export class FilePlayConnections {
 export const playInFile = (() => {
     // Store
     const store = writable<FilePlayConnections>(
-        new FilePlayConnections()
+        browser ? new FilePlayConnections() : undefined
     );
 
     //

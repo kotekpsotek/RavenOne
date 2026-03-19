@@ -90,12 +90,12 @@ export const collaborationInterface = (() => {
             if (!interfaceCollab) {
                 const profile = get(userProfile);
                 if (!profile) {
-                    console.error("Cannot initialize interface since user-profile is undefined");
+                    // console.error("Cannot initialize interface since user-profile is undefined");
                 }
                 
                 const initTry = initializeInterface(profile);
                 if (!initTry) {
-                    throw("Cannot initialize collaboration service interface");
+                    return;
                 }
 
                 interfaceCollab = get(store);

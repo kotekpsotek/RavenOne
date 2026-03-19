@@ -9,7 +9,6 @@
     import { contextSpecification } from "./stores/contextSpec";
     import { mcpConfigurationStore, selectedMcpServers } from "./stores/mcpConfig";
     import { alertState } from "./utils/alert";
-    import { editor } from "./stores/editor";
     import { get, writable } from "svelte/store";
     import McpSelectionModal from "./mcp/components/McpSelectionModal.svelte";
     import { UI } from "@ravenlens/frontend";
@@ -340,11 +339,6 @@
                 },
                 timeoutMs: 6_500
             }
-            return;
-        }
-
-        if (!$editor) {
-            console.error("Cannot play because editor is undefined");
             return;
         }
 
