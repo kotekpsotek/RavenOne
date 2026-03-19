@@ -20,7 +20,7 @@ export const POST: RequestHandler = async ({ request, cookies, fetch }) => {
     
         // 3. Downloads MCP Servers specification from user middleware server
         const mcpConnectionInterface = new ConnectWithMCPMiddlewareCustomerServer(resultDownloadOp.credentials);
-        const mcpJSONStringSpec = await mcpConnectionInterface.downloadCurrentSpecificationJSONString();
+        const mcpJSONStringSpec = await mcpConnectionInterface.downloadCurrentMCPConfigJsonString();
         
         // 4. Return mcp server spec as json
         if (mcpJSONStringSpec) {
@@ -49,7 +49,7 @@ export const PUT: RequestHandler = async ({ request, cookies, fetch }) => {
     }
     
     // 2. Make credetnials download operation
-    const resultDownloadOp = await performDownloadLikeOperation(request, cookies, fetch);
+    const resultDownloadOp = await performDownloadLikeOperation(request, cookies, fetch, workspaceId);
     if (resultDownloadOp instanceof Response) {
         return resultDownloadOp;
     }

@@ -4,11 +4,21 @@ import { assumeStatus, isUserMCPConfigRouteAccessPermited } from "./common";
 import { DB_Models } from "@ravenlens/backend";
 import { ConnectWithMCPMiddlewareCustomerServer } from "@ravenlens/backend/mcp-interface";
 
-export async function performDownloadLikeOperation(request: Request, cookies: Cookies, fetchFn: typeof fetch) {
+export async function performDownloadLikeOperation(
+    request: Request,
+    cookies: Cookies,
+    fetchFn: typeof fetch = fetch,
+    workspaceIdFromBody?: string
+) {
     // 1. Verify request body
-    const { workspaceId } = await request.json() as {
-        workspaceId: string;
+    let workspaceId = workspaceIdFromBody;
+    if (!workspaceId) {
+        const body = await request.json() as {
+            workspaceId?: string;
+        };
+        workspaceId = body.workspaceId;
     }
+
     if (!workspaceId) {
         return new Response(null, { status: 400 });
     }
