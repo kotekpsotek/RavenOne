@@ -11,11 +11,25 @@
     import ReplacerExtension from "./tiptap-extensions/Replacer";
     import { CodeBlockExtension } from "./tiptap-extensions/codeblock/CodeBlock";
     import "./MaterialEditor.css"
+    import { alertState } from "$lib/utils/alert";
+    import { userProfile } from "$lib/stores/user";
+    import CategoriesSelection from "./CategoriesSelection.svelte";
+
+    type EditableHelpMaterial = HelpMaterialWithContent & {
+        category?: string;
+        categories?: string[];
+        author?: {
+            name?: string;
+            role?: string;
+            imgURL?: string;
+        };
+    };
 
     export let isEditionMode: boolean = false;
-	export let material: HelpMaterialWithContent | null = null;
+	export let material: EditableHelpMaterial | null = null;
     export let backHref = "/help";
 	export let backLabel = "All posts";
+    export let editModeCategoriesAvailable: string[] = [];
 
     const MAX_DESCRIPTION_CHARS = 300;
 
@@ -32,6 +46,7 @@
     // State
     let isImageUploadingToBackend: boolean = false;
     let isArticleImageHovering: boolean = false;
+    let selectedCategories: string[] = [];
 
     /**
      * TODO: 
@@ -135,6 +150,33 @@
 		return minutes;
 	}
 
+    function hasMeaningfulContent(value: string): boolean {
+        const plain = value
+            .replace(/<[^>]*>/g, " ")
+            .replace(/&nbsp;/g, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+
+        return plain.length > 0;
+    }
+
+    async function toDataUrl(file: File): Promise<string> {
+        return await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+                if (typeof reader.result === "string") {
+                    resolve(reader.result);
+                    return;
+                }
+
+                reject(new Error("Cannot read selected image"));
+            };
+
+            reader.onerror = () => reject(new Error("Cannot read selected image"));
+            reader.readAsDataURL(file);
+        });
+    }
+
     function onEditArticleTitle(ev: Event) {
         const target = ev.currentTarget as HTMLHeadingElement;
         const textContent = target.textContent;
@@ -158,8 +200,148 @@
         imageInput.click();
     }
 
-    async function onAddPost(ev: Event) {
+    async function onAddPost() {
+        if (!material) {
+            $alertState = {
+                alert: {
+                    type: "error",
+                    name: "Cannot publish material",
+                    description: "Material data is missing"
+                },
+                timeoutMs: 10_000
+            };
+            return;
+        }
 
+        const password = prompt("Publish password")?.trim();
+        if (!password) {
+            $alertState = {
+                alert: {
+                    type: "error",
+                    name: "Cannot publish material",
+                    description: "Input password has to be specified to publish help material"
+                },
+                timeoutMs: 10_000
+            };
+            return;
+        }
+
+        const title = material.title.trim();
+        const description = material.description.trim();
+        const content = $editor?.getHTML() ?? material.content ?? "";
+
+        if (!title || !description || !hasMeaningfulContent(content)) {
+            $alertState = {
+                alert: {
+                    type: "error",
+                    name: "Cannot publish material",
+                    description: "Title, description and article content are required"
+                },
+                timeoutMs: 10_000
+            };
+            return;
+        }
+
+        let fileBase64 = "";
+        const selectedImage = selectedFiles?.[0];
+        if (selectedImage) {
+            try {
+                fileBase64 = await toDataUrl(selectedImage);
+            } catch (err) {
+                $alertState = {
+                    alert: {
+                        type: "error",
+                        name: "Cannot publish material",
+                        description: "Selected image cannot be processed"
+                    },
+                    timeoutMs: 10_000
+                };
+                return;
+            }
+        }
+
+        const categories = selectedCategories.map((category) => category.trim()).filter(Boolean);
+
+        try {
+            const response = await fetch("/help-materials/add", {
+                method: "POST",
+                headers: {
+                    "content-type": "application/json"
+                },
+                body: JSON.stringify({
+                    ...material,
+                    title,
+                    description,
+                    content,
+                    categories,
+                    password,
+                    fileBase64,
+                    ...(authorName.trim()
+                        ? {
+                              author: {
+                                  name: authorName.trim(),
+                                  ...(authorRole.trim() ? { role: authorRole.trim() } : {}),
+                                  ...(authorAvatarUrl.trim() ? { imgURL: authorAvatarUrl.trim() } : {})
+                              }
+                          }
+                        : {})
+                })
+            });
+
+            const payload = (await response.json().catch(() => null)) as {
+                status?: boolean;
+                error?: string;
+                materialId?: string;
+                imgURL?: string;
+            } | null;
+
+            if (!response.ok || !payload?.status) {
+                $alertState = {
+                    alert: {
+                        type: "error",
+                        name: "Cannot publish material",
+                        description: payload?.error ?? "Publish request failed"
+                    },
+                    timeoutMs: 10_000
+                };
+                return;
+            }
+
+            material.id = payload.materialId ?? material.id;
+            material.imgURL = payload.imgURL ?? material.imgURL;
+            material.content = content;
+
+            $alertState = {
+                alert: {
+                    type: "success",
+                    name: "Material published",
+                    description: "Help material has been successfully published"
+                },
+                timeoutMs: 8_000
+            };
+        } catch (err) {
+            $alertState = {
+                alert: {
+                    type: "error",
+                    name: "Cannot publish material",
+                    description: "Unexpected error while publishing material"
+                },
+                timeoutMs: 10_000
+            };
+        }
+    }
+
+    function onEditoModeChooseAuthor(option: "me" | "ravenone") {
+        return () => {
+            if (option === "me") {
+                authorName = $userProfile?.name ?? "";
+                authorAvatarUrl = $userProfile?.profileImgURL ?? ""
+            }
+            else {
+                authorName = "RavenOne";
+                authorAvatarUrl = "";
+            }
+        }
     }
     
     async function handleArticleImageChange(ev: Event) {
@@ -297,6 +479,31 @@
     {/if}
 {/snippet}
 
+{#snippet AuthorOfArticle()}
+    <div class="flex gap-2 items-center">
+        <div class="avatar">
+            <div class="w-10 rounded-full ring ring-base-200 ring-offset-2 ring-offset-base-100">
+                {#if authorAvatarUrl}
+                    <img src={authorAvatarUrl} alt={authorName} />
+                {:else}
+                    <div class="w-full h-full bg-base-200 flex items-center justify-center text-base-content/70">
+                        <Icon icon="material-symbols:person" width="18" height="18" />
+                    </div>
+                {/if}
+            </div>
+        </div>
+        <div class="leading-tight">
+            <div class="text-sm text-base-content">
+                <span class="text-base-content/70">By</span>
+                <span class="font-medium"> {authorName}</span>
+            </div>
+            {#if authorRole}
+                <div class="text-xs text-base-content/60">{authorRole}</div>
+            {/if}
+        </div>
+    </div>
+{/snippet}
+
 <div class="w-full">
 	<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10">
 		<div class="mb-6 flex justify-between items-center">
@@ -383,26 +590,41 @@
 					</h1>
 
 					<div class="flex items-center gap-3 mb-6">
-						<div class="avatar">
-							<div class="w-10 rounded-full ring ring-base-200 ring-offset-2 ring-offset-base-100">
-								{#if authorAvatarUrl}
-									<img src={authorAvatarUrl} alt={authorName} />
-								{:else}
-									<div class="w-full h-full bg-base-200 flex items-center justify-center text-base-content/70">
-										<Icon icon="material-symbols:person" width="18" height="18" />
-									</div>
-								{/if}
-							</div>
-						</div>
-						<div class="leading-tight">
-							<div class="text-sm text-base-content">
-								<span class="text-base-content/70">By</span>
-								<span class="font-medium"> {authorName}</span>
-							</div>
-							{#if authorRole}
-								<div class="text-xs text-base-content/60">{authorRole}</div>
-							{/if}
-						</div>
+                        {#if isEditionMode && $userProfile}
+                            <details class="dropdown cursor-pointer">
+                                <summary class="">
+                                    {@render AuthorOfArticle()}
+                                </summary>
+                                <ul class="menu dropdown-content bg-base-100 rounded-box z-1 w-52 p-2 shadow-sm">
+                                    <li>
+                                        <button
+                                            on:click={onEditoModeChooseAuthor("ravenone")}
+                                        >
+                                            RavenOne
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <button
+                                            on:click={onEditoModeChooseAuthor("me")}
+                                        >
+                                            <div class="flex gap-2 items-center">
+                                                <img 
+                                                    class="rounded-full h-[30px] w-[30px]"
+                                                    src="{$userProfile.profileImgURL}"
+                                                    alt="{$userProfile.name}"
+                                                />
+                                                <p>
+                                                    {$userProfile.name}
+                                                    <sup class="font-semibold text-blue-500">You</sup>
+                                                </p>
+                                            </div>
+                                        </button>
+                                    </li>
+                                </ul>
+                            </details>
+                        {:else}
+                            {@render AuthorOfArticle()}
+                        {/if}
 
 						<!-- Share row (mobile) -->
                         {#if !isEditionMode}
@@ -464,6 +686,20 @@
                                 </fieldset>
                         </div>
                     {/if}
+
+                    <!-- Category selection from list of available categories or creation new category -->
+                    {#if isEditionMode}
+                        <div>
+                            <fieldset class="fieldset">
+                                <legend class="fieldset-legend">Article Categories</legend>
+                                <CategoriesSelection
+                                    {material}
+                                    {editModeCategoriesAvailable}
+                                    bind:selectedCategories
+                                />
+                            </fieldset>
+                        </div>
+                    {/if}
                     
                     {#if isEditionMode}
                         {@render ArticleImage()}
@@ -513,7 +749,7 @@
                                 data-editable={isEditionMode}
                             >
                                 <EditorContent 
-                                    editor={$editor}
+                                    editor={$editor!}
                                     class="material-editor"
                                 />
                             </div>

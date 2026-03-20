@@ -29,6 +29,7 @@
 
 <UI.Common.PageWrapper
     flexLayout="column"
+    additionalClass="overflow-y-auto"
 >
     <MaterialView
         material={material ?? demoMaterial}

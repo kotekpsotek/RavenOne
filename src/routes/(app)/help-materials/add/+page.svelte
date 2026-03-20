@@ -1,9 +1,10 @@
 <script lang="ts">
     import { UI } from "@ravenlens/frontend";
     import MaterialView from "./utils/Material.svelte";
+    import { page } from "$app/stores";
 </script>
 
-<UI.Common.PageWrapper>
+<UI.Common.PageWrapper additionalClass="overflow-y-auto">
     <MaterialView
         isEditionMode={true}
         material={{
@@ -18,5 +19,6 @@
         backLabel="All posts"
         authorName="RavenOne"
         authorRole=""
+        editModeCategoriesAvailable={$page.data.editModeCategoriesAvailable}
     />
 </UI.Common.PageWrapper>
