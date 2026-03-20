@@ -9,137 +9,59 @@
 
   let searchQuery = "";
 
-  // Raw materials with publication dates as ISO strings. We'll convert to Date and mark the top 3 newest as `isRecent`.
-  // FIXME: Replace with real data
-  const rawMaterials = [
-    {
-      title: "Getting Started Guide",
-      description:
-        "Step-by-step guide to set up your RavenLens account and workspace.",
-      imgURL: "https://picsum.photos/id/1015/640/360",
-      category: "getting-started",
-      publicationDate: "2025-12-15",
-    },
-    {
-      title: "Create Your First Project",
-      description:
-        "How to create a project, invite collaborators, and set initial tasks.",
-      imgURL: "https://picsum.photos/id/1016/640/360",
-      category: "getting-started",
-      publicationDate: "2025-12-01",
-    },
-    {
-      title: "Managing Tasks",
-      description:
-        "Tips for creating, assigning, and tracking tasks effectively.",
-      imgURL: "https://picsum.photos/id/1025/640/360",
-      category: "tasks",
-      publicationDate: "2025-11-20",
-    },
-    {
-      title: "Customizing Theme",
-      description: "Change light/dark mode, colors, and layout preferences.",
-      imgURL: "https://picsum.photos/id/1027/640/360",
-      category: "customization",
-      publicationDate: "2025-10-05",
-    },
-    {
-      title: "Account Security",
-      description:
-        "Update passwords, enable 2FA, and review security settings.",
-      imgURL: "https://picsum.photos/id/1035/640/360",
-      category: "faq",
-      publicationDate: "2025-09-12",
-    },
-    {
-      title: "Integrations Overview",
-      description:
-        "Connect Slack, Google Calendar, and other third-party apps.",
-      imgURL: "https://picsum.photos/id/1037/640/360",
-      category: "integrations",
-      publicationDate: "2025-08-22",
-    },
-    {
-      title: "Using Analytics",
-      description: "Access dashboards and reports to monitor project health.",
-      imgURL: "https://picsum.photos/id/1041/640/360",
-      category: "analytics",
-      publicationDate: "2025-11-02",
-    },
-    {
-      title: "Templates & Workflows",
-      description: "Use templates to speed up common project setups.",
-      imgURL: "https://picsum.photos/id/1052/640/360",
-      category: "templates",
-      publicationDate: "2025-07-30",
-    },
-    {
-      title: "Exporting Data",
-      description: "Export reports and project data in CSV or PDF formats.",
-      imgURL: "https://picsum.photos/id/1062/640/360",
-      category: "faq",
-      publicationDate: "2025-06-15",
-    },
-    {
-      title: "Troubleshooting & Support",
-      description: "Common issues and how to contact support or request help.",
-      imgURL: "https://picsum.photos/id/1069/640/360",
-      category: "faq",
-      publicationDate: "2025-05-10",
-    },
-  ];
+  export let data: {
+    helpMaterials: HelpMaterial[];
+    editModeCategoriesAvailable: string[];
+  };
 
   // Convert rawMaterials into typed HelpMaterial[] and mark the top-3 newest as `isRecent`
-  let helpMaterials: HelpMaterial[] = rawMaterials.map((r) => ({
-    ...r,
-    /** FIXME: Change to real help material*/
-    id: "test",
-    publicationDate: new Date(r.publicationDate),
-  }));
+  $: helpMaterials = (data.helpMaterials ?? []) as HelpMaterial[];
 
   // Determine cutoff date for "freshest" (top 3 newest) materials
-  const sortedByDate = [...helpMaterials].sort(
-    (a, b) => b.publicationDate.getTime() - a.publicationDate.getTime(),
+  $: sortedByDate = [...helpMaterials].sort(
+    (a, b) => (b.publicationDate?.getTime?.() ?? 0) - (a.publicationDate?.getTime?.() ?? 0),
   );
-  const recentCutoff =
+  $: recentCutoff =
     sortedByDate.length >= 3
       ? sortedByDate[2].publicationDate
       : (sortedByDate[sortedByDate.length - 1]?.publicationDate ?? new Date(0));
 
-  const groupCategories: { id: string; title: string; isDefault?: boolean }[] =
+  $: groupCategories =
     [
       { id: "recent", title: "Recent", isDefault: true },
-      { id: "getting-started", title: "Getting started" },
-      { id: "faq", title: "FAQ" },
+      ...(data.editModeCategoriesAvailable.map(cat => ({ id: cat, title: cat, isDefault: false })) ?? [])
     ];
 
   // Filter / Sorting / Grouping
   // default active group is the one marked `isDefault` in `groupCategories`
-  let activeGroupId: string =
-    groupCategories.find((g) => g.isDefault)?.id ?? "all";
+  let activeGroupId: string = "recent";
+  $: {
+     const defaultGroup = groupCategories.find((g) => g.isDefault);
+     if (defaultGroup && activeGroupId === "recent") activeGroupId = defaultGroup.id;
+  }
 
   // Compute prioritized list: items that match the active group appear first.
   $: prioritizedMaterials = (() => {
     if (!activeGroupId || activeGroupId === "all") {
       // Show freshest first across all materials
       return [...helpMaterials].sort(
-        (a, b) => b.publicationDate.getTime() - a.publicationDate.getTime(),
+        (a, b) => (b.publicationDate?.getTime?.() ?? 0) - (a.publicationDate?.getTime?.() ?? 0),
       );
     }
 
     if (activeGroupId === "recent") {
       // Show freshest first when 'Recent' group selected
       return [...helpMaterials].sort(
-        (a, b) => b.publicationDate.getTime() - a.publicationDate.getTime(),
+        (a, b) => (b.publicationDate?.getTime?.() ?? 0) - (a.publicationDate?.getTime?.() ?? 0),
       );
     }
 
     // For a specific category: prioritize matching category, then by publicationDate (newest first)
     return [...helpMaterials].sort((a, b) => {
-      const aPriority = a.category === activeGroupId ? 1 : 0;
-      const bPriority = b.category === activeGroupId ? 1 : 0;
+      const aPriority = a.categories?.includes(activeGroupId) ? 1 : 0;
+      const bPriority = b.categories?.includes(activeGroupId) ? 1 : 0;
       if (bPriority !== aPriority) return bPriority - aPriority;
-      return b.publicationDate.getTime() - a.publicationDate.getTime();
+      return (b.publicationDate?.getTime?.() ?? 0) - (a.publicationDate?.getTime?.() ?? 0);
     });
   })();
 
@@ -151,9 +73,40 @@
     if (id === "all") return helpMaterials.length;
     if (id === "recent")
       return helpMaterials.filter(
-        (m) => m.publicationDate.getTime() >= recentCutoff.getTime(),
+        (m) => (m.publicationDate?.getTime?.() ?? 0) >= (recentCutoff?.getTime?.() ?? 0),
       ).length;
-    return helpMaterials.filter((m) => m.category === id).length;
+    return helpMaterials.filter((m) => m.categories?.includes(id)).length;
+  }
+
+  function isMaterialInActiveGroup(material: HelpMaterial, groupId: string) {
+    if (!groupId || groupId === "all") return true;
+    if (groupId === "recent") {
+      return (material.publicationDate?.getTime?.() ?? 0) >= (recentCutoff?.getTime?.() ?? 0);
+    }
+
+    return material.categories?.includes(groupId) ?? false;
+  }
+
+  function matchesMaterialSearch(material: HelpMaterial, query: string) {
+    const searchableText = [material.title, material.description, ...(material.categories ?? [])]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+    return searchableText.includes(query);
+  }
+
+  let visibleMaterials: HelpMaterial[] = [];
+
+  $: {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+    visibleMaterials = normalizedQuery
+      ? prioritizedMaterials.filter(
+          (material) =>
+            isMaterialInActiveGroup(material, activeGroupId) &&
+            matchesMaterialSearch(material, normalizedQuery),
+        )
+      : prioritizedMaterials;
   }
 
   let searchBox: HTMLDivElement | null = null;
@@ -456,7 +409,7 @@
       id="help-materials"
       class="grid grid-cols-1 md:grid-cols-2 gap-y-6 gap-x-5 rounded-xl"
     >
-      {#each prioritizedMaterials as helpMaterial}
+      {#each visibleMaterials as helpMaterial (helpMaterial.id)}
         <button
           class="material-card bg-base-100 border border-base-200 rounded-lg overflow-hidden transition-all duration-150 cursor-pointer hover:scale-[1.015]"
           on:click={onOpenMaterial(helpMaterial)}
@@ -468,17 +421,17 @@
               alt={helpMaterial.title}
               class="w-full h-48 object-cover"
             />
-            {#if activeGroupId !== "all" && activeGroupId !== "recent" && helpMaterial.category === activeGroupId}
+            {#if activeGroupId !== "all" && activeGroupId !== "recent" && helpMaterial.categories?.includes(activeGroupId)}
               <span
                 class="absolute top-3 left-3 bg-primary text-primary-content text-xs px-2 py-1 rounded"
                 >{getGroupTitle(activeGroupId)}</span
               >
-            {:else if activeGroupId === "recent" && helpMaterial.publicationDate.getTime() >= recentCutoff.getTime()}
+            {:else if activeGroupId === "recent" && (helpMaterial.publicationDate?.getTime?.() ?? 0) >= (recentCutoff?.getTime?.() ?? 0)}
               <span
                 class="absolute top-3 left-3 bg-primary text-primary-content text-xs px-2 py-1 rounded"
                 >{getGroupTitle(activeGroupId)}</span
               >
-            {:else if activeGroupId === "all" && helpMaterial.publicationDate.getTime() >= recentCutoff.getTime()}
+            {:else if activeGroupId === "all" && (helpMaterial.publicationDate?.getTime?.() ?? 0) >= (recentCutoff?.getTime?.() ?? 0)}
               <span
                 class="absolute top-3 left-3 bg-primary text-primary-content text-xs px-2 py-1 rounded"
                 >Recent</span
@@ -493,6 +446,15 @@
             </p>
           </div>
         </button>
+      {:else}
+        <div class="col-span-full rounded-lg border border-dashed border-base-300 px-4 py-8 text-center text-sm text-base-content/60">
+          {#if searchQuery.trim()}
+            No materials matched "{searchQuery.trim()}" in {getGroupTitle(activeGroupId) ||
+              "this category"}.
+          {:else}
+            No materials available in {getGroupTitle(activeGroupId) || "this category"}.
+          {/if}
+        </div>
       {/each}
     </div>
   </div>

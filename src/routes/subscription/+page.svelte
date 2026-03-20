@@ -95,6 +95,11 @@
 			return;
 		}
 
+		if (plan.price.toLowerCase() === "custom") {
+			await goto("/subscription/contact-form");
+			return;
+		}
+
 		if (!plan.stripePlanId) {
 			if (plan.contactPath) {
 				window.location.assign(plan.contactPath);

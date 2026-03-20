@@ -1,7 +1,9 @@
 import type { ServerLoad } from '@sveltejs/kit';
 import type { HelpMaterialWithContent } from "@ravenlens/shared"
+import { DB_Models } from '@ravenlens/backend';
+import { error } from '@sveltejs/kit';
 
-export const load: ServerLoad = ({ params }) => {
+export const load: ServerLoad = async ({ params }) => {
     if (params.id === "test") {
         return {
             material: {
@@ -20,9 +22,17 @@ export const load: ServerLoad = ({ params }) => {
         }
     }
     else {
-        // TODO: Load real data
+        // Load real data
+        const realHelpMaterial = await DB_Models.Help.helpMaterialModel.findOne({
+            id: params.id
+        });
+
+        if (!realHelpMaterial) {
+            throw error(404);
+        }
+        
         return {
-            material: undefined
+            material: realHelpMaterial
         }
     }
 };
