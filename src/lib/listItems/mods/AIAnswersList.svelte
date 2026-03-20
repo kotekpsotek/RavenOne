@@ -5,7 +5,7 @@
     import { getPlayModeLabel } from "$lib/editorComponents/types/AIList";
     import { selectedFile } from "$lib/stores/files";
     import { hoveredListItemId } from "$lib/stores/hoveredListItem";
-    import { editorAIChat, SelectedAnswerFromChatContext, selectedChatAnswerIds, type SelectedTextRange } from "$lib/stores/rightSideStripeChat";
+    import { editorAIChat, SelectedAnswerFromChatContext, selectedChatAnswerIds } from "$lib/stores/aiRightSideChat"
     import { File } from "@ravenlens/shared";
     import { isSharedRoute } from "$lib/stores/share";
     import { canManageWorkspaceFiles, workspaceHasActiveSubscription, workspaceSubscriptionCheckInProgress } from "$lib/stores/subscription";
@@ -567,7 +567,7 @@
         }
     }
 
-    function createSelectedTextContextRange(selectedText: string): SelectedTextRange {
+    function createSelectedTextContextRange(selectedText: string) {
         const selectionBase = Date.now() + selectedContextSequence;
         selectedContextSequence += 1;
 

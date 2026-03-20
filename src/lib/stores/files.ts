@@ -9,7 +9,7 @@ import { collaborationInterface, entriesCollaborators, onHandleJoinFile, onHandl
 import { isSharedRoute } from "./share";
 import { FilePlayConnections, playInFile } from "$lib/play/connections";
 import { playableDocumentsAndListsWithPoints } from "./playModeStore";
-import { selectedChatAnswerIds } from "./rightSideStripeChat";
+import { selectedChatAnswerIds } from "./aiRightSideChat";
 
 /** Entries */
 export const entriesList = (() => {

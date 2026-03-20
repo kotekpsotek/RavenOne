@@ -1,13 +1,10 @@
 <script lang="ts">
     import Icon from "@iconify/svelte";
-    import {
-        editorAIChat,
-        rightSideStripeChat,
-        rightSideStripeChatLayout
-    } from "$lib/stores/rightSideStripeChat";
     import Chat from "./Chat.svelte";
     import ChatsList from "./ChatsList.svelte";
     import ChatTabs from "./ChatTabs.svelte";
+    import { chatLayoutStore } from "./config";
+    import { editorAIChat, rightSideStripeChat } from "$lib/stores/aiRightSideChat";
 
     let screenWidth = $state(typeof window !== "undefined" ? window.innerWidth : 1440);
     /** Shows chats-list or the list with chat bubbles */
@@ -20,8 +17,8 @@
     let resizeStartSize = $state(0);
     
 
-    let chatStripeWidth = $derived($rightSideStripeChatLayout.width);
-    let chatStripeHeight = $derived($rightSideStripeChatLayout.height);
+    let chatStripeWidth = $derived($chatLayoutStore.width);
+    let chatStripeHeight = $derived($chatLayoutStore.height);
 
     function onWindowResize() {
         screenWidth = window.innerWidth;
@@ -57,12 +54,12 @@
 
         if (resizeAxis === "x") {
             const deltaX = resizeStartPointer - event.clientX;
-            rightSideStripeChatLayout.updateWidth(resizeStartSize + deltaX);
+            chatLayoutStore.updateWidth(resizeStartSize + deltaX);
             return;
         }
 
         const deltaY = resizeStartPointer - event.clientY;
-        rightSideStripeChatLayout.updateHeight(resizeStartSize + deltaY);
+        chatLayoutStore.updateHeight(resizeStartSize + deltaY);
     }
 
     function onResizeEnd() {

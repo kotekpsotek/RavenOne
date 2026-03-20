@@ -1,6 +1,6 @@
 <script lang="ts">
 	import Icon from "@iconify/svelte";
-	import { editorAIChat, rightSideStripeChat } from "$lib/stores/rightSideStripeChat";
+	import { editorAIChat, rightSideStripeChat } from "$lib/stores/aiRightSideChat"
 
 	type TabDropPosition = "before" | "after";
 
@@ -280,7 +280,7 @@
 				ondragend={onTabDragEnd}
 				onclick={() => onSelectChat(chat.id)}
 			>
-				<span class="truncate max-w-[120px]">{chat.title}</span>
+				<span class="truncate max-w-[120px]">{chat.chatName}</span>
 
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -342,7 +342,7 @@
 										class="btn btn-ghost btn-sm w-full justify-start {chat.id === $rightSideStripeChat.selectedChatId ? 'btn-active' : ''}"
 										onclick={() => onSelectChatFromDropdown(chat.id)}
 									>
-										<span class="truncate">{chat.title}</span>
+										<span class="truncate">{chat.chatName}</span>
 									</button>
 								{/each}
 							{:else}

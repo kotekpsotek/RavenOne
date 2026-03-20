@@ -3,7 +3,7 @@
 	import {
 		rightSideStripeChat,
 		type AIChatThread
-	} from "$lib/stores/rightSideStripeChat";
+	} from "$lib/stores/aiRightSideChat"
 
 	type ChatGroup = {
 		key: string;
@@ -25,7 +25,7 @@
 
 	let sortedChats = $derived(
 		[...$rightSideStripeChat.chats].sort((chatA, chatB) => {
-			return getDateFromInput(chatB.createdAt).getTime() - getDateFromInput(chatA.createdAt).getTime();
+			return (chatA.createdAt instanceof Date ? chatA.createdAt : getDateFromInput(chatA.createdAt)).getTime() - (chatA.createdAt instanceof Date ? chatA.createdAt : getDateFromInput(chatA.createdAt)).getTime();
 		})
 	);
 
@@ -74,7 +74,7 @@
 		const orderedGroups: ChatGroup[] = [];
 
 		for (const chat of chats) {
-			const createdDate = getDateFromInput(chat.createdAt);
+			const createdDate = (chat.createdAt instanceof Date ? chat.createdAt : getDateFromInput(chat.createdAt));
 			const dayStart = getDayStart(createdDate);
 			const groupKey = toDayKey(dayStart);
 			const existingGroup = groupedByKey[groupKey];
@@ -126,8 +126,8 @@
 								onclick={() => onSelectChat(chat.id)}
 							>
 								<div class="flex items-center justify-between gap-2">
-									<span class="truncate text-sm font-medium">{chat.title}</span>
-									<span class="shrink-0 text-xs text-base-content/60">{formatChatTime(chat.createdAt)}</span>
+									<span class="truncate text-sm font-medium">{chat.chatName}</span>
+									<span class="shrink-0 text-xs text-base-content/60">{formatChatTime(chat.createdAt.toString())}</span>
 								</div>
 							</button>
 						{/each}

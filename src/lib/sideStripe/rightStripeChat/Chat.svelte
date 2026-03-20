@@ -1,28 +1,25 @@
 <script lang="ts">
     import ModelsListSelection from "$lib/ai/ModelsListSelection.svelte";
+    import { selectedModelKey } from "$lib/ai/model";
+    import { avaiableModels } from "$lib/config/models";
     import McpServerSelectionModal from "$lib/mcp/components/McpServerSelectionModal.svelte";
     import ContextSelectionModal from "$lib/modals/ContextSelectionModal.svelte";
-    import { selectedFile } from "$lib/stores/files";
     import {
-        activeChat,
-        displayContextForMessages,
-        editorAIChat,
-        rightSideStripeChat,
-        rightSideStripeChatLayout,
         SelectedAnswerFromChatContext,
-        selectedChatAnswerIds,
-        type AIChatBubble,
-        type AIChatDecision,
-        type AIChatMode,
-        type AIChatResponse,
-        type MermaidDiagramType
-    } from "$lib/stores/rightSideStripeChat";
-    import { isFileListSideStripeSelected, isPointsStripeOpen } from "$lib/stores/selectedSideStripes";
+        chatStripeTabsOfWorkspaceFile,
+        isLoadedChatsOfWorkspaceFileLoading,
+        selectedChatAnswerIds
+    } from "$lib/stores/aiRightSideChat";
+    import { selectedFile, selectedModel } from "$lib/stores/files";
+    import { isPointsStripeOpen } from "$lib/stores/selectedSideStripes";
     import { selectedWorkspace } from "$lib/stores/workspace";
     import { fetchAuthenticated } from "$lib/utils/fetch";
     import Icon from "@iconify/svelte";
     import { File } from "@ravenlens/shared";
-    import { get as getIndexedDBValue, set as setIndexedDBValue } from "idb-keyval";
+    import type { AI } from "@ravenlens/shared";
+    import type { AIChatDecision, AIChatMode, ChatTab } from "@ravenlens/shared/chat-ai/frontend";
+    import { CHAT_MODES, chatLayoutStore as rightSideStripeChatLayout, type ChatModeValue } from "./config";
+    import { derived, get, writable } from "svelte/store";
     import { onMount } from "svelte";
 
     let {
@@ -42,28 +39,257 @@
     let chatHistoryElement = $state<HTMLDivElement | null>(null);
 
     type ContextSpecificationPayload = File.FileAI.ContextSpecificationPayload;
+    interface SelectedTextRange {
+        id: string;
+        from: number;
+        to: number;
+        html: string;
+    }
+    interface ChatResponse {
+        id: string;
+        applyTo: "chat" | "selection";
+        answerHTML: string;
+        publishedDate: string;
+        decision?: AIChatDecision;
+    }
+    interface ChatBubble {
+        id: string;
+        createdAt: string;
+        mode: AIChatMode;
+        userPrompt?: string;
+        userPromptHTML?: string;
+        selectedTextForPrompt?: SelectedTextRange[];
+        aiResponse: ChatResponse[];
+        decision?: AIChatDecision;
+    }
+    type ChatTabWithBubbles = ChatTab & {
+        bubbles?: ChatBubble[];
+    };
+    type AppendedPromptBubbleResult = {
+        chatId: string;
+        bubbleId: string;
+    };
+    type EditorAIChatState = {
+        textFieldMode: AIChatMode;
+        selectedText?: {
+            ranges: SelectedTextRange[];
+        };
+    };
 
     interface MCPServersSpec {
-        mcpServers: Record<string, any>;
+        mcpServers: Record<string, unknown>;
     }
+
+    const activeChat = derived(chatStripeTabsOfWorkspaceFile, (chatTabs) => {
+        return chatTabs.find(chatTab => chatTab.isActive) ?? chatTabs[0];
+    });
+
+    const displayContextForMessages = writable<string[]>([]);
+    const selectedMCPServerNames = writable<string[]>([]);
+
+    function getChatBubbles(chatTab: ChatTab): ChatBubble[] {
+        const chatTabWithBubbles = chatTab as ChatTabWithBubbles;
+        if (!Array.isArray(chatTabWithBubbles.bubbles)) {
+            return [];
+        }
+
+        return [...chatTabWithBubbles.bubbles];
+    }
+
+    function updateChatTabById(chatId: string, updater: (chatTab: ChatTab) => ChatTab): boolean {
+        let wasUpdated = false;
+
+        chatStripeTabsOfWorkspaceFile.update((chatTabs) => {
+            return chatTabs.map((chatTab) => {
+                if (chatTab.id !== chatId) {
+                    return chatTab;
+                }
+
+                wasUpdated = true;
+                return updater(chatTab);
+            });
+        });
+
+        return wasUpdated;
+    }
+
+    function updateActiveChatTab(updater: (chatTab: ChatTab) => ChatTab): boolean {
+        const activeChatLocal = get(activeChat);
+        if (!activeChatLocal) {
+            return false;
+        }
+
+        return updateChatTabById(activeChatLocal.id, updater);
+    }
+
+    const rightSideStripeChat = (() => {
+        const { ...all } = writable({
+            isLoading: false
+        });
+
+        return {
+            ...all,
+            setLoading(isLoading: boolean) {
+                all.set({ isLoading });
+            },
+            appendPromptBubble(params: {
+                prompt: string;
+                promptHTML: string;
+                mode: AIChatMode;
+                selectedTextForPrompt: SelectedTextRange[];
+            }): AppendedPromptBubbleResult | undefined {
+                const activeChatLocal = get(activeChat);
+                if (!activeChatLocal) {
+                    return undefined;
+                }
+
+                const nowIso = new Date().toISOString();
+                const bubbleId = crypto.randomUUID();
+                const bubbleToAppend = {
+                    id: bubbleId,
+                    createdAt: nowIso,
+                    mode: params.mode,
+                    userPrompt: params.prompt,
+                    userPromptHTML: params.promptHTML,
+                    selectedTextForPrompt: [...params.selectedTextForPrompt],
+                    aiResponse: []
+                } as ChatBubble;
+
+                const wasUpdated = updateChatTabById(activeChatLocal.id, (chatTab) => {
+                    return {
+                        ...chatTab,
+                        bubbles: [...getChatBubbles(chatTab), bubbleToAppend]
+                    };
+                });
+
+                if (!wasUpdated) {
+                    return undefined;
+                }
+
+                return {
+                    chatId: activeChatLocal.id,
+                    bubbleId
+                };
+            },
+            applyResponses(chatId: string, bubbleId: string, responses: ChatResponse[]) {
+                updateChatTabById(chatId, (chatTab) => {
+                    return {
+                        ...chatTab,
+                        bubbles: getChatBubbles(chatTab).map((bubble) => {
+                            if (bubble.id !== bubbleId) {
+                                return bubble;
+                            }
+
+                            return {
+                                ...bubble,
+                                aiResponse: [...responses]
+                            } as ChatBubble;
+                        })
+                    };
+                });
+            },
+            setResponseDecision(chatId: string, chatBubbleId: string, aiResponseId: string, decision: AIChatDecision) {
+                updateChatTabById(chatId, (chatTab) => {
+                    return {
+                        ...chatTab,
+                        bubbles: getChatBubbles(chatTab).map((bubble) => {
+                            if (bubble.id !== chatBubbleId) {
+                                return bubble;
+                            }
+
+                            return {
+                                ...bubble,
+                                aiResponse: bubble.aiResponse.map((response: ChatResponse) => {
+                                    if (response.id !== aiResponseId) {
+                                        return response;
+                                    }
+
+                                    return {
+                                        ...response,
+                                        decision
+                                    };
+                                })
+                            } as ChatBubble;
+                        })
+                    };
+                });
+            },
+            setBubbleDecision(chatId: string, chatBubbleId: string, decision: AIChatDecision) {
+                updateChatTabById(chatId, (chatTab) => {
+                    return {
+                        ...chatTab,
+                        bubbles: getChatBubbles(chatTab).map((bubble) => {
+                            if (bubble.id !== chatBubbleId) {
+                                return bubble;
+                            }
+
+                            return {
+                                ...bubble,
+                                decision
+                            } as ChatBubble;
+                        })
+                    };
+                });
+            }
+        };
+    })();
+
+    const editorAIChat = (() => {
+        const { ...all } = writable<EditorAIChatState>({
+            textFieldMode: "regular-ask",
+            selectedText: {
+                ranges: []
+            }
+        });
+
+        return {
+            ...all,
+            setTextFieldMode(mode: AIChatMode, syncWithActiveTab: boolean = true) {
+                all.update((state) => ({
+                    ...state,
+                    textFieldMode: mode
+                }));
+
+                if (!syncWithActiveTab) {
+                    return;
+                }
+
+                updateActiveChatTab((chatTab) => ({
+                    ...chatTab,
+                    selectedMode: mode
+                }));
+            },
+            removeSelectedText(from: number, to: number) {
+                all.update((state) => ({
+                    ...state,
+                    selectedText: {
+                        ranges: (state.selectedText?.ranges ?? []).filter((range) => {
+                            return range.from !== from || range.to !== to;
+                        })
+                    }
+                }));
+            },
+            clearSelectedText() {
+                all.update((state) => ({
+                    ...state,
+                    selectedText: {
+                        ranges: []
+                    }
+                }));
+            },
+            getTextFieldModeTranslation(mode: AIChatMode): string {
+                return get(CHAT_MODES)[mode]?.modeName ?? mode;
+            }
+        };
+    })();
+
     let downloadMCPServersSpecification = $state<MCPServersSpec>({ mcpServers: {} });
     
     let isMCPServersSelectionOpen = $state(false);
     let isContextSelectionModalOpen = $state(false);
     let isMCPSpecificationAvailableForWorkspace = $derived(getMCPServersList(downloadMCPServersSpecification).length > 0)
     let selectedFileContextPayload = $state<ContextSpecificationPayload>(createEmptyContextPayload());
-    let contextModalSelectedFileId = $state<string | null>(null);
-    const selectedFileContextCache: Record<string, ContextSpecificationPayload> = {};
-
-    function getStorageKeyName(fileId: string) {
-        const storageKeyName = `mcpServers:${fileId}`;
-        return storageKeyName;
-    }
-
-    function getContextStorageKeyName(fileId: string) {
-        const storageKeyName = `chatContext:${fileId}`;
-        return storageKeyName;
-    }
+    let contextModalSelectedChatId = $state<string | null>(null);
 
     function createEmptyContextPayload(): ContextSpecificationPayload {
         return {
@@ -71,6 +297,61 @@
             editorFiles: [],
             networkUrls: []
         };
+    }
+
+    function cloneModelForTab(model: AI.RavenLensAvaiableAIModel | undefined): ChatTab["selectedModel"] {
+        if (!model) {
+            return undefined;
+        }
+
+        return {
+            model: model.model,
+            provider: model.provider
+        };
+    }
+
+    function isSameTabModel(
+        left: ChatTab["selectedModel"],
+        right: ChatTab["selectedModel"]
+    ): boolean {
+        if (!left && !right) {
+            return true;
+        }
+
+        if (!left || !right) {
+            return false;
+        }
+
+        return left.model === right.model && left.provider === right.provider;
+    }
+
+    function toContextPayloadFromTab(chatTab: ChatTab): ContextSpecificationPayload {
+        return {
+            desktopFiles: Array.isArray(chatTab.selectedContext?.desktopFiles)
+                ? [...chatTab.selectedContext.desktopFiles]
+                : [],
+            editorFiles: Array.isArray(chatTab.selectedContext?.editorFiles)
+                ? [...chatTab.selectedContext.editorFiles]
+                : [],
+            networkUrls: Array.isArray(chatTab.selectedContext?.networkUrls)
+                ? [...chatTab.selectedContext.networkUrls]
+                : []
+        };
+    }
+
+    function toTabContextPayload(chatTab: ChatTab, payload: ContextSpecificationPayload): ChatTab["selectedContext"] {
+        return {
+            desktopFiles: [...payload.desktopFiles],
+            editorFiles: [...payload.editorFiles],
+            networkUrls: [...payload.networkUrls],
+            aiAnswers: Array.isArray(chatTab.selectedContext?.aiAnswers)
+                ? [...chatTab.selectedContext.aiAnswers]
+                : []
+        };
+    }
+
+    function isContextPayloadEqual(left: ContextSpecificationPayload, right: ContextSpecificationPayload): boolean {
+        return JSON.stringify(left) === JSON.stringify(right);
     }
 
     function cloneContextPayload(payload: ContextSpecificationPayload): ContextSpecificationPayload {
@@ -81,232 +362,134 @@
         };
     }
 
-    function isContextSpecificationPayload(value: unknown): value is ContextSpecificationPayload {
-        return Boolean(
-            value
-            && typeof value === "object"
-            && Array.isArray((value as ContextSpecificationPayload).desktopFiles)
-            && Array.isArray((value as ContextSpecificationPayload).editorFiles)
-            && Array.isArray((value as ContextSpecificationPayload).networkUrls)
-        );
-    }
-
-    function getCachedContextPayload(fileId: string): ContextSpecificationPayload | null {
-        const cachedContextPayload = selectedFileContextCache[fileId];
-        if (!cachedContextPayload) {
-            return null;
-        }
-
-        return cloneContextPayload(cachedContextPayload);
-    }
-
-    function setCachedContextPayload(fileId: string, contextPayload: ContextSpecificationPayload) {
-        selectedFileContextCache[fileId] = cloneContextPayload(contextPayload);
-    }
-
-    type StoreSubscriber<T> = (value: T) => void;
-
-    function createWritableStore<T>(initialValue: T) {
-        let currentValue = initialValue;
-        let subscribers: StoreSubscriber<T>[] = [];
-
-        return {
-            subscribe(subscriber: StoreSubscriber<T>) {
-                subscriber(currentValue);
-                subscribers = [...subscribers, subscriber];
-
-                return () => {
-                    subscribers = subscribers.filter((existingSubscriber) => existingSubscriber !== subscriber);
-                };
-            },
-            set(nextValue: T) {
-                currentValue = nextValue;
-                subscribers.forEach((subscriber) => subscriber(nextValue));
-            },
-            update(updater: (value: T) => T) {
-                const nextValue = updater(currentValue);
-                currentValue = nextValue;
-                subscribers.forEach((subscriber) => subscriber(nextValue));
-            },
-            getValue() {
-                return currentValue;
-            }
-        }
-    }
-
     function normalizeSelectedMCPServerNames(serverNames: string[], availableMCPServers: string[]): string[] {
-        return serverNames.filter((serverName, index) => {
-            return availableMCPServers.includes(serverName) && serverNames.indexOf(serverName) === index;
-        });
+        const normalizedServerNames = serverNames
+            .map(serverName => serverName.trim())
+            .filter(serverName => serverName.length > 0)
+            .filter(serverName => availableMCPServers.includes(serverName));
+
+        return [...new Set(normalizedServerNames)];
     }
 
     function areStringArraysEqual(left: string[], right: string[]): boolean {
         return left.length === right.length && left.every((item, itemIndex) => item === right[itemIndex]);
     }
 
-    async function readSelectedMCPServerNamesFromIndexedDB(fileId: string): Promise<string[]> {
-        if (typeof window === "undefined") {
-            return [];
-        }
-
-        try {
-            const selectedServerNames = await getIndexedDBValue(getStorageKeyName(fileId));
-            if (!Array.isArray(selectedServerNames)) {
-                return [];
-            }
-
-            return selectedServerNames.filter((selectedServer): selectedServer is string => typeof selectedServer === "string");
-        }
-        catch (err) {
-            console.error("Error when reading selected MCP servers from IndexedDB", err);
-            return [];
-        }
-    }
-
-    async function saveSelectedMCPServerNamesToIndexedDB(fileId: string, serverNames: string[]): Promise<void> {
-        if (typeof window === "undefined") {
-            return;
-        }
-
-        try {
-            await setIndexedDBValue(getStorageKeyName(fileId), serverNames);
-        }
-        catch (err) {
-            console.error("Error when writing selected MCP servers to IndexedDB", err);
-        }
-    }
-
-    async function readSelectedContextFromIndexedDB(fileId: string): Promise<ContextSpecificationPayload> {
-        if (typeof window === "undefined") {
-            return createEmptyContextPayload();
-        }
-
-        try {
-            const selectedContext = await getIndexedDBValue(getContextStorageKeyName(fileId));
-            if (!isContextSpecificationPayload(selectedContext)) {
-                return createEmptyContextPayload();
-            }
-
-            return cloneContextPayload(selectedContext);
-        }
-        catch (err) {
-            console.error("Error when reading selected context from IndexedDB", err);
-            return createEmptyContextPayload();
-        }
-    }
-
-    async function saveSelectedContextToIndexedDB(fileId: string, contextPayload: ContextSpecificationPayload): Promise<void> {
-        if (typeof window === "undefined") {
-            return;
-        }
-
-        try {
-            await setIndexedDBValue(getContextStorageKeyName(fileId), cloneContextPayload(contextPayload));
-        }
-        catch (err) {
-            console.error("Error when writing selected context to IndexedDB", err);
-        }
-    }
-
-    const selectedMCPServerNames = (() => {
-        const selectedMCPServersValues = createWritableStore<string[]>([]);
-        let selectedMCPServersSyncId = 0;
-
-        const setSelectedMCPServerNames = (serverNames: string[], shouldSaveToIndexedDB: boolean) => {
-            const availableMCPServers = getMCPServersList(downloadMCPServersSpecification);
-            const normalizedServerNames = normalizeSelectedMCPServerNames(serverNames, availableMCPServers);
-            selectedMCPServersValues.set(normalizedServerNames);
-
-            if (!shouldSaveToIndexedDB) {
-                return;
-            }
-
-            const selectedFileId = $selectedFile?.id;
-            if (!selectedFileId) {
-                return;
-            }
-
-            void saveSelectedMCPServerNamesToIndexedDB(selectedFileId, normalizedServerNames);
-        };
-
-        $effect(() => {
-            const selectedFileId = $selectedFile?.id;
-            const availableMCPServers = getMCPServersList(downloadMCPServersSpecification);
-
-            selectedMCPServersSyncId += 1;
-            const currentSyncId = selectedMCPServersSyncId;
-
-            if (!selectedFileId) {
-                selectedMCPServersValues.set([]);
-                return;
-            }
-
-            void (async () => {
-                const downloadedServerNames = await readSelectedMCPServerNamesFromIndexedDB(selectedFileId);
-                if (currentSyncId !== selectedMCPServersSyncId) {
-                    return;
-                }
-
-                const normalizedServerNames = normalizeSelectedMCPServerNames(downloadedServerNames, availableMCPServers);
-                selectedMCPServersValues.set(normalizedServerNames);
-
-                if (!areStringArraysEqual(downloadedServerNames, normalizedServerNames)) {
-                    await saveSelectedMCPServerNamesToIndexedDB(selectedFileId, normalizedServerNames);
-                }
-            })();
-        });
-
-        return {
-            subscribe: selectedMCPServersValues.subscribe,
-            set(serverNames: string[]) {
-                setSelectedMCPServerNames(serverNames, true);
-            },
-            update(updater: (serverNames: string[]) => string[]) {
-                const nextServerNames = updater(selectedMCPServersValues.getValue());
-                setSelectedMCPServerNames(nextServerNames, true);
-            }
-        }
-    })();
-
-    let selectedFileContextSyncId = 0;
-
     $effect(() => {
-        const selectedFileId = $selectedFile?.id;
-
-        selectedFileContextSyncId += 1;
-        const currentSyncId = selectedFileContextSyncId;
-
-        if (isContextSelectionModalOpen && contextModalSelectedFileId && selectedFileId !== contextModalSelectedFileId) {
-            isContextSelectionModalOpen = false;
-            contextModalSelectedFileId = null;
-        }
-
-        if (!selectedFileId) {
-            selectedFileContextPayload = createEmptyContextPayload();
-            return;
-        }
-
-        const cachedContextPayload = getCachedContextPayload(selectedFileId);
-        if (cachedContextPayload) {
-            selectedFileContextPayload = cachedContextPayload;
-            return;
-        }
-
-        // Prevent context from one file being displayed for another file while async load is pending.
-        selectedFileContextPayload = createEmptyContextPayload();
-
-        void (async () => {
-            const downloadedContextPayload = await readSelectedContextFromIndexedDB(selectedFileId);
-            if (currentSyncId !== selectedFileContextSyncId) {
-                return;
-            }
-
-            setCachedContextPayload(selectedFileId, downloadedContextPayload);
-            selectedFileContextPayload = cloneContextPayload(downloadedContextPayload);
-        })();
+        rightSideStripeChat.setLoading($isLoadedChatsOfWorkspaceFileLoading);
     });
 
-    let chatBubblesList = $derived($activeChat?.bubbles ?? []);
+    $effect(() => {
+        const activeChatLocal = $activeChat;
+
+        if (isContextSelectionModalOpen && contextModalSelectedChatId && activeChatLocal?.id !== contextModalSelectedChatId) {
+            isContextSelectionModalOpen = false;
+            contextModalSelectedChatId = null;
+        }
+
+        if (!activeChatLocal) {
+            selectedFileContextPayload = createEmptyContextPayload();
+            selectedMCPServerNames.set([]);
+            editorAIChat.setTextFieldMode("regular-ask", false);
+            return;
+        }
+
+        if ($editorAIChat.textFieldMode !== activeChatLocal.selectedMode) {
+            editorAIChat.setTextFieldMode(activeChatLocal.selectedMode, false);
+        }
+
+        const contextPayloadFromActiveChat = toContextPayloadFromTab(activeChatLocal);
+        if (!isContextPayloadEqual(selectedFileContextPayload, contextPayloadFromActiveChat)) {
+            selectedFileContextPayload = contextPayloadFromActiveChat;
+        }
+
+        const activeMCPServerNames = normalizeSelectedMCPServerNames(
+            activeChatLocal.selectedMCPServers,
+            getMCPServersList(downloadMCPServersSpecification)
+        );
+        if (!areStringArraysEqual($selectedMCPServerNames, activeMCPServerNames)) {
+            selectedMCPServerNames.set(activeMCPServerNames);
+        }
+
+        if (activeChatLocal.selectedModel) {
+            const modelFromSelection = avaiableModels.find((model) => {
+                return model.model === activeChatLocal.selectedModel?.model
+                    && model.provider === activeChatLocal.selectedModel?.provider;
+            }) ?? avaiableModels.find((model) => model.model === activeChatLocal.selectedModel?.model);
+
+            if (modelFromSelection) {
+                if (!isSameTabModel(cloneModelForTab($selectedModel), cloneModelForTab(modelFromSelection))) {
+                    selectedModel.set(modelFromSelection);
+                }
+
+                if ($selectedModelKey !== modelFromSelection.model) {
+                    selectedModelKey.set(modelFromSelection.model);
+                }
+            }
+        }
+    });
+
+    $effect(() => {
+        const activeChatLocal = $activeChat;
+        const selectedModelLocal = $selectedModel;
+        if (!activeChatLocal || !selectedModelLocal) {
+            return;
+        }
+
+        const modelForTab = cloneModelForTab(selectedModelLocal);
+        if (isSameTabModel(activeChatLocal.selectedModel, modelForTab)) {
+            return;
+        }
+
+        updateActiveChatTab((chatTab) => ({
+            ...chatTab,
+            selectedModel: modelForTab
+        }));
+    });
+
+    $effect(() => {
+        const activeChatLocal = $activeChat;
+        const selectedModelKeyLocal = $selectedModelKey;
+        if (!activeChatLocal || !selectedModelKeyLocal) {
+            return;
+        }
+
+        const modelFromKey = avaiableModels.find((model) => model.model === selectedModelKeyLocal);
+        if (!modelFromKey) {
+            return;
+        }
+
+        const modelForTab = cloneModelForTab(modelFromKey);
+        if (isSameTabModel(activeChatLocal.selectedModel, modelForTab)) {
+            return;
+        }
+
+        updateActiveChatTab((chatTab) => ({
+            ...chatTab,
+            selectedModel: modelForTab
+        }));
+    });
+
+    $effect(() => {
+        const selectedServerNames = $selectedMCPServerNames;
+        const activeChatLocal = $activeChat;
+        const availableMCPServers = getMCPServersList(downloadMCPServersSpecification);
+        if (!activeChatLocal) {
+            return;
+        }
+
+        const normalizedServerNames = normalizeSelectedMCPServerNames(selectedServerNames, availableMCPServers);
+        if (areStringArraysEqual(activeChatLocal.selectedMCPServers, normalizedServerNames)) {
+            return;
+        }
+
+        updateActiveChatTab((chatTab) => ({
+            ...chatTab,
+            selectedMCPServers: normalizedServerNames
+        }));
+    });
+
+    let chatBubblesList = $derived($activeChat ? getChatBubbles($activeChat) : []);
     let isMessagingActive = $derived(Boolean($selectedFile && !$rightSideStripeChat.isLoading && $rightSideStripeChatLayout.isOpen));
     
     // Helpers
@@ -339,7 +522,7 @@
         return editorAIChat.getTextFieldModeTranslation(mode);
     }
 
-    function getGeneratingTime(chatBubble: AIChatBubble): string {
+    function getGeneratingTime(chatBubble: ChatBubble): string {
         const timeDeltaMs = Date.now() - new Date(chatBubble.createdAt).getTime();
         return `${Math.max(0, timeDeltaMs / 1000).toFixed(1)}s`;
     }
@@ -399,11 +582,11 @@
         isModeSelectingTrayOpen = false;
     }
 
-    function hasChatIndependentDecision(chatBubble: AIChatBubble): boolean {
-        return chatBubble.aiResponse.some((response) => Boolean(response.decision));
+    function hasChatIndependentDecision(chatBubble: ChatBubble): boolean {
+        return chatBubble.aiResponse.some((response: ChatResponse) => Boolean(response.decision));
     }
 
-    function getAboveBubbleStateColor(chatBubble: AIChatBubble): string {
+    function getAboveBubbleStateColor(chatBubble: ChatBubble): string {
         if (chatBubble.decision === "accepted") {
             return "border-success text-success";
         }
@@ -426,10 +609,10 @@
 
         rightSideStripeChat.setResponseDecision($activeChat.id, chatBubbleId, aiResponseId, decision);
 
-        const doesAllResponsesHaveDecision = $activeChat.bubbles
+        const doesAllResponsesHaveDecision = getChatBubbles($activeChat)
             .find((bubble) => bubble.id === chatBubbleId)
             ?.aiResponse
-            .every((response) => response.id === aiResponseId ? Boolean(decision) : Boolean(response.decision));
+            .every((response: ChatResponse) => response.id === aiResponseId ? Boolean(decision) : Boolean(response.decision));
 
         if (doesAllResponsesHaveDecision) {
             rightSideStripeChat.setBubbleDecision($activeChat.id, chatBubbleId, decision);
@@ -441,7 +624,7 @@
         textContent = target.innerText;
     }
 
-    function buildMockResponse(prompt: string, mode: AIChatMode): AIChatResponse[] {
+    function buildMockResponse(prompt: string, mode: AIChatMode): ChatResponse[] {
         const now = new Date().toISOString();
         const escapedPrompt = escapeHtml(prompt || "context only prompt");
 
@@ -451,7 +634,7 @@
                 applyTo: mode === "regular-ask" ? "chat" : "selection",
                 answerHTML: `<p><strong>Mode:</strong> ${escapeHtml(getTextFieldModeName(mode))}</p><p>Generated response for: ${escapedPrompt}</p>`,
                 publishedDate: now
-            }
+            } as ChatResponse
         ];
     }
 
@@ -499,44 +682,30 @@
     }
 
     async function onContextSelection() {
-        const selectedFileId = $selectedFile?.id;
-        if (!selectedFileId) {
+        const activeChatLocal = $activeChat;
+        if (!activeChatLocal) {
             return;
         }
 
-        const cachedContextPayload = getCachedContextPayload(selectedFileId);
-        if (cachedContextPayload) {
-            selectedFileContextPayload = cachedContextPayload;
-        }
-        else {
-            const downloadedContextPayload = await readSelectedContextFromIndexedDB(selectedFileId);
-            if ($selectedFile?.id !== selectedFileId) {
-                return;
-            }
-
-            setCachedContextPayload(selectedFileId, downloadedContextPayload);
-            selectedFileContextPayload = cloneContextPayload(downloadedContextPayload);
-        }
-
-        contextModalSelectedFileId = selectedFileId;
+        selectedFileContextPayload = toContextPayloadFromTab(activeChatLocal);
+        contextModalSelectedChatId = activeChatLocal.id;
         isContextSelectionModalOpen = true;
     }
 
     function onSaveSelectedFileContext(payload: ContextSpecificationPayload) {
-        const fileIdForContext = contextModalSelectedFileId ?? $selectedFile?.id;
-        if (!fileIdForContext) {
+        const chatIdForContext = contextModalSelectedChatId ?? $activeChat?.id;
+        if (!chatIdForContext) {
             return;
         }
 
         const normalizedPayload = cloneContextPayload(payload);
-        setCachedContextPayload(fileIdForContext, normalizedPayload);
+        selectedFileContextPayload = cloneContextPayload(normalizedPayload);
+        updateChatTabById(chatIdForContext, (chatTab) => ({
+            ...chatTab,
+            selectedContext: toTabContextPayload(chatTab, normalizedPayload)
+        }));
 
-        if ($selectedFile?.id === fileIdForContext) {
-            selectedFileContextPayload = cloneContextPayload(normalizedPayload);
-        }
-
-        void saveSelectedContextToIndexedDB(fileIdForContext, normalizedPayload);
-        contextModalSelectedFileId = null;
+        contextModalSelectedChatId = null;
 
     }
 
@@ -548,7 +717,7 @@
     // Context answers
     function getContextAnswerTextRepresentation(htmlAnswer: string) {
         const domParsed = new DOMParser().parseFromString(htmlAnswer, "text/html");
-        const domText = domParsed.body.textContent;
+        const domText = domParsed.body.textContent ?? "";
 
         const MAX_TEXT_LENGHT = 24;
         
@@ -810,17 +979,19 @@
         <div class="mb-2 flex items-center gap-2 relative">
             <!-- Modes selection tray -->
             {#if isModeSelectingTrayOpen}
-                {@const allModes = Object.entries(editorAIChat.getModes()) as [AIChatMode, { modeName: string; modeDescription: string; }][]}
+                {@const allModes = Object.entries($CHAT_MODES) as [AIChatMode, ChatModeValue][]}
                 <div class="absolute bottom-[calc(100%+6px)] left-0 z-20 rounded-lg border border-base-300 bg-base-100 shadow-xl p-2 min-w-44">
                     <div class="text-xs text-base-content/60 mb-1">Select mode</div>
                     <div class="flex flex-col gap-1">
                         {#each allModes as [mode, modeValue] (mode)}
+                            {@const isDisabled = !modeValue.isEnabled}
                             <div
                                 class="tooltip tooltip-right"
-                                data-tip={modeValue.modeDescription}
+                                data-tip={isDisabled ? `You've to be active collaborator of file to have access to this mode. You'll regain this mode once you become collaborator` : modeValue.modeDescription}
                             >
                                 <button
                                     class="btn btn-ghost btn-xs justify-start {mode === $editorAIChat.textFieldMode ? 'btn-active' : ''}"
+                                    disabled={isDisabled}
                                     onclick={() => onSelectNewMode(mode)}
                                 >
                                     {modeValue.modeName}
@@ -901,7 +1072,7 @@
     bind:open={isContextSelectionModalOpen}
     contextPayload={selectedFileContextPayload}
     onSave={onSaveSelectedFileContext}
-    infoMessage="Context is saved for the currently selected document."
+    infoMessage="Context is saved for the currently active chat tab."
 >
     <div class="space-y-2">
         <div class="flex items-center justify-between">
