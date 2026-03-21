@@ -358,6 +358,8 @@
 
 <style>
 	.tabs-scroll-area {
+		max-height: var(--chat-tabs-max-h, 2.75rem);
+		flex: 0 0 auto;
 		-ms-overflow-style: none;
 		scrollbar-width: none;
 	}

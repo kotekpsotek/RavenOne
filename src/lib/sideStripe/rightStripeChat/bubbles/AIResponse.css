@@ -1,0 +1,32 @@
+@reference "../../../../app.css";
+
+:global(.opposite-block) {
+    display: none !important;
+    width: 0 !important;
+    flex: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+:global(.timeline-opposite-content) {
+    display: none !important;
+}
+
+:global(.timeline-item) {
+    min-height: 48px !important;
+    display: flex !important;
+}
+
+:global(.timeline-dot) {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+:global(.timeline-content) {
+    padding-left: 12px !important;
+    flex: 1 !important;
+}
+

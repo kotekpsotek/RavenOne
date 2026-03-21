@@ -125,7 +125,7 @@
             <ChatTabs/>
         {/if}
 
-        <div class="relative h-full border-x border-base-300 bg-base-100">
+        <div class="relative flex flex-1 min-h-0 flex-col border-x border-base-300 bg-base-100">
             {#if isChatsListSectionOpen}
                 <ChatsList onOpenChat={onOpenChatFromList} />
             {:else}
@@ -137,4 +137,11 @@
         </div>
     </div>
 </div>
+
+<style>
+    #ai-chat {
+        --chat-tabs-max-h: 2.75rem;
+        --chat-bottom-interactions-max-h: min(48%, 22rem);
+    }
+</style>
 

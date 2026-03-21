@@ -25,7 +25,7 @@
     } from "@ravenlens/shared/chat-ai/backend/schema";
     import { CHAT_MODES, chatLayoutStore as rightSideStripeChatLayout, type ChatModeValue } from "./config";
     import { derived, get, writable } from "svelte/store";
-    import { onMount } from "svelte";
+    import { onMount, tick } from "svelte";
     import UserPrompt from "./bubbles/UserPrompt.svelte";
     import AIResponse from "./bubbles/AIResponse.svelte";
 
@@ -45,6 +45,16 @@
     let composerResetKey = $state(0);
     let chatHistoryElement = $state<HTMLDivElement | null>(null);
 
+    let bottomInteractions: HTMLDivElement | null = null;
+
+    function updateHistoryBottomPadding() {
+        if (!chatHistoryElement || !bottomInteractions) {
+            return;
+        }
+
+        chatHistoryElement.style.paddingBottom = `${bottomInteractions.clientHeight}px`;
+    }
+        
     type ContextSpecificationPayload = File.FileAI.ContextSpecificationPayload;
     type AppendedPromptMessageResult = {
         chatId: string;
@@ -760,77 +770,71 @@
         void selectedRangesCount;
         void isSelectedTextOpen;
 
-        if (!chatHistoryElement) {
-            return;
-        }
-
-        const btmInteractionsElement = chatHistoryElement.parentElement?.querySelector("#bottom-interactions");
-        if (btmInteractionsElement) {
-            chatHistoryElement.style.paddingBottom = `${btmInteractionsElement.clientHeight}px`;
-        }
+        updateHistoryBottomPadding();
     });
 
     // Lifecycle hooks
-    onMount(async () => {
-        const mcpDownloadResponse = await fetchAuthenticated(
-            "/mcp-config/servers-spec",
-            {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                    workspaceId: $selectedWorkspace?.id
-                })
+    onMount(() => {
+        let resizeObserver: ResizeObserver | undefined;
+
+        void (async () => {
+            await tick();
+            updateHistoryBottomPadding();
+
+            if (bottomInteractions) {
+                resizeObserver = new ResizeObserver(() => {
+                    updateHistoryBottomPadding();
+                });
+
+                resizeObserver.observe(bottomInteractions);
             }
-        );
 
-        if (mcpDownloadResponse.ok) {
-            const serversSpec = await mcpDownloadResponse.json();
-            downloadMCPServersSpecification = serversSpec;
-        }
-        else console.error(`Cannot download MCP Servers specification with server response status: ${mcpDownloadResponse.status}`)
+            const mcpDownloadResponse = await fetchAuthenticated(
+                "/mcp-config/servers-spec",
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        workspaceId: $selectedWorkspace?.id
+                    })
+                }
+            );
 
-        // downloadMCPServersSpecification = {
-        //     mcpServers: {
-        //         serverA: {},
-        //         serverB: {},
-        //         serverC: {}
-        //     }
-        // }
+            if (mcpDownloadResponse.ok) {
+                const serversSpec = await mcpDownloadResponse.json();
+                downloadMCPServersSpecification = serversSpec;
+            }
+            else console.error(`Cannot download MCP Servers specification with server response status: ${mcpDownloadResponse.status}`)
+
+            // downloadMCPServersSpecification = {
+            //     mcpServers: {
+            //         serverA: {},
+            //         serverB: {},
+            //         serverC: {}
+            //     }
+            // }
+        })();
+
+        return () => {
+            resizeObserver?.disconnect();
+        };
     })
 </script>
 
-{#snippet displayDate(dateInput: Date | string)}
-    {@const date = new Date(dateInput)}
-    {@const today = new Date()}
-    {@const isToday = date.getDate() === today.getDate()
-        && date.getMonth() === today.getMonth()
-        && date.getFullYear() === today.getFullYear()}
-    {@const day = date.getDate().toString().padStart(2, "0")}
-    {@const month = (date.getMonth() + 1).toString().padStart(2, "0")}
-    {@const year = date.getFullYear()}
-    {@const hours = date.getHours().toString().padStart(2, "0")}
-    {@const minutes = date.getMinutes().toString().padStart(2, "0")}
-    {#if isToday}
-        {hours}:{minutes}
-    {:else}
-        {day}.{month}.{year} {hours}:{minutes}
-    {/if}
-{/snippet}
-
 <div 
     id="ai-chat-history"
-    class="h-full flex-1 min-h-0 overflow-y-auto pr-1"
+    class="flex-1 min-h-0 overflow-y-auto pr-1"
     bind:this={chatHistoryElement}
 >
     {#if $rightSideStripeChat.isLoading}
-        <div class="h-full flex items-center justify-center text-base-content/60 gap-2">
+        <div class="flex h-full w-full items-center justify-center text-base-content/60 gap-2">
             <span class="loading loading-spinner loading-sm"></span>
             <span>Loading chat history...</span>
         </div>
     {:else if chatConversations.length}
-        <div class="flex flex-col gap-5 pb-1 p-4">
+        <div class="flex flex-col gap-16 pb-1 p-4 pb-10">
             {#each $activeChat.messages as message (message)}
                 {#if message.messageType === "message-user-prompt"}
                     <UserPrompt 
@@ -856,7 +860,11 @@
     {/if}
 </div>
 
-<div id="bottom-interactions" class="absolute bottom-0 right-0 w-full p-3">
+<div 
+    id="bottom-interactions"
+    class="absolute inset-x-0 bottom-0 p-3 z-10 bg-base-100"
+    bind:this={bottomInteractions}
+>
     {#if $editorAIChat.selectedText?.ranges.length}
         <div class="rounded-lg border border-base-300 bg-base-200 p-2">
             <button class="btn btn-ghost btn-xs px-1" onclick={onClickSelectedTextToggle}>
@@ -1053,6 +1061,16 @@
 </ContextSelectionModal>
 
 <style>
+    #ai-chat-history {
+        max-height: 100%;
+        scrollbar-gutter: stable;
+    }
+
+    #bottom-interactions {
+        max-height: var(--chat-bottom-interactions-max-h, min(48%, 22rem));
+        overflow-y: auto;
+    }
+
     #writable-for-chat:empty::before {
         content: attr(data-placeholder);
         color: color-mix(in oklab, var(--fallback-bc, oklch(var(--bc) / 1)) 55%, transparent);
