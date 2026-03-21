@@ -356,10 +356,12 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 		}
 	};
 
+	// TODO: Call to backend to create the chat and then return the type
 	const createChatTabFromLoadedChat = (chat: BackendChatPopulated): ChatTab => {
 		const asMaybeTab = chat as Partial<ChatTab>;
 		return {
 			...chat,
+			inFileCollaborators: [...asMaybeTab.inFileCollaborators ?? []],
 			selectedMode: normalizeSelectedMode(asMaybeTab.selectedMode),
 			selectedModel: normalizeSelectedModel(asMaybeTab.selectedModel),
 			selectedContext: normalizeSelectedContext(asMaybeTab.selectedContext),
@@ -385,6 +387,15 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 			id: tabId,
 			chatName: "Ask chat",
 			createdAt: new Date(),
+			// FIXME: Setup as undefined
+			promptIdProcessing: {
+				promptId: "1234",
+				initializedByMember: {
+					userId: user.id,
+					socketId: "11"
+				}
+			},
+			// FIXME: Setup as empty
 			messages: [
 				{
 					id: "1",
@@ -1139,6 +1150,7 @@ export const rightSideStripeChat = (() => {
 				id: createChatTabId(),
 				chatName: chatTitle,
 				createdAt: nowIso,
+				promptIdProcessing: activeTab?.promptIdProcessing,
 				messages: [],
 				selectedMode,
 				selectedModel: activeTab?.selectedModel,

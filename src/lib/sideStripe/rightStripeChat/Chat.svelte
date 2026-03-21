@@ -659,6 +659,7 @@
         return [outputMessage];
     }
 
+    // TODO: Integrate with backend
     function onSendMessage() {
         if (!isMessagingActive) {
             return;
@@ -699,6 +700,11 @@
         setTimeout(() => {
             rightSideStripeChat.appendOutputMessages(chatId, buildMockResponse(promptText, mode, activeChatSnapshot));
         }, 900);
+    }
+
+    // TODO: Intergrate with backend
+    function onStopMessage() {
+
     }
 
     function onToggleMCPServersSelectionModal() {
@@ -909,7 +915,7 @@
             <!-- Modes selection tray -->
             {#if isModeSelectingTrayOpen}
                 {@const allModes = Object.entries($CHAT_MODES) as [AIChatMode, ChatModeValue][]}
-                <div class="absolute bottom-[calc(100%+6px)] left-0 z-20 rounded-lg border border-base-300 bg-base-100 shadow-xl p-2 min-w-44">
+                <div id="chat-mode-selection-tray" class="absolute bottom-[calc(100%+6px)] left-0 z-50 rounded-lg border border-base-300 bg-base-100 shadow-xl p-2 min-w-44">
                     <div class="text-xs text-base-content/60 mb-1">Select mode</div>
                     <div class="flex flex-col gap-1">
                         {#each allModes as [mode, modeValue] (mode)}
@@ -969,22 +975,35 @@
 
         <div class="relative">
             {#key composerResetKey}
+                {@const isDisabled = !isMessagingActive || $activeChat?.promptIdProcessing ? true : false}
                 <div
                     id="writable-for-chat"
                     class="min-h-24 max-h-52 outline-none overflow-y-auto rounded-md border border-base-300 bg-base-100 p-2 text-sm"
-                    contenteditable={isMessagingActive}
+                    class:opacity-50={isDisabled}
+                    class:cursor-not-allowed={isDisabled}
+                    contenteditable={isMessagingActive && !$activeChat?.promptIdProcessing}
                     data-placeholder={$editorAIChat.selectedText?.ranges.length ? "Type order to context..." : "Type subject..."}
                     oninput={onMessageInput}
                 ></div>
             {/key}
 
-            <button
-                class="btn btn-primary btn-sm btn-square rounded-full absolute bottom-2 right-2"
-                disabled={!textContent.trim() && !$editorAIChat.selectedText?.ranges.length}
-                onclick={onSendMessage}
-            >
-                <Icon icon="material-symbols:send-rounded" width="14" height="14" />
-            </button>
+            {#if $activeChat?.promptIdProcessing}
+                <button
+                    class="btn btn-neutral btn-sm btn-square rounded-full absolute bottom-2 right-2"
+                    title="Stop Chat Processing"
+                    onclick={onStopMessage}
+                >
+                    <Icon icon="material-symbols:stop-rounded" width="14" height="14" />
+                </button>
+            {:else}
+                <button
+                    class="btn btn-primary btn-sm btn-square rounded-full absolute bottom-2 right-2"
+                    disabled={!textContent.trim() && !$editorAIChat.selectedText?.ranges.length}
+                    onclick={onSendMessage}
+                >
+                    <Icon icon="material-symbols:send-rounded" width="14" height="14" />
+                </button>
+            {/if}
         </div>
     </div>
 </div>
@@ -1068,7 +1087,7 @@
 
     #bottom-interactions {
         max-height: var(--chat-bottom-interactions-max-h, min(48%, 22rem));
-        overflow-y: auto;
+        overflow: visible;
     }
 
     #writable-for-chat:empty::before {
