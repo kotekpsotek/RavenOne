@@ -387,16 +387,23 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 			createdAt: new Date(),
 			messages: [
 				{
+					id: "1",
 					messageType: "message-user-prompt",
-					messageContentHTML: "This is user prompt",
+					messageContentHTML: "This is user prompt;This is user prompt;This is user prompt;This is user prompt;This is user prompt;",
 					model: {
 						model: "gpt-4o",
 						provider: "OpenAI",
 						weight: 1
 					},
 					aiChatMode: "regular-ask",
+					isStopped: true,
+					time: {
+						startAt: new Date(Date.now()),
+						endAt: new Date(Date.now() + 1_000 * 120)
+					}
 				},
 				{
+					id: "2",
 					messageType: "message-user-output",
 					messageContentHTML: "Hello! I'm your AI assistant. How can I help you today?",
 					model: {
@@ -405,6 +412,10 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 						weight: 1
 					},
 					reasoning: [],
+					time: {
+						startAt: new Date(Date.now()),
+						endAt: new Date(Date.now() + 1_000 * 120)
+					}
 				},
 			],
 			selectedMode: "regular-ask",

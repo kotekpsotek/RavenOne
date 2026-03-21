@@ -26,6 +26,8 @@
     import { CHAT_MODES, chatLayoutStore as rightSideStripeChatLayout, type ChatModeValue } from "./config";
     import { derived, get, writable } from "svelte/store";
     import { onMount } from "svelte";
+    import UserPrompt from "./bubbles/UserPrompt.svelte";
+    import AIResponse from "./bubbles/AIResponse.svelte";
 
     let {
         isModeSelectingTrayOpen = $bindable(false),
@@ -828,87 +830,17 @@
             <span>Loading chat history...</span>
         </div>
     {:else if chatConversations.length}
-        <div class="flex flex-col gap-5 pb-1">
-            {#each chatConversations as conversation (conversation.key)}
-                <article class="rounded-xl border border-base-300 bg-base-200/70 p-2" data-chatBubbleId={conversation.key}>
-                    <div class="flex items-center justify-between px-1 mb-1">
-                        <span class="text-xs text-primary font-semibold">
-                            {getTextFieldModeName(getMessageMode(conversation.prompt))}
-                        </span>
-                        <div class="badge badge-sm gap-1 border-base-300 text-base-content/70">
-                            <Icon icon="mdi:chat-processing-outline" width="12" height="12" />
-                            <span>Message</span>
-                        </div>
-                    </div>
-
-                    <section class="rounded-lg border border-primary/20 bg-base-100 p-2">
-                        <div class="text-xs text-base-content/60 font-semibold">Prompt</div>
-                        <button class="w-full text-left" onclick={() => onShowOrHidePrompt(conversation.key)}>
-                            <div class="mt-1 text-sm break-words" class:line-clamp-1={!showFullPromptTextIds.includes(conversation.key)}>
-                                {#if conversation.prompt.messageContentHTML}
-                                    <span class="whitespace-pre-wrap">{htmlToText(conversation.prompt.messageContentHTML)}</span>
-                                {:else}
-                                    <span class="text-base-content/50">No prompt specified (context only)</span>
-                                {/if}
-                            </div>
-                        </button>
-                    </section>
-
-                    {#if getPromptContextForDisplay(conversation.prompt)}
-                        <section class="mt-2 rounded-lg border border-base-300 bg-base-100 p-2">
-                            <button class="btn btn-ghost btn-xs px-1" onclick={() => onShowHideMessageContext(conversation.key)}>
-                                {#if $displayContextForMessages.includes(conversation.key)}
-                                    <Icon icon="mdi:chevron-up" width="14" height="14" />
-                                    <span>Hide message context</span>
-                                {:else}
-                                    <Icon icon="mdi:chevron-down" width="14" height="14" />
-                                    <span>Show message context</span>
-                                {/if}
-                            </button>
-                            {#if $displayContextForMessages.includes(conversation.key)}
-                                <div class="mt-2 pt-2 border-t border-base-300 flex flex-col gap-2 text-sm">
-                                    <p class="text-xs opacity-70">Desktop files: {getPromptContextForDisplay(conversation.prompt)?.desktopFiles.length ?? 0}</p>
-                                    <p class="text-xs opacity-70">Editor files: {getPromptContextForDisplay(conversation.prompt)?.editorFiles.length ?? 0}</p>
-                                    <p class="text-xs opacity-70">Network URLs: {getPromptContextForDisplay(conversation.prompt)?.networkUrls.length ?? 0}</p>
-                                    <p class="text-xs opacity-70">Taskbar answers: {getPromptContextForDisplay(conversation.prompt)?.aiAnswers.length ?? 0}</p>
-                                </div>
-                            {/if}
-                        </section>
-                    {/if}
-
-                    <section class="mt-2 rounded-lg border border-base-300 bg-base-100 p-2">
-                        <div class="text-xs text-base-content/60 font-semibold">Answer</div>
-
-                        {#if conversation.outputs.length}
-                            <div class="mt-2 flex flex-col gap-3">
-                                {#each conversation.outputs as outputMessage, outputIndex (`${conversation.key}-${outputIndex}`)}
-                                    <div class="rounded-lg border border-base-300 bg-base-200/60 p-2">
-                                        <div class="text-sm whitespace-pre-wrap break-words">
-                                            {htmlToText(outputMessage.messageContentHTML)}
-                                        </div>
-
-                                        <div class="mt-2 flex items-center justify-between">
-                                            <span class="text-xs text-base-content/60">Chat</span>
-
-                                            <span class="text-xs text-base-content/50">
-                                                {outputMessage.model.provider} / {outputMessage.model.model}
-                                            </span>
-                                        </div>
-
-                                        {#if outputIndex !== conversation.outputs.length - 1}
-                                            <div class="mt-2 border-b border-base-300"></div>
-                                        {/if}
-                                    </div>
-                                {/each}
-                            </div>
-                        {:else}
-                            <div class="mt-2 flex items-center gap-2 text-base-content/60">
-                                <span class="loading loading-spinner loading-xs"></span>
-                                <span>AI is generating response...</span>
-                            </div>
-                        {/if}
-                    </section>
-                </article>
+        <div class="flex flex-col gap-5 pb-1 p-4">
+            {#each $activeChat.messages as message (message)}
+                {#if message.messageType === "message-user-prompt"}
+                    <UserPrompt 
+                        {message}
+                    />
+                {:else}
+                    <AIResponse
+                        {message}
+                    />
+                {/if}
             {/each}
         </div>
     {:else}
