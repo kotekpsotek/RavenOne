@@ -429,7 +429,9 @@
                             </div>
                         </div>
 
-                        {@render children()}
+                        {#if children}
+                            {@render children()}
+                        {/if}
                     </div>
 
                     {#if hasContextChanges}

@@ -1,18 +1,16 @@
 import { get, writable, type Updater } from "svelte/store";
 import { selectedFile } from "./files";
 import { browser } from "$app/environment";
-import { loadChatsFromFile } from "$lib/sideStripe/rightStripeChat/connections";
+import { loadChatsFromFileRequest } from "$lib/sideStripe/rightStripeChat/connections";
 import { selectedWorkspace } from "./workspace";
 import { isChatSideStripeSelected } from "./selectedSideStripes";
+import { userProfile } from "./user";
 import type { File } from "@ravenlens/shared";
 import type { AIChatMode, ChatTab } from "@ravenlens/shared/chat-ai/frontend";
 import type { BackendChatPopulated } from "@ravenlens/shared/chat-ai/backend/schema";
-import { userProfile } from "./user";
 
 export const isLoadedChatsOfWorkspaceFileLoading = writable<boolean>(false);
 
-// TODO: Once chat is open and aren't loaded chats then load the chats
-// TODO: -> Show chats loading icon in Chats.svelte when chats are loading
 /** It's the set with backend loaded chats */
 export const loadedChatsOfWorkspaceFile = (() => {
 	const { ...all } = writable<BackendChatPopulated[]>([]);
@@ -54,7 +52,7 @@ export const loadedChatsOfWorkspaceFile = (() => {
 		isLoadedChatsOfWorkspaceFileLoading.set(true);
 		all.set([]);
 
-		const chatsFromBackend = await loadChatsFromFile(
+		const chatsFromBackend = await loadChatsFromFileRequest(
 			currentScope.fileId,
 			currentScope.workspaceId
 		);
@@ -369,10 +367,69 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 		};
 	};
 
+	// TODO: Send to backend the request to create the chat and then display the tab -> show the loading spinner for chat -> implement then
+	const createDefaultDraftTab = (): ChatTab | undefined => {
+		const user = get(userProfile);
+		const selectedFileLocal = get(selectedFile);
+		const selectedWorkspaceLocal = get(selectedWorkspace);
+
+		if (!user || !selectedFileLocal || !selectedWorkspaceLocal) {
+			return undefined;
+		}
+
+		const tabId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+			? crypto.randomUUID()
+			: `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+		return {
+			id: tabId,
+			chatName: "Ask chat",
+			createdAt: new Date(),
+			messages: [
+				{
+					messageType: "message-user-prompt",
+					messageContentHTML: "This is user prompt",
+					model: {
+						model: "gpt-4o",
+						provider: "OpenAI",
+						weight: 1
+					},
+					aiChatMode: "regular-ask",
+				},
+				{
+					messageType: "message-user-output",
+					messageContentHTML: "Hello! I'm your AI assistant. How can I help you today?",
+					model: {
+						model: "gpt-4o",
+						provider: "OpenAI",
+						weight: 1
+					},
+					reasoning: [],
+				},
+			],
+			selectedMode: "regular-ask",
+			selectedModel: undefined,
+			selectedContext: createDefaultSelectedContext(),
+			selectedMCPServers: [],
+			isActive: true,
+			createdByAuthor: user,
+			collaborators: [user],
+			workspaceId: selectedWorkspaceLocal.id,
+			fileId: selectedFileLocal.id,
+			inFileCollaborators: [{ ...user, isActive: true }]
+		} satisfies ChatTab;
+	};
+
 	const loadTabChats = (tabsId: string[], fileId: string, workspaceId: string): ChatTab[] => {
 		const fileChatsStateLocal = get(loadedChatsOfWorkspaceFile);
-		if (!tabsId.length || !fileChatsStateLocal.length) {
-			return [];
+		if (!fileChatsStateLocal.length) {
+			const defaultDraftTab = createDefaultDraftTab();
+			return defaultDraftTab ? [defaultDraftTab] : [];
+		}
+
+		if (!tabsId.length) {
+			const defaultTab = createChatTabFromLoadedChat(fileChatsStateLocal[0]);
+			return normalizeActiveTab([mergeTabWithStoredSettings(defaultTab, fileId, workspaceId)]);
 		}
 
 		const chatsById = new Map(fileChatsStateLocal.map(chat => [chat.id, chat]));
@@ -385,6 +442,11 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 			const tabFromBackend = createChatTabFromLoadedChat(tabChat);
 			return [mergeTabWithStoredSettings(tabFromBackend, fileId, workspaceId)];
 		});
+
+		if (!chatsAreInTab.length) {
+			const defaultTab = createChatTabFromLoadedChat(fileChatsStateLocal[0]);
+			return normalizeActiveTab([mergeTabWithStoredSettings(defaultTab, fileId, workspaceId)]);
+		}
 
 		const activeChatId = getActiveChatTabId(fileId, workspaceId);
 		return normalizeActiveTab(chatsAreInTab, activeChatId);
@@ -402,6 +464,7 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 		const activeTabId = tabs.find(tab => tab.isActive)?.id;
 		setActiveChatTabId(fileId, workspaceId, activeTabId);
 
+		console.log(`Tabs`, tabs)
 		for (const tab of tabs) {
 			saveTabSettings(fileId, workspaceId, tab);
 		}
@@ -442,8 +505,8 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 			return [];
 		}
 
-		const loadedChats = get(loadedChatsOfWorkspaceFile);
-		if (!loadedChats.length) {
+		const isLoading = get(isLoadedChatsOfWorkspaceFileLoading);
+		if (isLoading) {
 			all.set([]);
 			return [];
 		}
@@ -469,10 +532,19 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 			selectedWorkspace.subscribe(() => {
 				updateScopeKey();
 			});
-		
-			// Reopen remembered tabs after chats for the selected file are loaded.
-			loadedChatsOfWorkspaceFile.subscribe(() => {
-				restoreTabsForCurrentScope();
+
+			// Restore tabs only after backend loading completes.
+			isLoadedChatsOfWorkspaceFileLoading.subscribe(isLoading => {
+				if (!isLoading) {
+					restoreTabsForCurrentScope();
+				}
+			});
+
+			// User profile may load after chats; retry so draft fallback can be created.
+			userProfile.subscribe(() => {
+				if (!get(isLoadedChatsOfWorkspaceFileLoading)) {
+					restoreTabsForCurrentScope();
+				}
 			});
 		});
 	}
@@ -679,6 +751,7 @@ export const rightSideStripeChat = (() => {
 		setSelectedChatId(chatId: string): boolean {
 			return chatStripeTabsOfWorkspaceFile.setActive(chatId);
 		},
+		// TODO: Send request to backend service -> show loading circle meanwhile -> when loaded show the chat with empty content
 		createChat(modeCandidate: AIChatMode, titleCandidate?: string): string {
 			const selectedMode = normalizeModeCandidate(modeCandidate);
 			const chatTabs = get(chatStripeTabsOfWorkspaceFile);
@@ -709,7 +782,8 @@ export const rightSideStripeChat = (() => {
 				createdByAuthor: user,
 				collaborators: [user],
 				workspaceId: get(selectedWorkspace)?.id!,
-				fileId: get(selectedFile)?.id!
+				fileId: get(selectedFile)?.id!,
+				inFileCollaborators: [{...user, isActive: true}]
 			} satisfies ChatTab;
 
 			chatStripeTabsOfWorkspaceFile.update(tabs => {

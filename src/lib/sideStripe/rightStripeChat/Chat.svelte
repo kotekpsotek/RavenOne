@@ -17,7 +17,12 @@
     import Icon from "@iconify/svelte";
     import { File } from "@ravenlens/shared";
     import type { AI } from "@ravenlens/shared";
-    import type { AIChatDecision, AIChatMode, ChatTab } from "@ravenlens/shared/chat-ai/frontend";
+    import type { AIChatMode, ChatTab } from "@ravenlens/shared/chat-ai/frontend";
+    import type {
+        AIChatModel,
+        MessageOutput,
+        MessageUserPrompt
+    } from "@ravenlens/shared/chat-ai/backend/schema";
     import { CHAT_MODES, chatLayoutStore as rightSideStripeChatLayout, type ChatModeValue } from "./config";
     import { derived, get, writable } from "svelte/store";
     import { onMount } from "svelte";
@@ -39,41 +44,30 @@
     let chatHistoryElement = $state<HTMLDivElement | null>(null);
 
     type ContextSpecificationPayload = File.FileAI.ContextSpecificationPayload;
-    interface SelectedTextRange {
+    type AppendedPromptMessageResult = {
+        chatId: string;
+        promptIndex: number;
+    };
+    type ChatMessage = ChatTab["messages"][number];
+    type ChatPromptMessage = Extract<ChatMessage, { messageType: "message-user-prompt" }>;
+    type ChatOutputMessage = Extract<ChatMessage, { messageType: "message-user-output" }>;
+    type SelectedTextRange = {
         id: string;
         from: number;
         to: number;
         html: string;
-    }
-    interface ChatResponse {
-        id: string;
-        applyTo: "chat" | "selection";
-        answerHTML: string;
-        publishedDate: string;
-        decision?: AIChatDecision;
-    }
-    interface ChatBubble {
-        id: string;
-        createdAt: string;
-        mode: AIChatMode;
-        userPrompt?: string;
-        userPromptHTML?: string;
-        selectedTextForPrompt?: SelectedTextRange[];
-        aiResponse: ChatResponse[];
-        decision?: AIChatDecision;
-    }
-    type ChatTabWithBubbles = ChatTab & {
-        bubbles?: ChatBubble[];
-    };
-    type AppendedPromptBubbleResult = {
-        chatId: string;
-        bubbleId: string;
     };
     type EditorAIChatState = {
         textFieldMode: AIChatMode;
         selectedText?: {
             ranges: SelectedTextRange[];
         };
+    };
+    type ChatConversationEntry = {
+        prompt: ChatPromptMessage;
+        outputs: ChatOutputMessage[];
+        promptIndex: number;
+        key: string;
     };
 
     interface MCPServersSpec {
@@ -87,13 +81,122 @@
     const displayContextForMessages = writable<string[]>([]);
     const selectedMCPServerNames = writable<string[]>([]);
 
-    function getChatBubbles(chatTab: ChatTab): ChatBubble[] {
-        const chatTabWithBubbles = chatTab as ChatTabWithBubbles;
-        if (!Array.isArray(chatTabWithBubbles.bubbles)) {
+    function getChatMessages(chatTab: ChatTab): ChatTab["messages"] {
+        if (!Array.isArray(chatTab.messages)) {
             return [];
         }
 
-        return [...chatTabWithBubbles.bubbles];
+        return [...chatTab.messages];
+    }
+
+    function isPromptMessage(message: ChatMessage): message is ChatPromptMessage {
+        return message.messageType === "message-user-prompt";
+    }
+
+    function isOutputMessage(message: ChatMessage): message is ChatOutputMessage {
+        return message.messageType === "message-user-output";
+    }
+
+    function getConversationEntries(chatTab: ChatTab): ChatConversationEntry[] {
+        const messages = getChatMessages(chatTab);
+        const entries: ChatConversationEntry[] = [];
+
+        messages.forEach((message, messageIndex) => {
+            if (isPromptMessage(message)) {
+                entries.push({
+                    prompt: message,
+                    outputs: [],
+                    promptIndex: messageIndex,
+                    key: `${chatTab.id}-${messageIndex}`
+                });
+                return;
+            }
+
+            if (isOutputMessage(message)) {
+                const lastEntry = entries[entries.length - 1];
+                if (!lastEntry) {
+                    return;
+                }
+
+                lastEntry.outputs = [...lastEntry.outputs, message];
+            }
+        });
+
+        return entries;
+    }
+
+    function createModelForMessage(chatTab: ChatTab): AIChatModel {
+        const selectedModelForTab = chatTab.selectedModel;
+        const selectedModelFromStore = $selectedModel;
+
+        if (selectedModelForTab) {
+            return {
+                model: selectedModelForTab.model,
+                provider: selectedModelForTab.provider,
+                weight: 1
+            };
+        }
+
+        if (selectedModelFromStore) {
+            return {
+                model: selectedModelFromStore.model,
+                provider: selectedModelFromStore.provider,
+                weight: 1
+            };
+        }
+
+        return {
+            model: "gpt-4o",
+            provider: "OpenAI",
+            weight: 1
+        };
+    }
+
+    function clonePromptContext(context: ChatTab["selectedContext"]): MessageUserPrompt["context"] {
+        const normalizedContext = {
+            desktopFiles: [...context.desktopFiles],
+            editorFiles: [...context.editorFiles],
+            networkUrls: [...context.networkUrls],
+            aiAnswers: [...context.aiAnswers]
+        };
+
+        return [normalizedContext] as MessageUserPrompt["context"];
+    }
+
+    function getPromptContextForDisplay(prompt: ChatPromptMessage): ChatTab["selectedContext"] | null {
+        const context = prompt.context;
+        if (!context) {
+            return null;
+        }
+
+        if (Array.isArray(context)) {
+            const firstContext = context[0];
+            if (!firstContext) {
+                return null;
+            }
+
+            return {
+                desktopFiles: Array.isArray(firstContext.desktopFiles) ? [...firstContext.desktopFiles] : [],
+                editorFiles: Array.isArray(firstContext.editorFiles) ? [...firstContext.editorFiles] : [],
+                networkUrls: Array.isArray(firstContext.networkUrls) ? [...firstContext.networkUrls] : [],
+                aiAnswers: Array.isArray(firstContext.aiAnswers) ? [...firstContext.aiAnswers] : []
+            };
+        }
+
+        return {
+            desktopFiles: Array.isArray((context as ChatTab["selectedContext"]).desktopFiles)
+                ? [...(context as ChatTab["selectedContext"]).desktopFiles]
+                : [],
+            editorFiles: Array.isArray((context as ChatTab["selectedContext"]).editorFiles)
+                ? [...(context as ChatTab["selectedContext"]).editorFiles]
+                : [],
+            networkUrls: Array.isArray((context as ChatTab["selectedContext"]).networkUrls)
+                ? [...(context as ChatTab["selectedContext"]).networkUrls]
+                : [],
+            aiAnswers: Array.isArray((context as ChatTab["selectedContext"]).aiAnswers)
+                ? [...(context as ChatTab["selectedContext"]).aiAnswers]
+                : []
+        };
     }
 
     function updateChatTabById(chatId: string, updater: (chatTab: ChatTab) => ChatTab): boolean {
@@ -132,33 +235,31 @@
             setLoading(isLoading: boolean) {
                 all.set({ isLoading });
             },
-            appendPromptBubble(params: {
+            appendPromptMessage(params: {
                 prompt: string;
                 promptHTML: string;
                 mode: AIChatMode;
-                selectedTextForPrompt: SelectedTextRange[];
-            }): AppendedPromptBubbleResult | undefined {
+            }): AppendedPromptMessageResult | undefined {
                 const activeChatLocal = get(activeChat);
                 if (!activeChatLocal) {
                     return undefined;
                 }
 
-                const nowIso = new Date().toISOString();
-                const bubbleId = crypto.randomUUID();
-                const bubbleToAppend = {
-                    id: bubbleId,
-                    createdAt: nowIso,
-                    mode: params.mode,
-                    userPrompt: params.prompt,
-                    userPromptHTML: params.promptHTML,
-                    selectedTextForPrompt: [...params.selectedTextForPrompt],
-                    aiResponse: []
-                } as ChatBubble;
+                const promptMessage: MessageUserPrompt = {
+                    messageType: "message-user-prompt",
+                    messageContentHTML: params.promptHTML,
+                    model: createModelForMessage(activeChatLocal),
+                    aiChatMode: params.mode,
+                    context: clonePromptContext(activeChatLocal.selectedContext),
+                    mcpSelectedServerNames: [...activeChatLocal.selectedMCPServers]
+                };
+
+                const promptIndex = getChatMessages(activeChatLocal).length;
 
                 const wasUpdated = updateChatTabById(activeChatLocal.id, (chatTab) => {
                     return {
                         ...chatTab,
-                        bubbles: [...getChatBubbles(chatTab), bubbleToAppend]
+                        messages: [...getChatMessages(chatTab), promptMessage]
                     };
                 });
 
@@ -168,66 +269,14 @@
 
                 return {
                     chatId: activeChatLocal.id,
-                    bubbleId
+                    promptIndex
                 };
             },
-            applyResponses(chatId: string, bubbleId: string, responses: ChatResponse[]) {
+            appendOutputMessages(chatId: string, messagesToAppend: MessageOutput[]) {
                 updateChatTabById(chatId, (chatTab) => {
                     return {
                         ...chatTab,
-                        bubbles: getChatBubbles(chatTab).map((bubble) => {
-                            if (bubble.id !== bubbleId) {
-                                return bubble;
-                            }
-
-                            return {
-                                ...bubble,
-                                aiResponse: [...responses]
-                            } as ChatBubble;
-                        })
-                    };
-                });
-            },
-            setResponseDecision(chatId: string, chatBubbleId: string, aiResponseId: string, decision: AIChatDecision) {
-                updateChatTabById(chatId, (chatTab) => {
-                    return {
-                        ...chatTab,
-                        bubbles: getChatBubbles(chatTab).map((bubble) => {
-                            if (bubble.id !== chatBubbleId) {
-                                return bubble;
-                            }
-
-                            return {
-                                ...bubble,
-                                aiResponse: bubble.aiResponse.map((response: ChatResponse) => {
-                                    if (response.id !== aiResponseId) {
-                                        return response;
-                                    }
-
-                                    return {
-                                        ...response,
-                                        decision
-                                    };
-                                })
-                            } as ChatBubble;
-                        })
-                    };
-                });
-            },
-            setBubbleDecision(chatId: string, chatBubbleId: string, decision: AIChatDecision) {
-                updateChatTabById(chatId, (chatTab) => {
-                    return {
-                        ...chatTab,
-                        bubbles: getChatBubbles(chatTab).map((bubble) => {
-                            if (bubble.id !== chatBubbleId) {
-                                return bubble;
-                            }
-
-                            return {
-                                ...bubble,
-                                decision
-                            } as ChatBubble;
-                        })
+                        messages: [...getChatMessages(chatTab), ...messagesToAppend]
                     };
                 });
             }
@@ -489,7 +538,7 @@
         }));
     });
 
-    let chatBubblesList = $derived($activeChat ? getChatBubbles($activeChat) : []);
+    let chatConversations = $derived($activeChat ? getConversationEntries($activeChat) : []);
     let isMessagingActive = $derived(Boolean($selectedFile && !$rightSideStripeChat.isLoading && $rightSideStripeChatLayout.isOpen));
     
     // Helpers
@@ -520,11 +569,6 @@
 
     function getTextFieldModeName(mode: AIChatMode): string {
         return editorAIChat.getTextFieldModeTranslation(mode);
-    }
-
-    function getGeneratingTime(chatBubble: ChatBubble): string {
-        const timeDeltaMs = Date.now() - new Date(chatBubble.createdAt).getTime();
-        return `${Math.max(0, timeDeltaMs / 1000).toFixed(1)}s`;
     }
 
     function getMCPServersList(servers: MCPServersSpec): string[] {
@@ -582,41 +626,8 @@
         isModeSelectingTrayOpen = false;
     }
 
-    function hasChatIndependentDecision(chatBubble: ChatBubble): boolean {
-        return chatBubble.aiResponse.some((response: ChatResponse) => Boolean(response.decision));
-    }
-
-    function getAboveBubbleStateColor(chatBubble: ChatBubble): string {
-        if (chatBubble.decision === "accepted") {
-            return "border-success text-success";
-        }
-
-        if (chatBubble.decision === "declined") {
-            return "border-error text-error";
-        }
-
-        if (hasChatIndependentDecision(chatBubble)) {
-            return "border-info text-info";
-        }
-
-        return "border-base-300 text-base-content/70";
-    }
-
-    function onLocalAction(decision: AIChatDecision, chatBubbleId: string, aiResponseId: string) {
-        if (!$activeChat) {
-            return;
-        }
-
-        rightSideStripeChat.setResponseDecision($activeChat.id, chatBubbleId, aiResponseId, decision);
-
-        const doesAllResponsesHaveDecision = getChatBubbles($activeChat)
-            .find((bubble) => bubble.id === chatBubbleId)
-            ?.aiResponse
-            .every((response: ChatResponse) => response.id === aiResponseId ? Boolean(decision) : Boolean(response.decision));
-
-        if (doesAllResponsesHaveDecision) {
-            rightSideStripeChat.setBubbleDecision($activeChat.id, chatBubbleId, decision);
-        }
+    function getMessageMode(prompt: ChatPromptMessage): AIChatMode {
+        return prompt.aiChatMode;
     }
 
     function onMessageInput(event: Event) {
@@ -624,18 +635,16 @@
         textContent = target.innerText;
     }
 
-    function buildMockResponse(prompt: string, mode: AIChatMode): ChatResponse[] {
-        const now = new Date().toISOString();
+    function buildMockResponse(prompt: string, mode: AIChatMode, chatTab: ChatTab): MessageOutput[] {
         const escapedPrompt = escapeHtml(prompt || "context only prompt");
+        const outputMessage: MessageOutput = {
+            messageType: "message-user-output",
+            messageContentHTML: `<p><strong>Mode:</strong> ${escapeHtml(getTextFieldModeName(mode))}</p><p>Generated response for: ${escapedPrompt}</p>`,
+            model: createModelForMessage(chatTab),
+            reasoning: []
+        };
 
-        return [
-            {
-                id: crypto.randomUUID(),
-                applyTo: mode === "regular-ask" ? "chat" : "selection",
-                answerHTML: `<p><strong>Mode:</strong> ${escapeHtml(getTextFieldModeName(mode))}</p><p>Generated response for: ${escapedPrompt}</p>`,
-                publishedDate: now
-            } as ChatResponse
-        ];
+        return [outputMessage];
     }
 
     function onSendMessage() {
@@ -652,18 +661,21 @@
         const promptHTML = getPromptHtml(promptText);
         const mode = $editorAIChat.textFieldMode;
 
-        const appended = rightSideStripeChat.appendPromptBubble({
+        const appended = rightSideStripeChat.appendPromptMessage({
             prompt: promptText,
             promptHTML,
-            mode,
-            selectedTextForPrompt: selectedRanges
+            mode
         });
 
         if (!appended) {
             return;
         }
 
-        const { chatId, bubbleId } = appended;
+        const { chatId } = appended;
+        const activeChatSnapshot = $activeChat;
+        if (!activeChatSnapshot) {
+            return;
+        }
 
         textContent = "";
         composerResetKey += 1;
@@ -673,7 +685,7 @@
         isSelectedTextPreviewOpen = true;
 
         setTimeout(() => {
-            rightSideStripeChat.applyResponses(chatId, bubbleId, buildMockResponse(promptText, mode));
+            rightSideStripeChat.appendOutputMessages(chatId, buildMockResponse(promptText, mode, activeChatSnapshot));
         }, 900);
     }
 
@@ -815,33 +827,26 @@
             <span class="loading loading-spinner loading-sm"></span>
             <span>Loading chat history...</span>
         </div>
-    {:else if chatBubblesList.length}
+    {:else if chatConversations.length}
         <div class="flex flex-col gap-5 pb-1">
-            {#each chatBubblesList as chatBubble (chatBubble.id)}
-                <article class="rounded-xl border border-base-300 bg-base-200/70 p-2" data-chatBubbleId={chatBubble.id}>
+            {#each chatConversations as conversation (conversation.key)}
+                <article class="rounded-xl border border-base-300 bg-base-200/70 p-2" data-chatBubbleId={conversation.key}>
                     <div class="flex items-center justify-between px-1 mb-1">
                         <span class="text-xs text-primary font-semibold">
-                            {getTextFieldModeName(chatBubble.mode)}
+                            {getTextFieldModeName(getMessageMode(conversation.prompt))}
                         </span>
-                        <div class="badge badge-sm gap-1 {getAboveBubbleStateColor(chatBubble)}">
-                            {#if chatBubble.decision === "accepted"}
-                                <Icon icon="mdi:check" width="12" height="12" />
-                            {:else if chatBubble.decision === "declined"}
-                                <Icon icon="mdi:close" width="12" height="12" />
-                            {:else if hasChatIndependentDecision(chatBubble)}
-                                <Icon icon="mdi:code-tags" width="12" height="12" />
-                            {:else}
-                                <Icon icon="mdi:chevron-down" width="12" height="12" />
-                            {/if}
+                        <div class="badge badge-sm gap-1 border-base-300 text-base-content/70">
+                            <Icon icon="mdi:chat-processing-outline" width="12" height="12" />
+                            <span>Message</span>
                         </div>
                     </div>
 
                     <section class="rounded-lg border border-primary/20 bg-base-100 p-2">
                         <div class="text-xs text-base-content/60 font-semibold">Prompt</div>
-                        <button class="w-full text-left" onclick={() => onShowOrHidePrompt(chatBubble.id)}>
-                            <div class="mt-1 text-sm break-words" class:line-clamp-1={!showFullPromptTextIds.includes(chatBubble.id)}>
-                                {#if chatBubble.userPromptHTML}
-                                    <span class="whitespace-pre-wrap">{htmlToText(chatBubble.userPromptHTML)}</span>
+                        <button class="w-full text-left" onclick={() => onShowOrHidePrompt(conversation.key)}>
+                            <div class="mt-1 text-sm break-words" class:line-clamp-1={!showFullPromptTextIds.includes(conversation.key)}>
+                                {#if conversation.prompt.messageContentHTML}
+                                    <span class="whitespace-pre-wrap">{htmlToText(conversation.prompt.messageContentHTML)}</span>
                                 {:else}
                                     <span class="text-base-content/50">No prompt specified (context only)</span>
                                 {/if}
@@ -849,10 +854,10 @@
                         </button>
                     </section>
 
-                    {#if chatBubble.selectedTextForPrompt?.length}
+                    {#if getPromptContextForDisplay(conversation.prompt)}
                         <section class="mt-2 rounded-lg border border-base-300 bg-base-100 p-2">
-                            <button class="btn btn-ghost btn-xs px-1" onclick={() => onShowHideMessageContext(chatBubble.id)}>
-                                {#if $displayContextForMessages.includes(chatBubble.id)}
+                            <button class="btn btn-ghost btn-xs px-1" onclick={() => onShowHideMessageContext(conversation.key)}>
+                                {#if $displayContextForMessages.includes(conversation.key)}
                                     <Icon icon="mdi:chevron-up" width="14" height="14" />
                                     <span>Hide message context</span>
                                 {:else}
@@ -860,13 +865,12 @@
                                     <span>Show message context</span>
                                 {/if}
                             </button>
-                            {#if $displayContextForMessages.includes(chatBubble.id)}
+                            {#if $displayContextForMessages.includes(conversation.key)}
                                 <div class="mt-2 pt-2 border-t border-base-300 flex flex-col gap-2 text-sm">
-                                    {#each chatBubble.selectedTextForPrompt as selectedContext (`${selectedContext.id}-${selectedContext.from}-${selectedContext.to}`)}
-                                        <div class="rounded-md bg-base-200 p-2 break-all">
-                                            <span class="whitespace-pre-wrap">{htmlToText(selectedContext.html)}</span>
-                                        </div>
-                                    {/each}
+                                    <p class="text-xs opacity-70">Desktop files: {getPromptContextForDisplay(conversation.prompt)?.desktopFiles.length ?? 0}</p>
+                                    <p class="text-xs opacity-70">Editor files: {getPromptContextForDisplay(conversation.prompt)?.editorFiles.length ?? 0}</p>
+                                    <p class="text-xs opacity-70">Network URLs: {getPromptContextForDisplay(conversation.prompt)?.networkUrls.length ?? 0}</p>
+                                    <p class="text-xs opacity-70">Taskbar answers: {getPromptContextForDisplay(conversation.prompt)?.aiAnswers.length ?? 0}</p>
                                 </div>
                             {/if}
                         </section>
@@ -875,38 +879,23 @@
                     <section class="mt-2 rounded-lg border border-base-300 bg-base-100 p-2">
                         <div class="text-xs text-base-content/60 font-semibold">Answer</div>
 
-                        {#if chatBubble.aiResponse.length}
+                        {#if conversation.outputs.length}
                             <div class="mt-2 flex flex-col gap-3">
-                                {#each chatBubble.aiResponse as aiResponse, aiResponseIndex (aiResponse.id)}
+                                {#each conversation.outputs as outputMessage, outputIndex (`${conversation.key}-${outputIndex}`)}
                                     <div class="rounded-lg border border-base-300 bg-base-200/60 p-2">
                                         <div class="text-sm whitespace-pre-wrap break-words">
-                                            {htmlToText(aiResponse.answerHTML)}
+                                            {htmlToText(outputMessage.messageContentHTML)}
                                         </div>
 
                                         <div class="mt-2 flex items-center justify-between">
-                                            {#if aiResponse.applyTo !== "chat" && chatBubble.mode !== "regular-ask"}
-                                                {#if !aiResponse.decision && !chatBubble.decision}
-                                                    <div class="join">
-                                                        <button class="btn btn-ghost btn-xs join-item" onclick={() => onLocalAction("accepted", chatBubble.id, aiResponse.id)}>
-                                                            <Icon icon="mdi:check" width="14" height="14" />
-                                                        </button>
-                                                        <button class="btn btn-ghost btn-xs join-item" onclick={() => onLocalAction("declined", chatBubble.id, aiResponse.id)}>
-                                                            <Icon icon="mdi:close" width="14" height="14" />
-                                                        </button>
-                                                    </div>
-                                                {:else}
-                                                    <span class="text-xs text-base-content/60">Change proposition</span>
-                                                {/if}
-                                            {:else}
-                                                <span class="text-xs text-base-content/60">Chat</span>
-                                            {/if}
+                                            <span class="text-xs text-base-content/60">Chat</span>
 
                                             <span class="text-xs text-base-content/50">
-                                                {@render displayDate(aiResponse.publishedDate)}
+                                                {outputMessage.model.provider} / {outputMessage.model.model}
                                             </span>
                                         </div>
 
-                                        {#if aiResponseIndex !== chatBubble.aiResponse.length - 1}
+                                        {#if outputIndex !== conversation.outputs.length - 1}
                                             <div class="mt-2 border-b border-base-300"></div>
                                         {/if}
                                     </div>
@@ -915,7 +904,7 @@
                         {:else}
                             <div class="mt-2 flex items-center gap-2 text-base-content/60">
                                 <span class="loading loading-spinner loading-xs"></span>
-                                <span>AI is generating response... {getGeneratingTime(chatBubble)}</span>
+                                <span>AI is generating response...</span>
                             </div>
                         {/if}
                     </section>
@@ -1096,7 +1085,7 @@
             class="flex flex-col gap-5"
         >
             {#if $selectedChatAnswerIds.length}
-                {#each $selectedChatAnswerIds as answerId}
+                {#each $selectedChatAnswerIds as answerId (answerId)}
                     {@const fetchedAnswer = selectedChatAnswerIds.retriveCurrentFileAnswer(answerId, true)}
 
                     <!-- svelte-ignore a11y_click_events_have_key_events -->

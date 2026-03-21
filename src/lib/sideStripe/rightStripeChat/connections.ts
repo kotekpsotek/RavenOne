@@ -2,7 +2,7 @@ import { PUBLIC_CHAT_SERVICE_URL } from "$env/static/public";
 import { fetchAuthenticated } from "$lib/utils/fetch";
 import type { BackendChatPopulated } from "@ravenlens/shared/chat-ai/backend/schema";
 
-export async function loadChatsFromFile(
+export async function loadChatsFromFileRequest(
     fileId: string,
     workspaceId: string
 ): Promise<BackendChatPopulated[]> {
