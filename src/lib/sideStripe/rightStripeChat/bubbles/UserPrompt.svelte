@@ -15,8 +15,8 @@
         isStopped,
         aiChatMode,
         messageContentHTML,
-        time
-        
+        time,
+        isAnswering
     } = $derived(message);
 
     /** Answer Editor */
@@ -53,6 +53,7 @@
             {model}
             {aiChatMode}
             {time}
+            {isAnswering}
         />
     </div>
 

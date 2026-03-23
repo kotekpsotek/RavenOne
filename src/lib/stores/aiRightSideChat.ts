@@ -1,4 +1,4 @@
-import { get, writable, type Updater } from "svelte/store";
+import { derived, get, writable, type Updater } from "svelte/store";
 import { selectedFile } from "./files";
 import { browser } from "$app/environment";
 import { loadChatsFromFileRequest } from "$lib/sideStripe/rightStripeChat/connections";
@@ -388,16 +388,16 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 			chatName: "Ask chat",
 			createdAt: new Date(),
 			// FIXME: Setup as undefined
-			promptIdProcessing: {
+			/* promptIdProcessing: {
 				promptId: "1234",
 				initializedByMember: {
 					userId: user.id,
 					socketId: "11"
 				}
-			},
+			}, */
 			// FIXME: Setup as empty
 			messages: [
-				{
+				/* {
 					id: "1",
 					messageType: "message-user-prompt",
 					messageContentHTML: "This is user prompt;This is user prompt;This is user prompt;This is user prompt;This is user prompt;",
@@ -784,7 +784,7 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 						startAt: new Date(Date.now()),
 						endAt: new Date(Date.now() + 1_000 * 120)
 					},
-				},
+				}, */
 			],
 			selectedMode: "regular-ask",
 			selectedModel: undefined,
@@ -1002,6 +1002,59 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 			const tabsWithOneActive = normalizeActiveTab(currentTabs, chatId);
 			persistTabsForCurrentScope(tabsWithOneActive);
 			return true;
+		},
+		startProcessing(chatId: string, promptMessageId: string, userSocketId: string) {
+			const wasUpdated = this.updateChatTabById(chatId, (chatTab) => {
+				return {
+					...chatTab,
+					promptIdProcessing: {
+						promptId: promptMessageId,
+						initializedByMember: {
+							userId: get(userProfile)?.id!,
+							socketId: userSocketId
+						}
+					}
+				}
+			});
+
+			return wasUpdated;
+		},
+		stopProcessing(chatId: string) {
+			const wasUpdated = this.updateChatTabById(chatId, (chatTab) => {
+                const userPrompt = chatTab.messages[chatTab.messages.length - 2];
+                const answer = chatTab.messages[chatTab.messages.length - 1];
+
+                delete userPrompt.isAnswering;
+                userPrompt.time.endAt = new Date();
+                delete answer.isAnswering;
+                answer.time.endAt = new Date();
+                
+				// Remove prompt as processing
+				delete chatTab.promptIdProcessing;
+				
+                return {
+                    ...chatTab,
+                    messages: chatTab.messages
+                };
+            });
+
+			return wasUpdated;
+		},
+		updateChatTabById(chatId: string, updater: (chatTab: ChatTab) => ChatTab): boolean {
+			let wasUpdated = false;
+
+			chatStripeTabsOfWorkspaceFile.update((chatTabs) => {
+				return chatTabs.map((chatTab) => {
+					if (chatTab.id !== chatId) {
+						return chatTab;
+					}
+
+					wasUpdated = true;
+					return updater(chatTab);
+				});
+			});
+
+			return wasUpdated;
 		},
 		/**
 		 * Use to load all chats
@@ -1416,3 +1469,7 @@ export class SelectedChatAnswersContext {
 		);
 	}
 }
+
+export const activeChat = derived(chatStripeTabsOfWorkspaceFile, (chatTabs) => {
+	return chatTabs.find(chatTab => chatTab.isActive) ?? chatTabs[0];
+});

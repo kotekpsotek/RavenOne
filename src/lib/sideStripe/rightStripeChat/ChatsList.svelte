@@ -126,8 +126,13 @@
 								onclick={() => onSelectChat(chat.id)}
 							>
 								<div class="flex items-center justify-between gap-2">
-									<span class="truncate text-sm font-medium">{chat.chatName}</span>
-									<span class="shrink-0 text-xs text-base-content/60">{formatChatTime(chat.createdAt.toString())}</span>
+									<span class="truncate text-sm font-medium ">{chat.chatName}</span>
+									<div class="w-fit">
+										{#if chat.promptIdProcessing}
+											<span class="loading loading-spinner loading-xs"></span>
+										{/if}
+										<span class="shrink-0 text-xs text-base-content/60">{formatChatTime(chat.createdAt.toString())}</span>
+									</div>
 								</div>
 							</button>
 						{/each}

@@ -27,7 +27,8 @@
         tasksListManipulation,
         reasoning,
         aiChatMode,
-        time
+        time,
+        isAnswering
     } = $derived(message);
 
     let isMessageOpen = $state(true);
@@ -238,6 +239,7 @@
                 {model}
                 {aiChatMode}
                 {time}
+                {isAnswering}
             />
         {/if}
     </div>

@@ -4,7 +4,7 @@
     import ChatsList from "./ChatsList.svelte";
     import ChatTabs from "./ChatTabs.svelte";
     import { chatLayoutStore } from "./config";
-    import { editorAIChat, rightSideStripeChat } from "$lib/stores/aiRightSideChat";
+    import { activeChat, editorAIChat, rightSideStripeChat } from "$lib/stores/aiRightSideChat";
 
     let screenWidth = $state(typeof window !== "undefined" ? window.innerWidth : 1440);
     /** Shows chats-list or the list with chat bubbles */
@@ -115,10 +115,17 @@
                 </button>
                 <h2 class="font-semibold">RavenOne AI Chat</h2>
             </div>
-            <button class="btn btn-primary btn-xs" onclick={onCreateChat}>
-                <Icon icon="mdi:plus" width="14" height="14" />
-                <span>New chat</span>
-            </button>
+
+            <div>
+                {#if $activeChat?.promptIdProcessing}
+                    <span class="loading loading-spinner loading-xs mr-2"></span>
+                {/if}
+
+                <button class="btn btn-primary btn-xs" onclick={onCreateChat}>
+                    <Icon icon="mdi:plus" width="14" height="14" />
+                    <span>New chat</span>
+                </button>
+            </div>
         </div>
 
         {#if !isChatsListSectionOpen}

@@ -9,14 +9,38 @@
     const {
         aiChatMode,
         model,
-        time
+        time,
+        isAnswering
     }: {
         aiChatMode: AIChatMode;
         model: AIChatModel;
         time: MessageUserPrompt["time"];
+        isAnswering?: boolean;
     } = $props();
 
-    const computedTime = $derived(getTime(time));
+    let currentTime = $state(Date.now());
+
+    $effect(() => {
+        if (!isAnswering) {
+            return;
+        }
+
+        const interval = setInterval(() => {
+            currentTime = Date.now();
+        }, 10);
+
+        return () => clearInterval(interval);
+    });
+
+    const computedTime = $derived.by(() => {
+        if (isAnswering && time?.startAt) {
+            const startTime = new Date(time.startAt).getTime();
+            const elapsed = currentTime - startTime;
+            return getTime({ startAt: time.startAt, endAt: new Date(startTime + elapsed) });
+        }
+
+        return getTime(time);
+    });
 
     /** Gets the Icon */
     function getProviderIcon(provider: AI.ProviderID) {

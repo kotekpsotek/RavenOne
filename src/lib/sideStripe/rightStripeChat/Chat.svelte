@@ -6,6 +6,7 @@
     import ContextSelectionModal from "$lib/modals/ContextSelectionModal.svelte";
     import {
         SelectedAnswerFromChatContext,
+        activeChat,
         chatStripeTabsOfWorkspaceFile,
         isLoadedChatsOfWorkspaceFileLoading,
         selectedChatAnswerIds
@@ -43,6 +44,7 @@
     let isSelectedTextPreviewOpen = $state(true);
     let mouseIsOnPreviewSelectedText = $state<{ from: number; to: number } | null>(null);
     let composerResetKey = $state(0);
+    let composerTextareaElement = $state<HTMLTextAreaElement | null>(null);
     let chatHistoryElement = $state<HTMLDivElement | null>(null);
 
     let bottomInteractions: HTMLDivElement | null = null;
@@ -85,10 +87,6 @@
     interface MCPServersSpec {
         mcpServers: Record<string, unknown>;
     }
-
-    const activeChat = derived(chatStripeTabsOfWorkspaceFile, (chatTabs) => {
-        return chatTabs.find(chatTab => chatTab.isActive) ?? chatTabs[0];
-    });
 
     const displayContextForMessages = writable<string[]>([]);
     const selectedMCPServerNames = writable<string[]>([]);
@@ -175,66 +173,13 @@
         return [normalizedContext] as MessageUserPrompt["context"];
     }
 
-    function getPromptContextForDisplay(prompt: ChatPromptMessage): ChatTab["selectedContext"] | null {
-        const context = prompt.context;
-        if (!context) {
-            return null;
-        }
-
-        if (Array.isArray(context)) {
-            const firstContext = context[0];
-            if (!firstContext) {
-                return null;
-            }
-
-            return {
-                desktopFiles: Array.isArray(firstContext.desktopFiles) ? [...firstContext.desktopFiles] : [],
-                editorFiles: Array.isArray(firstContext.editorFiles) ? [...firstContext.editorFiles] : [],
-                networkUrls: Array.isArray(firstContext.networkUrls) ? [...firstContext.networkUrls] : [],
-                aiAnswers: Array.isArray(firstContext.aiAnswers) ? [...firstContext.aiAnswers] : []
-            };
-        }
-
-        return {
-            desktopFiles: Array.isArray((context as ChatTab["selectedContext"]).desktopFiles)
-                ? [...(context as ChatTab["selectedContext"]).desktopFiles]
-                : [],
-            editorFiles: Array.isArray((context as ChatTab["selectedContext"]).editorFiles)
-                ? [...(context as ChatTab["selectedContext"]).editorFiles]
-                : [],
-            networkUrls: Array.isArray((context as ChatTab["selectedContext"]).networkUrls)
-                ? [...(context as ChatTab["selectedContext"]).networkUrls]
-                : [],
-            aiAnswers: Array.isArray((context as ChatTab["selectedContext"]).aiAnswers)
-                ? [...(context as ChatTab["selectedContext"]).aiAnswers]
-                : []
-        };
-    }
-
-    function updateChatTabById(chatId: string, updater: (chatTab: ChatTab) => ChatTab): boolean {
-        let wasUpdated = false;
-
-        chatStripeTabsOfWorkspaceFile.update((chatTabs) => {
-            return chatTabs.map((chatTab) => {
-                if (chatTab.id !== chatId) {
-                    return chatTab;
-                }
-
-                wasUpdated = true;
-                return updater(chatTab);
-            });
-        });
-
-        return wasUpdated;
-    }
-
     function updateActiveChatTab(updater: (chatTab: ChatTab) => ChatTab): boolean {
         const activeChatLocal = get(activeChat);
         if (!activeChatLocal) {
             return false;
         }
 
-        return updateChatTabById(activeChatLocal.id, updater);
+        return chatStripeTabsOfWorkspaceFile.updateChatTabById(activeChatLocal.id, updater);
     }
 
     const rightSideStripeChat = (() => {
@@ -258,24 +203,29 @@
                 }
 
                 const promptMessage: MessageUserPrompt = {
+                    id: "222222",
+                    time: {
+                        startAt: new Date()
+                    },
                     messageType: "message-user-prompt",
                     messageContentHTML: params.promptHTML,
                     model: createModelForMessage(activeChatLocal),
                     aiChatMode: params.mode,
                     context: clonePromptContext(activeChatLocal.selectedContext),
-                    mcpSelectedServerNames: [...activeChatLocal.selectedMCPServers]
+                    mcpSelectedServerNames: [...activeChatLocal.selectedMCPServers],
+                    isAnswering: true
                 };
-
                 const promptIndex = getChatMessages(activeChatLocal).length;
-
-                const wasUpdated = updateChatTabById(activeChatLocal.id, (chatTab) => {
+                const wasUpdatedMessages = chatStripeTabsOfWorkspaceFile.updateChatTabById(activeChatLocal.id, (chatTab) => {
                     return {
                         ...chatTab,
                         messages: [...getChatMessages(chatTab), promptMessage]
                     };
                 });
+                // FIXME: Setup real socket.io id
+                const wasUpdatedChatProcessing = chatStripeTabsOfWorkspaceFile.startProcessing(activeChatLocal.id, promptMessage.id, "test");
 
-                if (!wasUpdated) {
+                if (!wasUpdatedMessages || !wasUpdatedChatProcessing) {
                     return undefined;
                 }
 
@@ -285,7 +235,7 @@
                 };
             },
             appendOutputMessages(chatId: string, messagesToAppend: MessageOutput[]) {
-                updateChatTabById(chatId, (chatTab) => {
+                chatStripeTabsOfWorkspaceFile.updateChatTabById(chatId, (chatTab) => {
                     return {
                         ...chatTab,
                         messages: [...getChatMessages(chatTab), ...messagesToAppend]
@@ -642,18 +592,19 @@
         return prompt.aiChatMode;
     }
 
-    function onMessageInput(event: Event) {
-        const target = event.currentTarget as HTMLDivElement;
-        textContent = target.innerText;
-    }
-
     function buildMockResponse(prompt: string, mode: AIChatMode, chatTab: ChatTab): MessageOutput[] {
         const escapedPrompt = escapeHtml(prompt || "context only prompt");
         const outputMessage: MessageOutput = {
+            id: '111111',
+            time: {
+                startAt: new Date(),
+            },
             messageType: "message-user-output",
             messageContentHTML: `<p><strong>Mode:</strong> ${escapeHtml(getTextFieldModeName(mode))}</p><p>Generated response for: ${escapedPrompt}</p>`,
             model: createModelForMessage(chatTab),
-            reasoning: []
+            reasoning: [],
+            aiChatMode: "regular-ask",
+            isAnswering: true
         };
 
         return [outputMessage];
@@ -671,40 +622,54 @@
             return;
         }
 
+        // Show send user prompt
         const promptHTML = getPromptHtml(promptText);
         const mode = $editorAIChat.textFieldMode;
-
         const appended = rightSideStripeChat.appendPromptMessage({
             prompt: promptText,
             promptHTML,
             mode
         });
 
+        // Clear both reactive state and the DOM element to avoid stale textarea value.
+        textContent = "";
+        if (composerTextareaElement) {
+            composerTextareaElement.value = "";
+        }
+        composerResetKey += 1;
+
         if (!appended) {
             return;
         }
 
         const { chatId } = appended;
+        void chatId;
+
         const activeChatSnapshot = $activeChat;
         if (!activeChatSnapshot) {
             return;
         }
 
-        textContent = "";
-        composerResetKey += 1;
-
         editorAIChat.clearSelectedText();
         displayContextForMessages.set([]);
         isSelectedTextPreviewOpen = true;
 
+        // Simulate answer
         setTimeout(() => {
             rightSideStripeChat.appendOutputMessages(chatId, buildMockResponse(promptText, mode, activeChatSnapshot));
-        }, 900);
+        }, 300);
+
+        // Simulate end
+        setTimeout(() => {
+            // Remove chat processing stage
+            chatStripeTabsOfWorkspaceFile.stopProcessing($activeChat.id);
+        }, 5_000);
     }
 
     // TODO: Intergrate with backend
     function onStopMessage() {
-
+        // Remove chat processing stage
+        chatStripeTabsOfWorkspaceFile.stopProcessing($activeChat.id);
     }
 
     function onToggleMCPServersSelectionModal() {
@@ -730,7 +695,7 @@
 
         const normalizedPayload = cloneContextPayload(payload);
         selectedFileContextPayload = cloneContextPayload(normalizedPayload);
-        updateChatTabById(chatIdForContext, (chatTab) => ({
+        chatStripeTabsOfWorkspaceFile.updateChatTabById(chatIdForContext, (chatTab) => ({
             ...chatTab,
             selectedContext: toTabContextPayload(chatTab, normalizedPayload)
         }));
@@ -976,15 +941,16 @@
         <div class="relative">
             {#key composerResetKey}
                 {@const isDisabled = !isMessagingActive || $activeChat?.promptIdProcessing ? true : false}
-                <div
+                <textarea
                     id="writable-for-chat"
-                    class="min-h-24 max-h-52 outline-none overflow-y-auto rounded-md border border-base-300 bg-base-100 p-2 text-sm"
+                    class="w-full min-h-24 max-h-52 outline-none overflow-y-auto rounded-md border border-base-300 bg-base-100 p-2 text-sm"
                     class:opacity-50={isDisabled}
                     class:cursor-not-allowed={isDisabled}
-                    contenteditable={isMessagingActive && !$activeChat?.promptIdProcessing}
-                    data-placeholder={$editorAIChat.selectedText?.ranges.length ? "Type order to context..." : "Type subject..."}
-                    oninput={onMessageInput}
-                ></div>
+                    disabled={isDisabled}
+                    placeholder={$editorAIChat.selectedText?.ranges.length ? "Type order to context..." : "Type subject..."}
+                    bind:value={textContent}
+                    bind:this={composerTextareaElement}
+                ></textarea>
             {/key}
 
             {#if $activeChat?.promptIdProcessing}
@@ -999,6 +965,7 @@
                 <button
                     class="btn btn-primary btn-sm btn-square rounded-full absolute bottom-2 right-2"
                     disabled={!textContent.trim() && !$editorAIChat.selectedText?.ranges.length}
+                    title="Send Message"
                     onclick={onSendMessage}
                 >
                     <Icon icon="material-symbols:send-rounded" width="14" height="14" />
