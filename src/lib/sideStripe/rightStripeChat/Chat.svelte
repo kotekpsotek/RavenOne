@@ -38,25 +38,7 @@
         isMermaidModeSelectionTrayOpen: boolean;
     } = $props();
 
-    // State
-    let textContent = $state("");
-    let showFullPromptTextIds = $state<string[]>([]);
-    let isSelectedTextPreviewOpen = $state(true);
-    let mouseIsOnPreviewSelectedText = $state<{ from: number; to: number } | null>(null);
-    let composerResetKey = $state(0);
-    let composerTextareaElement = $state<HTMLTextAreaElement | null>(null);
-    let chatHistoryElement = $state<HTMLDivElement | null>(null);
-
-    let bottomInteractions: HTMLDivElement | null = null;
-
-    function updateHistoryBottomPadding() {
-        if (!chatHistoryElement || !bottomInteractions) {
-            return;
-        }
-
-        chatHistoryElement.style.paddingBottom = `${bottomInteractions.clientHeight}px`;
-    }
-        
+    // Types
     type ContextSpecificationPayload = File.FileAI.ContextSpecificationPayload;
     type AppendedPromptMessageResult = {
         chatId: string;
@@ -88,9 +70,148 @@
         mcpServers: Record<string, unknown>;
     }
 
+    // State
     const displayContextForMessages = writable<string[]>([]);
     const selectedMCPServerNames = writable<string[]>([]);
+    const rightSideStripeChat = (() => {
+        const { ...all } = writable({
+            isLoading: false
+        });
 
+        return {
+            ...all,
+            setLoading(isLoading: boolean) {
+                all.set({ isLoading });
+            },
+            appendPromptMessage(params: {
+                prompt: string;
+                promptHTML: string;
+                mode: AIChatMode;
+            }): AppendedPromptMessageResult | undefined {
+                const activeChatLocal = get(activeChat);
+                if (!activeChatLocal) {
+                    return undefined;
+                }
+
+                const promptMessage: MessageUserPrompt = {
+                    id: "222222",
+                    time: {
+                        startAt: new Date()
+                    },
+                    messageType: "message-user-prompt",
+                    messageContentHTML: params.promptHTML,
+                    model: createModelForMessage(activeChatLocal),
+                    aiChatMode: params.mode,
+                    context: clonePromptContext(activeChatLocal.selectedContext),
+                    mcpSelectedServerNames: [...activeChatLocal.selectedMCPServers],
+                    isAnswering: true
+                };
+                const promptIndex = getChatMessages(activeChatLocal).length;
+                const wasUpdatedMessages = chatStripeTabsOfWorkspaceFile.updateChatTabById(activeChatLocal.id, (chatTab) => {
+                    return {
+                        ...chatTab,
+                        messages: [...getChatMessages(chatTab), promptMessage]
+                    };
+                });
+                // FIXME: Setup real socket.io id
+                const wasUpdatedChatProcessing = chatStripeTabsOfWorkspaceFile.startProcessing(activeChatLocal.id, promptMessage.id, "test");
+
+                if (!wasUpdatedMessages || !wasUpdatedChatProcessing) {
+                    return undefined;
+                }
+
+                return {
+                    chatId: activeChatLocal.id,
+                    promptIndex
+                };
+            },
+            appendOutputMessages(chatId: string, messagesToAppend: MessageOutput[]) {
+                chatStripeTabsOfWorkspaceFile.updateChatTabById(chatId, (chatTab) => {
+                    return {
+                        ...chatTab,
+                        messages: [...getChatMessages(chatTab), ...messagesToAppend]
+                    };
+                });
+            }
+        };
+    })();
+    const editorAIChat = (() => {
+        const { ...all } = writable<EditorAIChatState>({
+            textFieldMode: "regular-ask",
+            selectedText: {
+                ranges: []
+            }
+        });
+
+        return {
+            ...all,
+            setTextFieldMode(mode: AIChatMode, syncWithActiveTab: boolean = true) {
+                all.update((state) => ({
+                    ...state,
+                    textFieldMode: mode
+                }));
+
+                if (!syncWithActiveTab) {
+                    return;
+                }
+
+                updateActiveChatTab((chatTab) => ({
+                    ...chatTab,
+                    selectedMode: mode
+                }));
+            },
+            removeSelectedText(from: number, to: number) {
+                all.update((state) => ({
+                    ...state,
+                    selectedText: {
+                        ranges: (state.selectedText?.ranges ?? []).filter((range) => {
+                            return range.from !== from || range.to !== to;
+                        })
+                    }
+                }));
+            },
+            clearSelectedText() {
+                all.update((state) => ({
+                    ...state,
+                    selectedText: {
+                        ranges: []
+                    }
+                }));
+            },
+            getTextFieldModeTranslation(mode: AIChatMode): string {
+                return get(CHAT_MODES)[mode]?.modeName ?? mode;
+            }
+        };
+    })();
+    
+    let textContent = $state("");
+    let isSelectedTextPreviewOpen = $state(true);
+    let mouseIsOnPreviewSelectedText = $state<{ from: number; to: number } | null>(null);
+    let composerResetKey = $state(0);
+    let composerTextareaElement = $state<HTMLTextAreaElement | null>(null);
+    let chatHistoryElement = $state<HTMLDivElement | null>(null);
+
+    let bottomInteractions: HTMLDivElement | null = null;
+
+    let downloadMCPServersSpecification = $state<MCPServersSpec>({ mcpServers: {} });
+    let isMCPServersSelectionOpen = $state(false);
+    let isContextSelectionModalOpen = $state(false);
+    let isMCPSpecificationAvailableForWorkspace = $derived(getMCPServersList(downloadMCPServersSpecification).length > 0)
+    let selectedFileContextPayload = $state<ContextSpecificationPayload>(createEmptyContextPayload());
+    let contextModalSelectedChatId = $state<string | null>(null);
+        
+    let chatConversations = $derived($activeChat ? getConversationEntries($activeChat) : []);
+    let isMessagingActive = $derived(Boolean($selectedFile && !$rightSideStripeChat.isLoading && $rightSideStripeChatLayout.isOpen));
+
+    // Until functions
+    function updateHistoryBottomPadding() {
+        if (!chatHistoryElement || !bottomInteractions) {
+            return;
+        }
+
+        chatHistoryElement.style.paddingBottom = `${bottomInteractions.clientHeight}px`;
+    }
+    
     function getChatMessages(chatTab: ChatTab): ChatTab["messages"] {
         if (!Array.isArray(chatTab.messages)) {
             return [];
@@ -163,14 +284,14 @@
     }
 
     function clonePromptContext(context: ChatTab["selectedContext"]): MessageUserPrompt["context"] {
-        const normalizedContext = {
+        const normalizedContext: MessageUserPrompt["context"] = {
             desktopFiles: [...context.desktopFiles],
             editorFiles: [...context.editorFiles],
             networkUrls: [...context.networkUrls],
             aiAnswers: [...context.aiAnswers]
         };
 
-        return [normalizedContext] as MessageUserPrompt["context"];
+        return normalizedContext;
     }
 
     function updateActiveChatTab(updater: (chatTab: ChatTab) => ChatTab): boolean {
@@ -181,126 +302,6 @@
 
         return chatStripeTabsOfWorkspaceFile.updateChatTabById(activeChatLocal.id, updater);
     }
-
-    const rightSideStripeChat = (() => {
-        const { ...all } = writable({
-            isLoading: false
-        });
-
-        return {
-            ...all,
-            setLoading(isLoading: boolean) {
-                all.set({ isLoading });
-            },
-            appendPromptMessage(params: {
-                prompt: string;
-                promptHTML: string;
-                mode: AIChatMode;
-            }): AppendedPromptMessageResult | undefined {
-                const activeChatLocal = get(activeChat);
-                if (!activeChatLocal) {
-                    return undefined;
-                }
-
-                const promptMessage: MessageUserPrompt = {
-                    id: "222222",
-                    time: {
-                        startAt: new Date()
-                    },
-                    messageType: "message-user-prompt",
-                    messageContentHTML: params.promptHTML,
-                    model: createModelForMessage(activeChatLocal),
-                    aiChatMode: params.mode,
-                    context: clonePromptContext(activeChatLocal.selectedContext),
-                    mcpSelectedServerNames: [...activeChatLocal.selectedMCPServers],
-                    isAnswering: true
-                };
-                const promptIndex = getChatMessages(activeChatLocal).length;
-                const wasUpdatedMessages = chatStripeTabsOfWorkspaceFile.updateChatTabById(activeChatLocal.id, (chatTab) => {
-                    return {
-                        ...chatTab,
-                        messages: [...getChatMessages(chatTab), promptMessage]
-                    };
-                });
-                // FIXME: Setup real socket.io id
-                const wasUpdatedChatProcessing = chatStripeTabsOfWorkspaceFile.startProcessing(activeChatLocal.id, promptMessage.id, "test");
-
-                if (!wasUpdatedMessages || !wasUpdatedChatProcessing) {
-                    return undefined;
-                }
-
-                return {
-                    chatId: activeChatLocal.id,
-                    promptIndex
-                };
-            },
-            appendOutputMessages(chatId: string, messagesToAppend: MessageOutput[]) {
-                chatStripeTabsOfWorkspaceFile.updateChatTabById(chatId, (chatTab) => {
-                    return {
-                        ...chatTab,
-                        messages: [...getChatMessages(chatTab), ...messagesToAppend]
-                    };
-                });
-            }
-        };
-    })();
-
-    const editorAIChat = (() => {
-        const { ...all } = writable<EditorAIChatState>({
-            textFieldMode: "regular-ask",
-            selectedText: {
-                ranges: []
-            }
-        });
-
-        return {
-            ...all,
-            setTextFieldMode(mode: AIChatMode, syncWithActiveTab: boolean = true) {
-                all.update((state) => ({
-                    ...state,
-                    textFieldMode: mode
-                }));
-
-                if (!syncWithActiveTab) {
-                    return;
-                }
-
-                updateActiveChatTab((chatTab) => ({
-                    ...chatTab,
-                    selectedMode: mode
-                }));
-            },
-            removeSelectedText(from: number, to: number) {
-                all.update((state) => ({
-                    ...state,
-                    selectedText: {
-                        ranges: (state.selectedText?.ranges ?? []).filter((range) => {
-                            return range.from !== from || range.to !== to;
-                        })
-                    }
-                }));
-            },
-            clearSelectedText() {
-                all.update((state) => ({
-                    ...state,
-                    selectedText: {
-                        ranges: []
-                    }
-                }));
-            },
-            getTextFieldModeTranslation(mode: AIChatMode): string {
-                return get(CHAT_MODES)[mode]?.modeName ?? mode;
-            }
-        };
-    })();
-
-    let downloadMCPServersSpecification = $state<MCPServersSpec>({ mcpServers: {} });
-    
-    let isMCPServersSelectionOpen = $state(false);
-    let isContextSelectionModalOpen = $state(false);
-    let isMCPSpecificationAvailableForWorkspace = $derived(getMCPServersList(downloadMCPServersSpecification).length > 0)
-    let selectedFileContextPayload = $state<ContextSpecificationPayload>(createEmptyContextPayload());
-    let contextModalSelectedChatId = $state<string | null>(null);
 
     function createEmptyContextPayload(): ContextSpecificationPayload {
         return {
@@ -386,123 +387,6 @@
         return left.length === right.length && left.every((item, itemIndex) => item === right[itemIndex]);
     }
 
-    $effect(() => {
-        rightSideStripeChat.setLoading($isLoadedChatsOfWorkspaceFileLoading);
-    });
-
-    $effect(() => {
-        const activeChatLocal = $activeChat;
-
-        if (isContextSelectionModalOpen && contextModalSelectedChatId && activeChatLocal?.id !== contextModalSelectedChatId) {
-            isContextSelectionModalOpen = false;
-            contextModalSelectedChatId = null;
-        }
-
-        if (!activeChatLocal) {
-            selectedFileContextPayload = createEmptyContextPayload();
-            selectedMCPServerNames.set([]);
-            editorAIChat.setTextFieldMode("regular-ask", false);
-            return;
-        }
-
-        if ($editorAIChat.textFieldMode !== activeChatLocal.selectedMode) {
-            editorAIChat.setTextFieldMode(activeChatLocal.selectedMode, false);
-        }
-
-        const contextPayloadFromActiveChat = toContextPayloadFromTab(activeChatLocal);
-        if (!isContextPayloadEqual(selectedFileContextPayload, contextPayloadFromActiveChat)) {
-            selectedFileContextPayload = contextPayloadFromActiveChat;
-        }
-
-        const activeMCPServerNames = normalizeSelectedMCPServerNames(
-            activeChatLocal.selectedMCPServers,
-            getMCPServersList(downloadMCPServersSpecification)
-        );
-        if (!areStringArraysEqual($selectedMCPServerNames, activeMCPServerNames)) {
-            selectedMCPServerNames.set(activeMCPServerNames);
-        }
-
-        if (activeChatLocal.selectedModel) {
-            const modelFromSelection = avaiableModels.find((model) => {
-                return model.model === activeChatLocal.selectedModel?.model
-                    && model.provider === activeChatLocal.selectedModel?.provider;
-            }) ?? avaiableModels.find((model) => model.model === activeChatLocal.selectedModel?.model);
-
-            if (modelFromSelection) {
-                if (!isSameTabModel(cloneModelForTab($selectedModel), cloneModelForTab(modelFromSelection))) {
-                    selectedModel.set(modelFromSelection);
-                }
-
-                if ($selectedModelKey !== modelFromSelection.model) {
-                    selectedModelKey.set(modelFromSelection.model);
-                }
-            }
-        }
-    });
-
-    $effect(() => {
-        const activeChatLocal = $activeChat;
-        const selectedModelLocal = $selectedModel;
-        if (!activeChatLocal || !selectedModelLocal) {
-            return;
-        }
-
-        const modelForTab = cloneModelForTab(selectedModelLocal);
-        if (isSameTabModel(activeChatLocal.selectedModel, modelForTab)) {
-            return;
-        }
-
-        updateActiveChatTab((chatTab) => ({
-            ...chatTab,
-            selectedModel: modelForTab
-        }));
-    });
-
-    $effect(() => {
-        const activeChatLocal = $activeChat;
-        const selectedModelKeyLocal = $selectedModelKey;
-        if (!activeChatLocal || !selectedModelKeyLocal) {
-            return;
-        }
-
-        const modelFromKey = avaiableModels.find((model) => model.model === selectedModelKeyLocal);
-        if (!modelFromKey) {
-            return;
-        }
-
-        const modelForTab = cloneModelForTab(modelFromKey);
-        if (isSameTabModel(activeChatLocal.selectedModel, modelForTab)) {
-            return;
-        }
-
-        updateActiveChatTab((chatTab) => ({
-            ...chatTab,
-            selectedModel: modelForTab
-        }));
-    });
-
-    $effect(() => {
-        const selectedServerNames = $selectedMCPServerNames;
-        const activeChatLocal = $activeChat;
-        const availableMCPServers = getMCPServersList(downloadMCPServersSpecification);
-        if (!activeChatLocal) {
-            return;
-        }
-
-        const normalizedServerNames = normalizeSelectedMCPServerNames(selectedServerNames, availableMCPServers);
-        if (areStringArraysEqual(activeChatLocal.selectedMCPServers, normalizedServerNames)) {
-            return;
-        }
-
-        updateActiveChatTab((chatTab) => ({
-            ...chatTab,
-            selectedMCPServers: normalizedServerNames
-        }));
-    });
-
-    let chatConversations = $derived($activeChat ? getConversationEntries($activeChat) : []);
-    let isMessagingActive = $derived(Boolean($selectedFile && !$rightSideStripeChat.isLoading && $rightSideStripeChatLayout.isOpen));
-    
     // Helpers
     function escapeHtml(text: string): string {
         return text
@@ -544,21 +428,6 @@
     }
 
     // Handlers
-    function onShowOrHidePrompt(chatBubbleId: string) {
-        const isExpanded = showFullPromptTextIds.includes(chatBubbleId);
-        showFullPromptTextIds = isExpanded
-            ? showFullPromptTextIds.filter((id) => id !== chatBubbleId)
-            : [...showFullPromptTextIds, chatBubbleId];
-    }
-
-    function onShowHideMessageContext(chatBubbleId: string) {
-        displayContextForMessages.update((visibleContexts) => {
-            return visibleContexts.includes(chatBubbleId)
-                ? visibleContexts.filter((id) => id !== chatBubbleId)
-                : [...visibleContexts, chatBubbleId];
-        });
-    }
-
     function onClickSelectedTextToggle() {
         isSelectedTextPreviewOpen = !isSelectedTextPreviewOpen;
     }
@@ -586,10 +455,6 @@
     function onSelectNewMode(mode: AIChatMode) {
         editorAIChat.setTextFieldMode(mode);
         isModeSelectingTrayOpen = false;
-    }
-
-    function getMessageMode(prompt: ChatPromptMessage): AIChatMode {
-        return prompt.aiChatMode;
     }
 
     function buildMockResponse(prompt: string, mode: AIChatMode, chatTab: ChatTab): MessageOutput[] {
@@ -735,6 +600,121 @@
         }
     }
 
+    // Effects
+    $effect(() => {
+        rightSideStripeChat.setLoading($isLoadedChatsOfWorkspaceFileLoading);
+    });
+
+    $effect(() => {
+        const activeChatLocal = $activeChat;
+
+        if (isContextSelectionModalOpen && contextModalSelectedChatId && activeChatLocal?.id !== contextModalSelectedChatId) {
+            isContextSelectionModalOpen = false;
+            contextModalSelectedChatId = null;
+        }
+
+        if (!activeChatLocal) {
+            selectedFileContextPayload = createEmptyContextPayload();
+            selectedMCPServerNames.set([]);
+            editorAIChat.setTextFieldMode("regular-ask", false);
+            return;
+        }
+
+        if ($editorAIChat.textFieldMode !== activeChatLocal.selectedMode) {
+            editorAIChat.setTextFieldMode(activeChatLocal.selectedMode, false);
+        }
+
+        const contextPayloadFromActiveChat = toContextPayloadFromTab(activeChatLocal);
+        if (!isContextPayloadEqual(selectedFileContextPayload, contextPayloadFromActiveChat)) {
+            selectedFileContextPayload = contextPayloadFromActiveChat;
+        }
+
+        const activeMCPServerNames = normalizeSelectedMCPServerNames(
+            activeChatLocal.selectedMCPServers,
+            getMCPServersList(downloadMCPServersSpecification)
+        );
+        if (!areStringArraysEqual($selectedMCPServerNames, activeMCPServerNames)) {
+            selectedMCPServerNames.set(activeMCPServerNames);
+        }
+
+        if (activeChatLocal.selectedModel) {
+            const modelFromSelection = avaiableModels.find((model) => {
+                return model.model === activeChatLocal.selectedModel?.model
+                    && model.provider === activeChatLocal.selectedModel?.provider;
+            }) ?? avaiableModels.find((model) => model.model === activeChatLocal.selectedModel?.model);
+
+            if (modelFromSelection) {
+                if (!isSameTabModel(cloneModelForTab($selectedModel), cloneModelForTab(modelFromSelection))) {
+                    selectedModel.set(modelFromSelection);
+                }
+
+                if ($selectedModelKey !== modelFromSelection.model) {
+                    selectedModelKey.set(modelFromSelection.model);
+                }
+            }
+        }
+    });
+
+    $effect(() => {
+        const activeChatLocal = $activeChat;
+        const selectedModelLocal = $selectedModel;
+        if (!activeChatLocal || !selectedModelLocal) {
+            return;
+        }
+
+        const modelForTab = cloneModelForTab(selectedModelLocal);
+        if (isSameTabModel(activeChatLocal.selectedModel, modelForTab)) {
+            return;
+        }
+
+        updateActiveChatTab((chatTab) => ({
+            ...chatTab,
+            selectedModel: modelForTab
+        }));
+    });
+
+    $effect(() => {
+        const activeChatLocal = $activeChat;
+        const selectedModelKeyLocal = $selectedModelKey;
+        if (!activeChatLocal || !selectedModelKeyLocal) {
+            return;
+        }
+
+        const modelFromKey = avaiableModels.find((model) => model.model === selectedModelKeyLocal);
+        if (!modelFromKey) {
+            return;
+        }
+
+        const modelForTab = cloneModelForTab(modelFromKey);
+        if (isSameTabModel(activeChatLocal.selectedModel, modelForTab)) {
+            return;
+        }
+
+        updateActiveChatTab((chatTab) => ({
+            ...chatTab,
+            selectedModel: modelForTab
+        }));
+    });
+
+    $effect(() => {
+        const selectedServerNames = $selectedMCPServerNames;
+        const activeChatLocal = $activeChat;
+        const availableMCPServers = getMCPServersList(downloadMCPServersSpecification);
+        if (!activeChatLocal) {
+            return;
+        }
+
+        const normalizedServerNames = normalizeSelectedMCPServerNames(selectedServerNames, availableMCPServers);
+        if (areStringArraysEqual(activeChatLocal.selectedMCPServers, normalizedServerNames)) {
+            return;
+        }
+
+        updateActiveChatTab((chatTab) => ({
+            ...chatTab,
+            selectedMCPServers: normalizedServerNames
+        }));
+    });
+    
     $effect(() => {
         const selectedRangesCount = $editorAIChat.selectedText?.ranges.length ?? 0;
         const isSelectedTextOpen = isSelectedTextPreviewOpen;
