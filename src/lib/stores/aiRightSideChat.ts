@@ -1353,21 +1353,68 @@ export const editorAIChat = (() => {
 			}
 	
 			const selectedMode = normalizeModeCandidate(activeTab.selectedMode);
+			const selectedTextRanges = Array.isArray(activeTab.selectedContext?.selectedTextRanges)
+				? [...activeTab.selectedContext.selectedTextRanges]
+				: [];
+
 			all.update(state => {
-				if (state.textFieldMode === selectedMode) {
+				const isModeSame = state.textFieldMode === selectedMode;
+				const isRangesSame = JSON.stringify(state.selectedTextRanges) === JSON.stringify(selectedTextRanges);
+
+				if (isModeSame && isRangesSame) {
 					return state;
 				}
 	
 				return {
 					...state,
-					textFieldMode: selectedMode
+					textFieldMode: selectedMode,
+					selectedTextRanges
 				};
+			});
+		});
+
+		// Delay subscription to avoid circular dependency (ReferenceError: Cannot access 'selectedFile' before initialization)
+		queueMicrotask(() => {
+			// Unselect the selected text
+			selectedFile.subscribe(() => {
+				all.update(state => ({
+					...state,
+					selectedTextRanges: []
+				}));
 			});
 		});
 	}
 
 	return {
 		...all,
+		update(updater: (state: EditorAIChatState) => EditorAIChatState) {
+			const nextState = updater(get(all));
+			all.set(nextState);
+
+			// Persist ranges back to active chat tab context
+			chatStripeTabsOfWorkspaceFile.update(chatTabs => {
+				const activeTab = getActiveTabFromState(chatTabs);
+				if (!activeTab) {
+					return chatTabs;
+				}
+
+				return chatTabs.map(chatTab => {
+					if (chatTab.id !== activeTab.id) {
+						return chatTab;
+					}
+
+					return {
+						...chatTab,
+						selectedContext: {
+							...(chatTab.selectedContext ?? {}),
+							selectedTextRanges: Array.isArray(nextState.selectedTextRanges)
+								? [...nextState.selectedTextRanges]
+								: []
+						}
+					};
+				});
+			});
+		},
 		getTextFieldModeTranslation(modeCandidate: AIChatMode): string {
 			const selectedMode = normalizeModeCandidate(modeCandidate);
 			return CHAT_MODE_TRANSLATIONS[selectedMode];
@@ -1405,21 +1452,43 @@ export const editorAIChat = (() => {
 			});
 		},
 		removeSelectedText(from: number, to: number) {
-			all.update((state) => ({
+			this.update((state) => ({
 				...state,
-				selectedText: {
-					ranges: (state.selectedTextRanges ?? []).filter((range) => {
-						return range.from !== from || range.to !== to;
-					})
-				}
+				selectedTextRanges: (state.selectedTextRanges ?? []).filter((range) => {
+					return range.from !== from || range.to !== to;
+				})
 			}));
 		},
-		clearSelectedText() {
-			all.update((state) => ({
-				...state,
-				selectedText: {
-					ranges: []
+		genSelectedTextId() {
+			const editorChatCurrentState = get(all);
+			const selectedIndex = editorChatCurrentState.selectedTextRanges?.length ?? 0;
+			return `selected-text-${selectedIndex}`;
+		},
+		selectText({ from, to }: { from: number; to: number; }, text: string) {
+			this.update((chatState) => {
+				const exists = chatState.selectedTextRanges?.some(r => r.from === from && r.to === to);
+				
+				if (exists) {
+					return chatState;
 				}
+				
+				return {
+					...chatState,
+					selectedTextRanges: [
+						{ 
+							id: editorAIChat.genSelectedTextId(),
+							from,
+							to,
+							text
+						}
+					]
+				}
+			});
+		},
+		clearSelectedText() {
+			this.update((state) => ({
+				...state,
+				selectedTextRanges: []
 			}));
 		},
 	};

@@ -14,6 +14,7 @@ import { CodeSnippet } from "../editorComponents/components/CodeSnippet.js";
 import { File } from "@ravenlens/shared";
 import { collaborationInterface, isCurrentUserSelectedFileEditor } from "./collaboration.js";
 import { browser } from "$app/environment";
+import { editorAIChat } from "./aiRightSideChat.js";
 
 function normalizeContent(content?: string): string {
     if (!content || !content.trim()) {
@@ -117,6 +118,21 @@ export const editor = (() => {
                             }
                         }, 2_500);
                     },
+                    onSelectionUpdate(props) {
+                        const { state } = props.editor;
+                        const { from, to, empty } = state.selection;
+
+                        if (empty) {
+                            return;
+                        }
+
+                        const text = state.doc.textBetween(from, to, ' ');
+                        if (!text.trim()) {
+                            return;
+                        }
+
+                        editorAIChat.selectText({ from, to }, text);
+                    }
                 });
                 
                 // Track the instance and update the store

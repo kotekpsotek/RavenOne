@@ -677,7 +677,7 @@
                                 <button class="btn btn-ghost btn-xs btn-square" onclick={() => onRemoveSelectedText(selectedText.from, selectedText.to)}>
                                     <Icon icon="mdi:close" width="12" height="12" />
                                 </button>
-                                <span class="break-all whitespace-pre-wrap">{htmlToText(selectedText.html)}</span>
+                                <span class="break-all whitespace-pre-wrap">{selectedText.text}</span>
                             </div>
                         </div>
                         {#if i !== $editorAIChat.selectedTextRanges.length - 1}
