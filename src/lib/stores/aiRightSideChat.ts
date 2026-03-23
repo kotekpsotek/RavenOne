@@ -1,5 +1,5 @@
 import { derived, get, writable, type Updater } from "svelte/store";
-import { selectedFile } from "./files";
+import { selectedFile, selectedModel } from "./files";
 import { browser } from "$app/environment";
 import { loadChatsFromFileRequest } from "$lib/sideStripe/rightStripeChat/connections";
 import { selectedWorkspace } from "./workspace";
@@ -7,7 +7,7 @@ import { isChatSideStripeSelected } from "./selectedSideStripes";
 import { userProfile } from "./user";
 import type { File } from "@ravenlens/shared";
 import type { AIChatMode, ChatTab } from "@ravenlens/shared/chat-ai/frontend";
-import type { BackendChatPopulated } from "@ravenlens/shared/chat-ai/backend/schema";
+import type { AIChatModel, BackendChatPopulated, MessageOutput, MessageUserPrompt, SelectedTextRangeContext } from "@ravenlens/shared/chat-ai/backend/schema";
 
 export const isLoadedChatsOfWorkspaceFileLoading = writable<boolean>(false);
 
@@ -1144,10 +1144,15 @@ const reorderTabsByPosition = (
 
 export type AIChatThread = ChatTab;
 
-type RightSideStripeChatState = {
+interface RightSideStripeChatState {
 	chats: ChatTab[];
 	selectedChatId?: string;
 	isLoading: boolean;
+};
+
+interface AppendedPromptMessageResult {
+	chatId: string;
+	promptIndex: number;
 };
 
 const toRightSideStripeState = (tabs: ChatTab[], isLoading: boolean): RightSideStripeChatState => {
@@ -1180,6 +1185,97 @@ export const rightSideStripeChat = (() => {
 
 	return {
 		...all,
+		setLoading(isLoading: boolean) {
+			all.update(state => {
+				return {
+					...state,
+					isLoading
+				}
+			});
+		},
+		getChatMessages(chatTab: ChatTab): ChatTab["messages"] {
+			if (!Array.isArray(chatTab.messages)) {
+				return [];
+			}
+
+			return [...chatTab.messages];
+		},
+		createModelForMessage(chatTab: ChatTab): AIChatModel {
+			const selectedModelForTab = chatTab.selectedModel;
+			const selectedModelFromStore = get(selectedModel);
+
+			if (selectedModelForTab) {
+				return {
+					model: selectedModelForTab.model,
+					provider: selectedModelForTab.provider,
+					weight: 1
+				};
+			}
+
+			if (selectedModelFromStore) {
+				return {
+					model: selectedModelFromStore.model,
+					provider: selectedModelFromStore.provider,
+					weight: 1
+				};
+			}
+
+			return {
+				model: "gpt-4o",
+				provider: "OpenAI",
+				weight: 1
+			};
+		},
+		appendPromptMessage(params: {
+			prompt: string;
+			promptHTML: string;
+			mode: AIChatMode;
+		}): AppendedPromptMessageResult | undefined {
+			const activeChatLocal = get(activeChat);
+			if (!activeChatLocal) {
+				return undefined;
+			}
+
+			const promptMessage: MessageUserPrompt = {
+				id: "222222",
+				time: {
+					startAt: new Date()
+				},
+				messageType: "message-user-prompt",
+				messageContentHTML: params.promptHTML,
+				model: this.createModelForMessage(activeChatLocal),
+				aiChatMode: params.mode,
+				context: activeChatLocal.selectedContext,
+				mcpSelectedServerNames: [...activeChatLocal.selectedMCPServers],
+				isAnswering: true
+			};
+			const promptIndex = this.getChatMessages(activeChatLocal).length;
+			const wasUpdatedMessages = chatStripeTabsOfWorkspaceFile.updateChatTabById(activeChatLocal.id, (chatTab) => {
+				return {
+					...chatTab,
+					messages: [...this.getChatMessages(chatTab), promptMessage]
+				};
+			});
+			// FIXME: Setup real socket.io id
+			const wasUpdatedChatProcessing = chatStripeTabsOfWorkspaceFile.startProcessing(activeChatLocal.id, promptMessage.id, "test");
+
+			if (!wasUpdatedMessages || !wasUpdatedChatProcessing) {
+				return undefined;
+			}
+
+			return {
+				chatId: activeChatLocal.id,
+				promptIndex
+			};
+		},
+		appendOutputMessages(chatId: string, messagesToAppend: MessageOutput[]) {
+			chatStripeTabsOfWorkspaceFile.updateChatTabById(chatId, (chatTab) => {
+				return {
+					...chatTab,
+					messages: [...this.getChatMessages(chatTab), ...messagesToAppend]
+				};
+			});
+		},
 		setSelectedChatId(chatId: string): boolean {
 			return chatStripeTabsOfWorkspaceFile.setActive(chatId);
 		},
@@ -1240,7 +1336,7 @@ export const rightSideStripeChat = (() => {
 	};
 })();
 
-type EditorAIChatState = {
+interface EditorAIChatState extends SelectedTextRangeContext {
 	textFieldMode: AIChatMode;
 };
 
@@ -1307,7 +1403,25 @@ export const editorAIChat = (() => {
 					};
 				});
 			});
-		}
+		},
+		removeSelectedText(from: number, to: number) {
+			all.update((state) => ({
+				...state,
+				selectedText: {
+					ranges: (state.selectedTextRanges ?? []).filter((range) => {
+						return range.from !== from || range.to !== to;
+					})
+				}
+			}));
+		},
+		clearSelectedText() {
+			all.update((state) => ({
+				...state,
+				selectedText: {
+					ranges: []
+				}
+			}));
+		},
 	};
 })();
 

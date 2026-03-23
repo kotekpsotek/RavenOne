@@ -8,7 +8,9 @@
         SelectedAnswerFromChatContext,
         activeChat,
         chatStripeTabsOfWorkspaceFile,
+        editorAIChat,
         isLoadedChatsOfWorkspaceFileLoading,
+        rightSideStripeChat,
         selectedChatAnswerIds
     } from "$lib/stores/aiRightSideChat";
     import { selectedFile, selectedModel } from "$lib/stores/files";
@@ -22,7 +24,10 @@
     import type {
         AIChatModel,
         MessageOutput,
-        MessageUserPrompt
+        MessageUserPrompt,
+
+        SelectedTextRangeContext
+
     } from "@ravenlens/shared/chat-ai/backend/schema";
     import { CHAT_MODES, chatLayoutStore as rightSideStripeChatLayout, type ChatModeValue } from "./config";
     import { derived, get, writable } from "svelte/store";
@@ -40,25 +45,9 @@
 
     // Types
     type ContextSpecificationPayload = File.FileAI.ContextSpecificationPayload;
-    type AppendedPromptMessageResult = {
-        chatId: string;
-        promptIndex: number;
-    };
     type ChatMessage = ChatTab["messages"][number];
     type ChatPromptMessage = Extract<ChatMessage, { messageType: "message-user-prompt" }>;
     type ChatOutputMessage = Extract<ChatMessage, { messageType: "message-user-output" }>;
-    type SelectedTextRange = {
-        id: string;
-        from: number;
-        to: number;
-        html: string;
-    };
-    type EditorAIChatState = {
-        textFieldMode: AIChatMode;
-        selectedText?: {
-            ranges: SelectedTextRange[];
-        };
-    };
     type ChatConversationEntry = {
         prompt: ChatPromptMessage;
         outputs: ChatOutputMessage[];
@@ -73,116 +62,6 @@
     // State
     const displayContextForMessages = writable<string[]>([]);
     const selectedMCPServerNames = writable<string[]>([]);
-    const rightSideStripeChat = (() => {
-        const { ...all } = writable({
-            isLoading: false
-        });
-
-        return {
-            ...all,
-            setLoading(isLoading: boolean) {
-                all.set({ isLoading });
-            },
-            appendPromptMessage(params: {
-                prompt: string;
-                promptHTML: string;
-                mode: AIChatMode;
-            }): AppendedPromptMessageResult | undefined {
-                const activeChatLocal = get(activeChat);
-                if (!activeChatLocal) {
-                    return undefined;
-                }
-
-                const promptMessage: MessageUserPrompt = {
-                    id: "222222",
-                    time: {
-                        startAt: new Date()
-                    },
-                    messageType: "message-user-prompt",
-                    messageContentHTML: params.promptHTML,
-                    model: createModelForMessage(activeChatLocal),
-                    aiChatMode: params.mode,
-                    context: clonePromptContext(activeChatLocal.selectedContext),
-                    mcpSelectedServerNames: [...activeChatLocal.selectedMCPServers],
-                    isAnswering: true
-                };
-                const promptIndex = getChatMessages(activeChatLocal).length;
-                const wasUpdatedMessages = chatStripeTabsOfWorkspaceFile.updateChatTabById(activeChatLocal.id, (chatTab) => {
-                    return {
-                        ...chatTab,
-                        messages: [...getChatMessages(chatTab), promptMessage]
-                    };
-                });
-                // FIXME: Setup real socket.io id
-                const wasUpdatedChatProcessing = chatStripeTabsOfWorkspaceFile.startProcessing(activeChatLocal.id, promptMessage.id, "test");
-
-                if (!wasUpdatedMessages || !wasUpdatedChatProcessing) {
-                    return undefined;
-                }
-
-                return {
-                    chatId: activeChatLocal.id,
-                    promptIndex
-                };
-            },
-            appendOutputMessages(chatId: string, messagesToAppend: MessageOutput[]) {
-                chatStripeTabsOfWorkspaceFile.updateChatTabById(chatId, (chatTab) => {
-                    return {
-                        ...chatTab,
-                        messages: [...getChatMessages(chatTab), ...messagesToAppend]
-                    };
-                });
-            }
-        };
-    })();
-    const editorAIChat = (() => {
-        const { ...all } = writable<EditorAIChatState>({
-            textFieldMode: "regular-ask",
-            selectedText: {
-                ranges: []
-            }
-        });
-
-        return {
-            ...all,
-            setTextFieldMode(mode: AIChatMode, syncWithActiveTab: boolean = true) {
-                all.update((state) => ({
-                    ...state,
-                    textFieldMode: mode
-                }));
-
-                if (!syncWithActiveTab) {
-                    return;
-                }
-
-                updateActiveChatTab((chatTab) => ({
-                    ...chatTab,
-                    selectedMode: mode
-                }));
-            },
-            removeSelectedText(from: number, to: number) {
-                all.update((state) => ({
-                    ...state,
-                    selectedText: {
-                        ranges: (state.selectedText?.ranges ?? []).filter((range) => {
-                            return range.from !== from || range.to !== to;
-                        })
-                    }
-                }));
-            },
-            clearSelectedText() {
-                all.update((state) => ({
-                    ...state,
-                    selectedText: {
-                        ranges: []
-                    }
-                }));
-            },
-            getTextFieldModeTranslation(mode: AIChatMode): string {
-                return get(CHAT_MODES)[mode]?.modeName ?? mode;
-            }
-        };
-    })();
     
     let textContent = $state("");
     let isSelectedTextPreviewOpen = $state(true);
@@ -212,14 +91,6 @@
         chatHistoryElement.style.paddingBottom = `${bottomInteractions.clientHeight}px`;
     }
     
-    function getChatMessages(chatTab: ChatTab): ChatTab["messages"] {
-        if (!Array.isArray(chatTab.messages)) {
-            return [];
-        }
-
-        return [...chatTab.messages];
-    }
-
     function isPromptMessage(message: ChatMessage): message is ChatPromptMessage {
         return message.messageType === "message-user-prompt";
     }
@@ -229,7 +100,7 @@
     }
 
     function getConversationEntries(chatTab: ChatTab): ChatConversationEntry[] {
-        const messages = getChatMessages(chatTab);
+        const messages = rightSideStripeChat.getChatMessages(chatTab);
         const entries: ChatConversationEntry[] = [];
 
         messages.forEach((message, messageIndex) => {
@@ -254,44 +125,6 @@
         });
 
         return entries;
-    }
-
-    function createModelForMessage(chatTab: ChatTab): AIChatModel {
-        const selectedModelForTab = chatTab.selectedModel;
-        const selectedModelFromStore = $selectedModel;
-
-        if (selectedModelForTab) {
-            return {
-                model: selectedModelForTab.model,
-                provider: selectedModelForTab.provider,
-                weight: 1
-            };
-        }
-
-        if (selectedModelFromStore) {
-            return {
-                model: selectedModelFromStore.model,
-                provider: selectedModelFromStore.provider,
-                weight: 1
-            };
-        }
-
-        return {
-            model: "gpt-4o",
-            provider: "OpenAI",
-            weight: 1
-        };
-    }
-
-    function clonePromptContext(context: ChatTab["selectedContext"]): MessageUserPrompt["context"] {
-        const normalizedContext: MessageUserPrompt["context"] = {
-            desktopFiles: [...context.desktopFiles],
-            editorFiles: [...context.editorFiles],
-            networkUrls: [...context.networkUrls],
-            aiAnswers: [...context.aiAnswers]
-        };
-
-        return normalizedContext;
     }
 
     function updateActiveChatTab(updater: (chatTab: ChatTab) => ChatTab): boolean {
@@ -457,6 +290,7 @@
         isModeSelectingTrayOpen = false;
     }
 
+    // FIXME: Remove
     function buildMockResponse(prompt: string, mode: AIChatMode, chatTab: ChatTab): MessageOutput[] {
         const escapedPrompt = escapeHtml(prompt || "context only prompt");
         const outputMessage: MessageOutput = {
@@ -466,7 +300,7 @@
             },
             messageType: "message-user-output",
             messageContentHTML: `<p><strong>Mode:</strong> ${escapeHtml(getTextFieldModeName(mode))}</p><p>Generated response for: ${escapedPrompt}</p>`,
-            model: createModelForMessage(chatTab),
+            model: rightSideStripeChat.createModelForMessage(chatTab),
             reasoning: [],
             aiChatMode: "regular-ask",
             isAnswering: true
@@ -482,7 +316,7 @@
         }
 
         const promptText = textContent.trim();
-        const selectedRanges = $editorAIChat.selectedText?.ranges ?? [];
+        const selectedRanges = $editorAIChat.selectedTextRanges ?? [];
         if (!promptText && !selectedRanges.length) {
             return;
         }
@@ -527,7 +361,7 @@
         // Simulate end
         setTimeout(() => {
             // Remove chat processing stage
-            chatStripeTabsOfWorkspaceFile.stopProcessing($activeChat.id);
+            chatStripeTabsOfWorkspaceFile.stopProcessing(chatId);
         }, 5_000);
     }
 
@@ -616,12 +450,12 @@
         if (!activeChatLocal) {
             selectedFileContextPayload = createEmptyContextPayload();
             selectedMCPServerNames.set([]);
-            editorAIChat.setTextFieldMode("regular-ask", false);
+            editorAIChat.setTextFieldMode("regular-ask");
             return;
         }
 
         if ($editorAIChat.textFieldMode !== activeChatLocal.selectedMode) {
-            editorAIChat.setTextFieldMode(activeChatLocal.selectedMode, false);
+            editorAIChat.setTextFieldMode(activeChatLocal.selectedMode);
         }
 
         const contextPayloadFromActiveChat = toContextPayloadFromTab(activeChatLocal);
@@ -716,7 +550,7 @@
     });
     
     $effect(() => {
-        const selectedRangesCount = $editorAIChat.selectedText?.ranges.length ?? 0;
+        const selectedRangesCount = $editorAIChat.selectedTextRanges?.length ?? 0;
         const isSelectedTextOpen = isSelectedTextPreviewOpen;
         void selectedRangesCount;
         void isSelectedTextOpen;
@@ -816,7 +650,7 @@
     class="absolute inset-x-0 bottom-0 p-3 z-10 bg-base-100"
     bind:this={bottomInteractions}
 >
-    {#if $editorAIChat.selectedText?.ranges.length}
+    {#if $editorAIChat.selectedTextRanges?.length}
         <div class="rounded-lg border border-base-300 bg-base-200 p-2">
             <button class="btn btn-ghost btn-xs px-1" onclick={onClickSelectedTextToggle}>
                 {#if isSelectedTextPreviewOpen}
@@ -829,7 +663,7 @@
 
             {#if isSelectedTextPreviewOpen}
                 <div class="mt-2 max-h-40 overflow-y-auto space-y-1">
-                    {#each $editorAIChat.selectedText.ranges as selectedText, i (selectedText.id)}
+                    {#each $editorAIChat.selectedTextRanges as selectedText, i (selectedText.id)}
                         {@const isTextSelected = mouseIsOnPreviewSelectedText
                             && mouseIsOnPreviewSelectedText.from === selectedText.from
                             && mouseIsOnPreviewSelectedText.to === selectedText.to}
@@ -846,7 +680,7 @@
                                 <span class="break-all whitespace-pre-wrap">{htmlToText(selectedText.html)}</span>
                             </div>
                         </div>
-                        {#if i !== $editorAIChat.selectedText.ranges.length - 1}
+                        {#if i !== $editorAIChat.selectedTextRanges.length - 1}
                             <div class="border-b border-base-300"></div>
                         {/if}
                     {/each}
@@ -927,7 +761,7 @@
                     class:opacity-50={isDisabled}
                     class:cursor-not-allowed={isDisabled}
                     disabled={isDisabled}
-                    placeholder={$editorAIChat.selectedText?.ranges.length ? "Type order to context..." : "Type subject..."}
+                    placeholder={$editorAIChat.selectedTextRanges?.length ? "Type order to context..." : "Type subject..."}
                     bind:value={textContent}
                     bind:this={composerTextareaElement}
                 ></textarea>
@@ -944,7 +778,7 @@
             {:else}
                 <button
                     class="btn btn-primary btn-sm btn-square rounded-full absolute bottom-2 right-2"
-                    disabled={!textContent.trim() && !$editorAIChat.selectedText?.ranges.length}
+                    disabled={!textContent.trim() && !$editorAIChat.selectedTextRanges?.length}
                     title="Send Message"
                     onclick={onSendMessage}
                 >
