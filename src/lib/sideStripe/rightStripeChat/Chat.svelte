@@ -733,7 +733,8 @@
             </button>
 
             <!-- MCP Servers Selection -->
-            <div
+             <!-- FIXME: This is commented in MVP -->
+            <!-- <div
                 class="tooltip tooltip-top"
                 data-tip={!isMCPSpecificationAvailableForWorkspace ? "Workspace hasn't got specified MCP Servers. Specify MCP Servers for workspace first" : ""}
             >
@@ -744,7 +745,7 @@
                 >
                     <Icon icon="carbon:logo-model-context-protocol"/>
                 </button>
-            </div>
+            </div> -->
 
             <!-- Model spec -->
             <div class="w-fit">
@@ -790,12 +791,22 @@
 </div>
 
 <!-- MCP Servers selection modal -->
-<McpServerSelectionModal
+<!-- FIXME: In MVP this is disabled -->
+ <!-- TODO: Make 2 categories:
+    --- All
+    [] Select All servers
+
+    --- Granual
+    [] Server a [] Server b
+
+* Use "Granual" to unselect selected [] Selected All servers if were selected before
+ -->
+<!-- <McpServerSelectionModal
     bind:open={isMCPServersSelectionOpen}
     bind:selectedMCPServerNames={$selectedMCPServerNames}
     avaiableMCPServers={getMCPServersList(downloadMCPServersSpecification)}
     close={onToggleMCPServersSelectionModal}
-/>
+/> -->
 
 <ContextSelectionModal
     bind:open={isContextSelectionModalOpen}
