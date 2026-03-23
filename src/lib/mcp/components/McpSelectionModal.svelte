@@ -6,6 +6,8 @@
     import { fetchAuthenticated } from "$lib/utils/fetch";
     import { selectedWorkspace } from "$lib/stores/workspace";
     import { alertState } from "$lib/utils/alert";
+    import Icon from "@iconify/svelte"
+    import { RavenMCPSelection, type MCP } from "@ravenlens/ravenmcp";
 
     let {
         open = $bindable(false),
@@ -18,6 +20,20 @@
     }>();
     
     let saving = $state(false);
+    let isServerSelectionOpen = $state(false);
+    let hiddenMCPServersSpecModal = $derived(isServerSelectionOpen);
+
+    let initialMcpConfigurationDraft = $state("");
+    const hasChanged = $derived(mcpConfigurationDraft !== initialMcpConfigurationDraft);
+
+    $effect(() => {
+        if (open && !initialMcpConfigurationDraft) {
+            initialMcpConfigurationDraft = mcpConfigurationDraft;
+        }
+        if (!open) {
+            initialMcpConfigurationDraft = "";
+        }
+    });
 
     function closeMcpConfigurationEditor() {
         open = false;
@@ -183,9 +199,61 @@
             return { valid: false, error: "Invalid JSON format. Please fix syntax errors before accepting." };
         }
     }
+
+    function onSearchMCPServers() {
+        isServerSelectionOpen = true;
+    }
+
+    // Reactive list of selected server objects for the selection component
+    let selectedServers = $derived.by(() => {
+        try {
+            const cfg = JSON.parse(mcpConfigurationDraft || "{}") as Partial<McpConfiguration> | undefined;
+            const servers = cfg?.mcpServers || {};
+            return Object.entries(servers).map(([name, config]) => ({
+                name,
+                ...(config as Record<string, unknown>)
+            })) as unknown as MCP.MCPServer[];
+        } catch {
+            return [];
+        }
+    });
+
+    function onToggleMCPServer(mcpServer: MCP.MCPServer) {
+        console.log('Selected MCP Server', mcpServer)
+
+        const serverName = (mcpServer as any).name ?? (mcpServer as any).id ?? String(mcpServer);
+
+        // Update the textual draft (mcpConfigurationDraft)
+        try {
+            const currentDraft = JSON.parse(mcpConfigurationDraft || "{\"mcpServers\":{}}");
+            if (!currentDraft.mcpServers) currentDraft.mcpServers = {};
+
+            if (currentDraft.mcpServers[serverName]) {
+                // Unselect: remove from JSON
+                delete currentDraft.mcpServers[serverName];
+            } else {
+                // Select: add to JSON with default schema
+                currentDraft.mcpServers[serverName] = {
+                    type: "http",
+                    url: (mcpServer as any).url || "https://api.example.com/mcp/",
+                    headers: {
+                        "Authorization": "Bearer <TOKEN_HERE>"
+                    }
+                };
+            }
+            mcpConfigurationDraft = JSON.stringify(currentDraft, null, 2);
+        } catch (e) {
+            console.error("Failed to update mcpConfigurationDraft:", e);
+        }
+
+        selectedMcpServers.update(list => {
+            if (list.includes(serverName)) return list.filter(x => x !== serverName);
+            return [...list, serverName];
+        });
+    }
 </script>
 
-{#if open}
+{#if open && !hiddenMCPServersSpecModal}
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="fixed inset-0 z-[60] bg-black/40" onclick={closeMcpConfigurationEditor}>
@@ -225,16 +293,39 @@
                     </div>
                 </div>
 
-                <div class="mt-4 flex justify-end gap-2">
-                    <button class="btn btn-ghost" onclick={closeMcpConfigurationEditor} disabled={saving}>Cancel</button>
-                    <button class="btn btn-primary" onclick={acceptMcpConfiguration} disabled={saving}>
-                        {#if saving}
-                            <span class="loading loading-spinner loading-sm"></span>
-                        {/if}
-                        Save
-                    </button>
+                <div
+                    class="flex justify-between items-center mt-4"
+                >
+                    <div>
+                        <button
+                            class="btn"
+                            onclick={onSearchMCPServers}
+                        >
+                            <Icon icon="simple-icons:modelcontextprotocol"/>
+                            <span>
+                                Search MCP Servers
+                            </span>
+                        </button>
+                    </div>
+                
+                    <div class="flex justify-end gap-2">
+                        <button class="btn btn-ghost" onclick={closeMcpConfigurationEditor} disabled={saving}>Cancel</button>
+                        <button id="save-mcp-btn" class="btn btn-primary" onclick={acceptMcpConfiguration} disabled={saving || !hasChanged}>
+                            {#if saving}
+                                <span class="loading loading-spinner loading-sm"></span>
+                            {/if}
+                            Save
+                        </button>
+                    </div>
                 </div>
             </UI.Modals.ModalWrapper>
         </div>
     </div>
 {/if}
+
+<RavenMCPSelection
+    bind:open={isServerSelectionOpen}
+    width="2xl"
+    {onToggleMCPServer}
+    selectedMCPServers={selectedServers}
+/>
