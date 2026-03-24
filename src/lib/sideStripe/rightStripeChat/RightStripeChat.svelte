@@ -4,11 +4,8 @@
     import ChatsList from "./ChatsList.svelte";
     import ChatTabs from "./ChatTabs.svelte";
     import { chatLayoutStore } from "./config";
-    import { activeChat, editorAIChat, rightSideStripeChat } from "$lib/stores/aiRightSideChat";
+    import { activeChat, chatStripeTabsOfWorkspaceFile, editorAIChat, rightSideStripeChat } from "$lib/stores/aiRightSideChat";
     import CollaboratorsBubbles from "$lib/components/CollaboratorsBubbles.svelte";
-    import type { ProfileActiveCollborator } from "@ravenlens/shared/chat-ai/backend/schema";
-    import type { Profile } from "@ravenlens/shared";
-    import type { Collaborator } from "$lib/components/CollaboratorsBubble.types";
     import { mapChatCollaboratorsToBubbleCollabs } from "./utils";
 
     let screenWidth = $state(typeof window !== "undefined" ? window.innerWidth : 1440);
@@ -79,7 +76,7 @@
         const newChatId = rightSideStripeChat.createChat(nextMode, `${editorAIChat.getTextFieldModeTranslation(nextMode)} chat`);
 
         if (newChatId && isChatsListSectionOpen) {
-            rightSideStripeChat.setSelectedChatId(newChatId);
+            chatStripeTabsOfWorkspaceFile.setActive(newChatId);
             isChatsListSectionOpen = false;
         }
     }

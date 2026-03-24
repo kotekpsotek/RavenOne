@@ -1,6 +1,6 @@
 <script lang="ts">
 	import Icon from "@iconify/svelte";
-	import { editorAIChat, rightSideStripeChat } from "$lib/stores/aiRightSideChat"
+	import { activeChat, chatStripeTabsOfWorkspaceFile, editorAIChat, rightSideStripeChat } from "$lib/stores/aiRightSideChat"
 
 	type TabDropPosition = "before" | "after";
 
@@ -187,7 +187,7 @@
 			event.dataTransfer.dropEffect = "move";
 		}
 
-		const lastChatId = $rightSideStripeChat.chats[$rightSideStripeChat.chats.length - 1]?.id;
+		const lastChatId = $chatStripeTabsOfWorkspaceFile[$chatStripeTabsOfWorkspaceFile.length - 1]?.id;
 		if (!lastChatId || lastChatId === draggedChatId) {
 			dropTargetChatId = null;
 			dropTargetPosition = null;
@@ -203,7 +203,7 @@
 		event.preventDefault();
 		event.stopPropagation();
 
-		const lastChatId = $rightSideStripeChat.chats[$rightSideStripeChat.chats.length - 1]?.id;
+		const lastChatId = $chatStripeTabsOfWorkspaceFile[$chatStripeTabsOfWorkspaceFile.length - 1]?.id;
 		if (!draggedChatId || !lastChatId || draggedChatId === lastChatId) {
 			clearTabsDragState();
 			return;
@@ -214,16 +214,16 @@
 	}
 
 	function isDropAtTabsEnd(): boolean {
-		if (!$rightSideStripeChat.chats.length) {
+		if (!$chatStripeTabsOfWorkspaceFile.length) {
 			return false;
 		}
 
-		const lastChatId = $rightSideStripeChat.chats[$rightSideStripeChat.chats.length - 1].id;
+		const lastChatId = $chatStripeTabsOfWorkspaceFile[$chatStripeTabsOfWorkspaceFile.length - 1].id;
 		return dropTargetChatId === lastChatId && dropTargetPosition === "after";
 	}
 
 	function onSelectChat(chatId: string) {
-		rightSideStripeChat.setSelectedChatId(chatId);
+		chatStripeTabsOfWorkspaceFile.setActive(chatId);
 	}
 
 	function onToggleChatActionsDropdown(event: MouseEvent) {
@@ -261,18 +261,22 @@
 		chatActionsDropdownPosition = null;
 	}
 
-    function onCloseActiveTab() {
-        $rightSideStripeChat.chats = $rightSideStripeChat.chats.filter(chat => $rightSideStripeChat.selectedChatId !== chat.id);
-    }
+	function onCloseActiveTab() {
+		if (!$activeChat?.id) {
+			return;
+		}
+
+		chatStripeTabsOfWorkspaceFile.removeTab($activeChat.id);
+	}
 </script>
 
 <svelte:window onresize={onWindowResize} onclick={onWindowClick} />
 
 <div class="tabs-scroll-area overflow-x-auto overflow-y-visible mt-3 pb-1" onwheel={onTabsScroll} onscroll={onTabsAreaScroll}>
 	<div class="tabs tabs-lift bg-base-200 flex flex-nowrap min-w-max">
-		{#each $rightSideStripeChat.chats as chat (chat.id)}
+		{#each $chatStripeTabsOfWorkspaceFile as chat (chat.id)}
 			<button
-				class="tab chat-tab whitespace-nowrap gap-2 flex-nowrap {chat.id === $rightSideStripeChat.selectedChatId ? 'tab-active' : ''} {draggedChatId === chat.id ? 'opacity-70' : ''} {dropTargetChatId === chat.id && dropTargetPosition === 'before' ? 'chat-tab-drop-before' : ''} {dropTargetChatId === chat.id && dropTargetPosition === 'after' ? 'chat-tab-drop-after' : ''}"
+				class="tab chat-tab whitespace-nowrap gap-2 flex-nowrap {chat.isActive ? 'tab-active' : ''} {draggedChatId === chat.id ? 'opacity-70' : ''} {dropTargetChatId === chat.id && dropTargetPosition === 'before' ? 'chat-tab-drop-before' : ''} {dropTargetChatId === chat.id && dropTargetPosition === 'after' ? 'chat-tab-drop-after' : ''}"
 				draggable="true"
 				ondragstart={(event) => onTabDragStart(event, chat.id)}
 				ondragover={(event) => onTabDragOver(event, chat.id)}
@@ -284,7 +288,7 @@
 
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				{#if chat.id === $rightSideStripeChat.selectedChatId}
+				{#if chat.isActive}
 					<!-- svelte-ignore a11y_click_events_have_key_events -->
 					<span 
                         class="inline-flex items-center opacity-70"
@@ -335,11 +339,11 @@
 
 					{#if isSelectChatListOpen}
 						<div class="mt-1 max-h-48 overflow-y-auto border-t border-base-300 pt-1">
-							{#if $rightSideStripeChat.chats.length}
-								{#each $rightSideStripeChat.chats as chat (chat.id)}
+							{#if $chatStripeTabsOfWorkspaceFile.length}
+								{#each $chatStripeTabsOfWorkspaceFile as chat (chat.id)}
 									<button
 										type="button"
-										class="btn btn-ghost btn-sm w-full justify-start {chat.id === $rightSideStripeChat.selectedChatId ? 'btn-active' : ''}"
+										class="btn btn-ghost btn-sm w-full justify-start {chat.isActive ? 'btn-active' : ''}"
 										onclick={() => onSelectChatFromDropdown(chat.id)}
 									>
 										<span class="truncate">{chat.chatName}</span>

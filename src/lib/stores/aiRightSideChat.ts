@@ -7,13 +7,26 @@ import { isChatSideStripeSelected } from "./selectedSideStripes";
 import { userProfile } from "./user";
 import type { File } from "@ravenlens/shared";
 import type { AIChatMode, ChatTab } from "@ravenlens/shared/chat-ai/frontend";
-import type { AIChatModel, BackendChatPopulated, MessageOutput, MessageUserPrompt, SelectedTextRangeContext } from "@ravenlens/shared/chat-ai/backend/schema";
+import type { AIChatModel, BackendChatPopulated, DownloadChat, MessageOutput, MessageUserPrompt, SelectedTextRangeContext } from "@ravenlens/shared/chat-ai/backend/schema";
 
 export const isLoadedChatsOfWorkspaceFileLoading = writable<boolean>(false);
 
+const normalizeLoadedChat = (chat: BackendChatPopulated | DownloadChat): DownloadChat => {
+	const inFileCollaborators = Array.isArray((chat as DownloadChat).inFileCollaborators)
+		? [...(chat as DownloadChat).inFileCollaborators]
+		: [...chat.collaborators.map(collaborator => ({ ...collaborator, isActive: false as const }))];
+
+	return {
+		...chat,
+		inFileCollaborators,
+		promptIdProcessing: (chat as DownloadChat).promptIdProcessing
+	};
+};
+
+/** TODO: Each new user / collaborator change has to be annotated withing this storage to keep user marked as editors */
 /** It's the set with backend loaded chats */
 export const loadedChatsOfWorkspaceFile = (() => {
-	const { ...all } = writable<BackendChatPopulated[]>([]);
+	const { ...all } = writable<DownloadChat[]>([]);
 	let latestLoadRequestId = 0;
 	let loadedScopeKey: string | undefined;
 
@@ -52,10 +65,11 @@ export const loadedChatsOfWorkspaceFile = (() => {
 		isLoadedChatsOfWorkspaceFileLoading.set(true);
 		all.set([]);
 
-		const chatsFromBackend = await loadChatsFromFileRequest(
+		const chatsFromBackendRaw = await loadChatsFromFileRequest(
 			currentScope.fileId,
 			currentScope.workspaceId
 		);
+		const chatsFromBackend: DownloadChat[] = chatsFromBackendRaw.map(normalizeLoadedChat);
 
 		if (requestId !== latestLoadRequestId) {
 			return;
@@ -85,7 +99,28 @@ export const loadedChatsOfWorkspaceFile = (() => {
 	
 	// 
 	return {
-		...all
+		...all,
+		/**
+		 * Role:
+		 * 1. Add chat to storage
+		 * 2. It doesn't connect with backend to make the chat on backend use `rightSideStripeChat.createChat` function
+		 */
+		addChat(chatCandidate: BackendChatPopulated | DownloadChat | ChatTab): DownloadChat {
+			const chat = normalizeLoadedChat(chatCandidate as BackendChatPopulated | DownloadChat);
+
+			all.update(chats => {
+				const chatIndex = chats.findIndex(chatLocal => chatLocal.id === chat.id);
+				if (chatIndex < 0) {
+					return [...chats, chat];
+				}
+
+				const updatedChats = [...chats];
+				updatedChats[chatIndex] = chat;
+				return updatedChats;
+			});
+
+			return chat;
+		}
 	}
 })();
 
@@ -357,7 +392,7 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 	};
 
 	// TODO: Call to backend to create the chat and then return the type
-	const createChatTabFromLoadedChat = (chat: BackendChatPopulated): ChatTab => {
+	const createChatTabFromLoadedChat = (chat: DownloadChat): ChatTab => {
 		const asMaybeTab = chat as Partial<ChatTab>;
 		return {
 			...chat,
@@ -802,8 +837,17 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 	const loadTabChats = (tabsId: string[], fileId: string, workspaceId: string): ChatTab[] => {
 		const fileChatsStateLocal = get(loadedChatsOfWorkspaceFile);
 		if (!fileChatsStateLocal.length) {
+			// Create tab and call to backend to make the chat-tab
 			const defaultDraftTab = createDefaultDraftTab();
-			return defaultDraftTab ? [defaultDraftTab] : [];
+
+			// Add chat to chats list
+			if (defaultDraftTab) {
+				loadedChatsOfWorkspaceFile.addChat(defaultDraftTab);
+				return [defaultDraftTab];
+			}
+
+			// Return otherwise empty array
+			return [];
 		}
 
 		if (!tabsId.length) {
@@ -1145,7 +1189,6 @@ const reorderTabsByPosition = (
 export type AIChatThread = ChatTab;
 
 interface RightSideStripeChatState {
-	chats: ChatTab[];
 	selectedChatId?: string;
 	isLoading: boolean;
 };
@@ -1159,13 +1202,12 @@ const toRightSideStripeState = (tabs: ChatTab[], isLoading: boolean): RightSideS
 	const activeTab = getActiveTabFromState(tabs);
 
 	return {
-		chats: [...tabs],
 		selectedChatId: activeTab?.id,
 		isLoading
 	};
 };
 
-// TODO: Download real chats from backend service
+/** It's the state of current chat */
 export const rightSideStripeChat = (() => {
 	const { ...all } = writable<RightSideStripeChatState>(toRightSideStripeState([], false));
 
@@ -1316,9 +1358,17 @@ export const rightSideStripeChat = (() => {
 				inFileCollaborators: [{...user, isActive: true}]
 			} satisfies ChatTab;
 
+			// TODO: When backend return succesWhen success do the below things
+
+			// Add chat tab
 			chatStripeTabsOfWorkspaceFile.update(tabs => {
 				return [...tabs, newChatTab];
 			});
+
+			// Keep list-view source in sync (loadedChatsOfWorkspaceFile).
+			loadedChatsOfWorkspaceFile.addChat(newChatTab);
+
+			// 
 
 			return newChatTab.id;
 		},

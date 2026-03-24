@@ -1,18 +1,18 @@
 <script lang="ts">
 	import Icon from "@iconify/svelte";
 	import {
-		rightSideStripeChat,
-		type AIChatThread
+		activeChat,
+		chatStripeTabsOfWorkspaceFile,
+		loadedChatsOfWorkspaceFile
 	} from "$lib/stores/aiRightSideChat"
     import CollaboratorsBubbles from "$lib/components/CollaboratorsBubbles.svelte";
-    import type { ChatTab } from "@ravenlens/shared/chat-ai/frontend";
-    import type { ProfileActiveCollborator } from "@ravenlens/shared/chat-ai/backend/schema";
+    import type { DownloadChat, ProfileActiveCollborator } from "@ravenlens/shared/chat-ai/backend/schema";
     import { mapChatCollaboratorsToBubbleCollabs } from "./utils";
 
 	type ChatGroup = {
 		key: string;
 		title: string;
-		chats: AIChatThread[];
+		chats: DownloadChat[];
 	};
 
 	let {
@@ -28,14 +28,18 @@
 	});
 
 	let sortedChats = $derived(
-		[...$rightSideStripeChat.chats].sort((chatA, chatB) => {
-			return (chatA.createdAt instanceof Date ? chatA.createdAt : getDateFromInput(chatA.createdAt)).getTime() - (chatA.createdAt instanceof Date ? chatA.createdAt : getDateFromInput(chatA.createdAt)).getTime();
+		[...$loadedChatsOfWorkspaceFile].sort((chatA, chatB) => {
+			return (chatA.createdAt instanceof Date ? chatA.createdAt : getDateFromInput(chatA.createdAt)).getTime() - (chatB.createdAt instanceof Date ? chatB.createdAt : getDateFromInput(chatB.createdAt)).getTime();
 		})
 	);
 
 	let groupedChats = $derived(groupChatsByDate(sortedChats));
 
-	function getDateFromInput(dateInput: string): Date {
+	function getDateFromInput(dateInput: string | Date): Date {
+		if (dateInput instanceof Date) {
+			return dateInput;
+		}
+
 		const nextDate = new Date(dateInput);
 		return Number.isNaN(nextDate.getTime()) ? new Date() : nextDate;
 	}
@@ -73,7 +77,7 @@
 		return dateTitleFormatter.format(dayStart);
 	}
 
-	function groupChatsByDate(chats: AIChatThread[]): ChatGroup[] {
+	function groupChatsByDate(chats: DownloadChat[]): ChatGroup[] {
 		const groupedByKey: Record<string, ChatGroup> = {};
 		const orderedGroups: ChatGroup[] = [];
 
@@ -101,7 +105,7 @@
 		return orderedGroups;
 	}
 
-	function formatChatTime(createdAt: string): string {
+	function formatChatTime(createdAt: string | Date): string {
 		const date = getDateFromInput(createdAt);
 		const hours = `${date.getHours()}`.padStart(2, "0");
 		const minutes = `${date.getMinutes()}`.padStart(2, "0");
@@ -110,11 +114,15 @@
 	}
 
 	function onSelectChat(chatId: string) {
-		rightSideStripeChat.setSelectedChatId(chatId);
+		chatStripeTabsOfWorkspaceFile.openChatTab(chatId);
 		onOpenChat();
 	}
 
-	function getChatCollaborators(chat: ChatTab) {
+	function isChatActive(chatId: string): boolean {
+		return $activeChat?.id === chatId;
+	}
+
+	function getChatCollaborators(chat: DownloadChat) {
 		const activeCollaborators = chat.inFileCollaborators.filter(
 			(collab) => (collab as ProfileActiveCollborator).isActive
 		);
@@ -147,7 +155,7 @@
 						{#each group.chats as chat (chat.id)}
 							<button
 								type="button"
-								class="w-full rounded-lg border border-base-300 bg-base-100 px-3 py-2 text-left transition-colors hover:border-primary/40 hover:bg-base-200 {chat.id === $rightSideStripeChat.selectedChatId ? 'border-primary bg-primary/10' : ''}"
+								class="w-full rounded-lg border border-base-300 bg-base-100 px-3 py-2 text-left transition-colors hover:border-primary/40 hover:bg-base-200 {isChatActive(chat.id) ? 'border-primary bg-primary/10' : ''}"
 								onclick={() => onSelectChat(chat.id)}
 							>
 								<div class="flex items-center justify-between gap-2">
@@ -162,7 +170,7 @@
 											activeUserSuffix="Interacting User"
 											size="small"
 										/>
-										<span class="shrink-0 text-xs text-base-content/60">{formatChatTime(chat.createdAt.toString())}</span>
+										<span class="shrink-0 text-xs text-base-content/60">{formatChatTime(chat.createdAt)}</span>
 									</div>
 								</div>
 							</button>
