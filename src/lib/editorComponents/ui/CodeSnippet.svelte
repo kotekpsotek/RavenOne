@@ -17,7 +17,6 @@
     import { css } from "@codemirror/lang-css";
     import { go } from "@codemirror/lang-go";
     /* Codemirror themes */
-    import { EditorView } from "@codemirror/view";
     import { oneDark } from "@codemirror/theme-one-dark"
     import { onDestroy } from "svelte";
     import type { CodeSnippetNodeParams } from "../components/CodeSnippet";
@@ -29,12 +28,6 @@
 
     let nodeAttrs = $derived(node.attrs as CodeSnippetNodeParams | undefined);
 
-    const myTheme = EditorView.theme({
-        "&": {
-            fontSize: "18px", // Adjust font size as needed
-            lineHeight: "1.5", // Adjust line height as needed
-        },
-    });
     const supportedLanguagesList: SupportedLanguage[] = [
         "HTML", "JSON", "XML", "CSS", "Markdown", "Mermaid", "txt", "plaintext", "javascript", "typescript", "rust", "python", "c", "c++", "sql", "java", "bash", "shell", "cmd", "powershell", "c#", "Go", "less", "scss", "svelte"
     ];
@@ -223,7 +216,20 @@
         <div id="code" class="bg-base-100 overflow-y-auto">
             <!-- TODO: Configure theme, add cover when content changed via: on:change event -->
             {#key isDarkMode || !isDarkMode || codeMirrorPickedUpLang}
-                <CodeMirror class="code-mirror-of-code-snippet" value={currentCode} editable={isEditable} lang={codeMirrorPickedUpLang} extensions={[myTheme]} theme={isDarkMode ? oneDark : undefined} onchange={onCodeChanged}/>
+                <CodeMirror
+                    class="code-mirror-of-code-snippet"
+                    value={currentCode}
+                    editable={isEditable}
+                    lang={codeMirrorPickedUpLang}
+                    theme={isDarkMode ? oneDark : undefined}
+                    onchange={onCodeChanged}
+                    styles={{
+                        "&": {
+                            fontSize: "18px",
+                            lineHeight: "1.5"
+                        }
+                    }}
+                />
             {/key}
         </div>
         {#if nodeAttrs?.description || isDescriptionAdding}
