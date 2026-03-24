@@ -49,7 +49,7 @@ export const POST: RequestHandler = async ({ request, cookies, fetch }) => {
         return json({ ok: false, message: "targetId has to be a string or null" }, { status: 400 });
     }
 
-    const normalizedName = asNonEmptyString(requestBody.name) ?? "Unnamed Task";
+    const normalizedName = asNonEmptyString(requestBody.name) ?? "Unnamed Document";
     const newFile = createFileEntry(normalizedName, workspaceId);
 
     const workspaceEntries = await loadWorkspaceEntries(workspaceId);

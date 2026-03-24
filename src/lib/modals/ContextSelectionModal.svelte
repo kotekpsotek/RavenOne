@@ -23,7 +23,7 @@
         contextPayload: File.FileAI.ContextSpecificationPayload;
         onSave?: (payload: File.FileAI.ContextSpecificationPayload) => void;
         infoMessage?: string;
-        children: any;
+        children?: any;
     }>();
 
     // ...

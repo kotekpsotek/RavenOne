@@ -15,6 +15,7 @@
     import { isSharingModeOn } from "$lib/stores/share";
     import { get } from "svelte/store";
     import { userProfile } from "$lib/stores/user";
+    import { fileChatEditionPreviewShowing } from "$lib/stores/aiRightSideChat";
 
 	let { node, updateAttributes, editor, getPos }: NodeViewProps = $props();
 
@@ -544,27 +545,29 @@
 
 <NodeViewWrapper class="group block mb-2">
 	<section class="relative overflow-visible rounded-2xl bg-transparent space-y-4">
-		{#if walper}
-			<button
-				type="button"
-				class="group/cover relative block h-52 w-full cursor-pointer overflow-hidden rounded-2xl border-0 p-0 leading-none align-top appearance-none"
-				contenteditable="false"
-				onclick={openWallpaperPicker}
-				disabled={!canEditHeadingAssets}
-				title={!canEditHeadingAssets ? "Active workspace subscription required" : "Change cover"}
-			>
-				<img
-					src={walper}
-					alt="Heading cover"
-					class="pointer-events-none absolute -inset-px block h-[calc(100%+2px)] w-[calc(100%+2px)] max-w-none object-cover"
-					draggable="false"
-				/>
-				<span class="pointer-events-none absolute inset-0 bg-base-300/0 transition-colors duration-150 group-hover/cover:bg-base-300/30"></span>
-				<span class="pointer-events-none absolute bottom-3 right-3 inline-flex items-center gap-1 rounded-md bg-base-100/80 px-2 py-1 text-xs font-medium text-base-content opacity-0 transition-opacity duration-150 group-hover/cover:opacity-100">
-					<Icon icon="material-symbols:wallpaper-outline-rounded" class="text-sm" />
-					Change Cover
-				</span>
-			</button>
+		{#if $fileChatEditionPreviewShowing?.type !== "document-manipulation"}
+			{#if walper}
+				<button
+					type="button"
+					class="group/cover relative block h-52 w-full cursor-pointer overflow-hidden rounded-2xl border-0 p-0 leading-none align-top appearance-none"
+					contenteditable="false"
+					onclick={openWallpaperPicker}
+					disabled={!canEditHeadingAssets}
+					title={!canEditHeadingAssets ? "Active workspace subscription required" : "Change cover"}
+				>
+					<img
+						src={walper}
+						alt="Heading cover"
+						class="pointer-events-none absolute -inset-px block h-[calc(100%+2px)] w-[calc(100%+2px)] max-w-none object-cover"
+						draggable="false"
+					/>
+					<span class="pointer-events-none absolute inset-0 bg-base-300/0 transition-colors duration-150 group-hover/cover:bg-base-300/30"></span>
+					<span class="pointer-events-none absolute bottom-3 right-3 inline-flex items-center gap-1 rounded-md bg-base-100/80 px-2 py-1 text-xs font-medium text-base-content opacity-0 transition-opacity duration-150 group-hover/cover:opacity-100">
+						<Icon icon="material-symbols:wallpaper-outline-rounded" class="text-sm" />
+						Change Cover
+					</span>
+				</button>
+			{/if}
 		{/if}
 
 		<div class="relative pt-3">
@@ -596,38 +599,40 @@
 				</button>
 			{/if}
 
-			<div 
-				class="py-1 flex items-center gap-2 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
-				hidden={$isSharingModeOn}
-			>
-				{#if !icon}
-					<button
-						type="button"
-						class="btn btn-ghost btn-xs"
-						contenteditable="false"
-						onclick={openIconPrompt}
-						disabled={!canEditHeadingAssets}
-						title={!canEditHeadingAssets ? "Active workspace subscription required" : "Add icon"}
-					>
-						<Icon icon="material-symbols:sentiment-satisfied-outline-rounded" class="text-sm" />
-						Add icon
-					</button>
-				{/if}
+			{#if $fileChatEditionPreviewShowing?.type !== "document-manipulation"}
+				<div 
+					class="py-1 flex items-center gap-2 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+					hidden={$isSharingModeOn}
+				>
+					{#if !icon}
+						<button
+							type="button"
+							class="btn btn-ghost btn-xs"
+							contenteditable="false"
+							onclick={openIconPrompt}
+							disabled={!canEditHeadingAssets}
+							title={!canEditHeadingAssets ? "Active workspace subscription required" : "Add icon"}
+						>
+							<Icon icon="material-symbols:sentiment-satisfied-outline-rounded" class="text-sm" />
+							Add icon
+						</button>
+					{/if}
 
-				{#if !walper}
-					<button
-						type="button"
-						class="btn btn-ghost btn-xs"
-						contenteditable="false"
-						onclick={openWallpaperPicker}
-						disabled={!canEditHeadingAssets}
-						title={!canEditHeadingAssets ? "Active workspace subscription required" : "Add cover"}
-					>
-						<Icon icon="material-symbols:image-outline-rounded" class="text-sm" />
-						Add cover
-					</button>
-				{/if}
-			</div>
+					{#if !walper}
+						<button
+							type="button"
+							class="btn btn-ghost btn-xs"
+							contenteditable="false"
+							onclick={openWallpaperPicker}
+							disabled={!canEditHeadingAssets}
+							title={!canEditHeadingAssets ? "Active workspace subscription required" : "Add cover"}
+						>
+							<Icon icon="material-symbols:image-outline-rounded" class="text-sm" />
+							Add cover
+						</button>
+					{/if}
+				</div>
+			{/if}
 
 			<WallpaperSelectionModal
 				open={isWallpaperPickerOpen}

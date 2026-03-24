@@ -14,6 +14,9 @@
 	} from 'svelte-vertical-timeline';
     import "./AIResponse.css";
     import ModelModelAndTime from "./ModelModelAndTime.svelte";
+    import { isCurrentUserSelectedFileEditor } from "$lib/stores/collaboration";
+    import { activeChat, fileChatEditionPreviewShowing } from "$lib/stores/aiRightSideChat";
+    import { callAcceptDocumentManipulation, callAcceptTasksManipulation, callDeclineDocumentManipulation, callDeclineTasksManipulation } from "../proposals/utilFunctions";
 
     const {
         message = $bindable()
@@ -33,6 +36,8 @@
 
     let isMessageOpen = $state(true);
     let isProgressTrayOpen = $state(true);
+
+    // Defined whetther the preview of changes is showing for the selected element
     let isDocumentManipulationShowing = $state(false);
     let isTasksManipulationShowing = $state(false);
 
@@ -73,20 +78,36 @@
     };
 
     function onToggleDocumentManipulation() {
-        isDocumentManipulationShowing = !isDocumentManipulationShowing;
+        if (!isDocumentManipulationShowing) {
+            fileChatEditionPreviewShowing.setFileAsPreviewing($activeChat.id, message, "document-manipulation")
+
+        }
+        else fileChatEditionPreviewShowing.unsetPreviewing();
     }
 
     function onToggleTasksManipulation() {
-        isTasksManipulationShowing = !isTasksManipulationShowing;
+        /** 
+         * TODO:
+         * 1. Open tasks tray if isn't open
+         * 2. Show there the presentation of changes 
+         * 3. Hide tray after closing if wasn't shown there
+        */
+
+        if (!isTasksManipulationShowing) {
+            fileChatEditionPreviewShowing.setFileAsPreviewing($activeChat.id, message, "tasks-creation");
+
+        }
+        else fileChatEditionPreviewShowing.unsetPreviewing();
     }
 
-    function onAccept() {
+    // Manege the previewing of changes
+    $effect(() => {
+        const preview = $fileChatEditionPreviewShowing;
+        const isThisMessage = preview?.chatId === $activeChat.id && preview?.outputMessage.id === message.id;
 
-    }
-
-    function onDecline() {
-        
-    }
+        isDocumentManipulationShowing = isThisMessage && preview?.type === "document-manipulation";
+        isTasksManipulationShowing = isThisMessage && preview?.type === "tasks-creation";
+    });
 </script>
 
 {#snippet ManipulationTray(version: "document" | "tasks")}
@@ -95,39 +116,61 @@
     {@const isOpen = version === "document" ? isDocumentManipulationShowing : isTasksManipulationShowing}
     {@const handler = version === "document" ? onToggleDocumentManipulation : onToggleTasksManipulation}
 
+    <!-- HANDLERS of manipluation -->
+    {@const acceptAnswerHandler = version === "document" ? callAcceptDocumentManipulation : callAcceptTasksManipulation}
+    {@const declineAnswerHandler = version === "document" ? callDeclineDocumentManipulation : callDeclineTasksManipulation}
+
+    <!-- LAYOUT -->
     <div class="p-2 bg-base-200 border border-base-300 rounded-lg">
         <h3 class="text-[17px] font-semibold">{title}</h3>
 
-        <div
-            class="flex justify-between items-center gap-5 mt-2"
+        <div 
+            class="wrapper mt-2"
         >
-            {#if targetElement!.status === "not-resolved"}
-                <button
-                    class="btn btn-sm {!isOpen ? "btn-primary" : "btn-neutral"}"
-                    onclick={handler}
-                >
-                    {isOpen ? "Hide" : "Show"} Preview(s)
-                </button>
-
+            {#if targetElement?.status === "not-resolved"}
                 <div
-                    class="flex gap-2 items-center"
+                    class="flex justify-between items-center gap-5"
                 >
-                    <button
-                        class="btn btn-sm btn-outline btn-success"
-                        onclick={onAccept}
-                    >
-                        <Icon icon=""/>
-                        <span>Accept</span>
-                    </button>
+                    {#if targetElement!.status === "not-resolved"}
+                        <button
+                            class="btn btn-sm {!isOpen ? "btn-primary" : "btn-neutral"}"
+                            disabled={$fileChatEditionPreviewShowing !== undefined && !fileChatEditionPreviewShowing.isChatIdPreviewingMessageOutput($activeChat.id, message, version === "document" ? "document-manipulation" : "tasks-creation")}
+                            onclick={handler}
+                        >
+                            {isOpen ? "Hide" : "Show"} Preview(s)
+                        </button>
 
-                    <button
-                        class="btn btn-sm btn-outline btn-error"
-                        onclick={onDecline}
-                    >
-                        <Icon icon=""/>
-                        <span>Decline</span>
-                    </button>
+                        <div
+                            class="flex gap-2 items-center"
+                        >
+                            <button
+                                class="btn btn-sm btn-outline btn-success"
+                                disabled={!$isCurrentUserSelectedFileEditor}
+                                onclick={acceptAnswerHandler(message)}
+                            >
+                                <Icon icon=""/>
+                                <span>Accept</span>
+                            </button>
+
+                            <button
+                                class="btn btn-sm btn-outline btn-error"
+                                disabled={!$isCurrentUserSelectedFileEditor}
+                                onclick={declineAnswerHandler(message)}
+                            >
+                                <Icon icon=""/>
+                                <span>Decline</span>
+                            </button>
+                        </div>
+                    {/if}
                 </div>
+            {:else if targetElement?.status === "accepted"}
+                <button class="btn btn-sm btn-success">
+                    Accepted
+                </button>
+            {:else if targetElement?.status === "declined"}
+                <button class="btn btn-sm btn-error">
+                    Declined
+                </button>
             {/if}
         </div>
     </div>

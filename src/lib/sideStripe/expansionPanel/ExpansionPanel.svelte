@@ -103,7 +103,7 @@
             return;
         }
 
-        const name = getNextName($entriesList, "Task");
+        const name = getNextName($entriesList, "Document");
         const responseBody = await newFileRequest(workspaceId, targetId, name);
         if (!responseBody) {
             return;
@@ -147,7 +147,7 @@
         entriesList.update((list) => addToTarget(list));
     }
 
-    function getNextName(entries: File.File.File[], type: "Task") {
+    function getNextName(entries: File.File.File[], type: "Document") {
         const prefix = `Unnamed ${type}`;
         let max = 0;
 

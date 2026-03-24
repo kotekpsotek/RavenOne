@@ -15,6 +15,7 @@ import { File } from "@ravenlens/shared";
 import { collaborationInterface, isCurrentUserSelectedFileEditor } from "./collaboration.js";
 import { browser } from "$app/environment";
 import { editorAIChat } from "./aiRightSideChat.js";
+import type { Extensions } from "@tiptap/core";
 
 function normalizeContent(content?: string): string {
     if (!content || !content.trim()) {
@@ -22,6 +23,39 @@ function normalizeContent(content?: string): string {
     }
 
     return content;
+}
+
+export function createEditorExtensions() {
+    //
+    const HeadingStartDocument = Document.extend({
+        // https://tiptap.dev/api/schema#content
+        content: 'fileHeading block block*',
+    });
+    
+    return [
+        StarterKit.configure({
+            document: false,
+            codeBlock: false,
+        }),
+        FileHeading,
+        HeadingStartDocument,
+        Placeholder.configure({
+            placeholder: ({ node }) => {
+                if (node.type.name === "fileHeading") {
+                    return "Document Name";
+                }
+
+                return "Type one-by-one with curiosity...";
+            },
+            includeChildren: true,
+            showOnlyCurrent: false,
+        }),
+        StandardTaskList,
+        StandardTaskItem,
+        SlashCommand,
+        // Custom Components
+        CodeSnippet
+    ]
 }
 
 export const editor = (() => {
@@ -58,39 +92,10 @@ export const editor = (() => {
             isWorkspaceInAddition.set(false);
 
             //
-            const HeadingStartDocument = Document.extend({
-                // https://tiptap.dev/api/schema#content
-                content: 'fileHeading block block*',
-            });
-            
-            //
             if (!currentEditor) {
                 const editorStore = createEditor({
                     content,
-                    extensions: [
-                        StarterKit.configure({
-                            document: false,
-                            codeBlock: false,
-                        }),
-                        FileHeading,
-                        HeadingStartDocument,
-                        Placeholder.configure({
-                            placeholder: ({ node }) => {
-                                if (node.type.name === "fileHeading") {
-                                    return "Document Name";
-                                }
-
-                                return "Type one-by-one with curiosity...";
-                            },
-                            includeChildren: true,
-                            showOnlyCurrent: false,
-                        }),
-                        StandardTaskList,
-                        StandardTaskItem,
-                        SlashCommand,
-                        // Custom Components
-                        CodeSnippet
-                    ],
+                    extensions: createEditorExtensions(),
                     onUpdate(props) {
                         if (!activeFileId) {
                             return;

@@ -13,6 +13,9 @@
     import { isSharedRoute } from "./stores/share";
     import { isPointsStripeOpen } from "./stores/selectedSideStripes";
     import "./Editor.css";
+    import { fileChatEditionPreviewShowing } from "./stores/aiRightSideChat";
+    import EditorProposal from "./sideStripe/rightStripeChat/proposals/EditorProposal.svelte";
+    import LoadingScreen from "./components/LoadingScreen.svelte";
 
     const canEditWorkspaceContent = derived(
         [workspaceSubscriptionCheckInProgress, workspaceHasActiveSubscription],
@@ -54,6 +57,9 @@
         bind:open={$isWorkspaceInAddition}
     />
 
+    <!-- Shows loading screen as needed -->
+    <LoadingScreen/>
+
     <!-- Editor -->
     {#if $selectedFile}
         {#if $editor}
@@ -77,7 +83,12 @@
                         <div class="skeleton h-4 w-[150px]"></div>
                     </div>
                 {:else}
-                    <EditorContent editor={$editor} class="tiptap-editor" />
+                    {#if $fileChatEditionPreviewShowing?.type === "document-manipulation"}
+                        <EditorProposal/>
+                    {:else} <!-- Show for tasks proposal or when proposal isn't specified -->
+                        <EditorContent editor={$editor} class="tiptap-editor" />
+                    {/if}
+                    
                     {#if $isPointsStripeOpen}
                         <ListTray isReadOnly={!canEditWorkspaceContent}/>
                     {/if}

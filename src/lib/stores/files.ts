@@ -9,7 +9,7 @@ import { collaborationInterface, entriesCollaborators, onHandleJoinFile, onHandl
 import { isSharedRoute } from "./share";
 import { FilePlayConnections, playInFile } from "$lib/play/connections";
 import { playableDocumentsAndListsWithPoints } from "./playModeStore";
-import { selectedChatAnswerIds } from "./aiRightSideChat";
+import { fileChatEditionPreviewShowing, selectedChatAnswerIds } from "./aiRightSideChat";
 
 /** Entries */
 export const entriesList = (() => {
@@ -429,6 +429,17 @@ export const selectedFile = (() => {
         },
         /** Selection of file with addition as joined file */
         selectFile(file: FileType) {
+            // Unset file chat previeiwing when file is changed -> After acceptance only
+            if (fileChatEditionPreviewShowing.isFilePreviewing()) {
+                const allow = confirm("Do you want to close document changes previewing?")
+
+                if (allow) {
+                    fileChatEditionPreviewShowing.unsetPreviewing();
+                }
+                else return;
+            }
+            
+            //
             const recentlySelectedFile = get(store);
             if (recentlySelectedFile?.id !== file?.id) {
                 // Stop playing the point in the recently selected file
@@ -626,9 +637,6 @@ export const selectedFile = (() => {
                 //
                 return filePlay;
             });
-
-            //
-
         },
         update(updater: (file: FileType) => FileType) {
             const nextFile = updater(get(store));
