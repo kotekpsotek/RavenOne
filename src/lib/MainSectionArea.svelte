@@ -7,6 +7,7 @@
     import AddWorkspace from "./screens/AddWorkspace.svelte";
     import NoSelectedFile from "./screens/NoSelectedFile.svelte";
     import ListTray from "./ListTray.svelte";
+    import BubbleMenuRavenOne from "./components/BubbleMenuRavenOne.svelte";
     import "./Editor.css";
     import { isSharedRoute } from "./stores/share";
 
@@ -36,6 +37,7 @@
                     </div>
                 {/if}
 
+                <BubbleMenuRavenOne />
                 <EditorContent editor={$editor} class="tiptap-editor" />
                 <ListTray isReadOnly={!canEditWorkspaceContent}/>
             </div>
