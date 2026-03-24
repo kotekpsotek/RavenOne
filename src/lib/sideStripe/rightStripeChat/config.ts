@@ -75,7 +75,7 @@ export const CHAT_MODES = derived(
                 modeDescription: "Create, update RavenOne Document/s according to your specification",
                 isEnabled: isCollaborator
             },
-            "tasks-creation": {
+            "tasks-manipulation": {
                 modeName: "Create Document Tasks",
                 modeDescription: "Create Questions for actually selected RavenOne Document",
                 isEnabled: isCollaborator

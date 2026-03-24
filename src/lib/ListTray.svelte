@@ -11,8 +11,17 @@
     import { createListId } from './listItems/utils';
     import { File } from "@ravenlens/shared";
     import { dev } from '$app/environment';
+    import type { SpawnedList } from '../../../../packages/shared/dist/types/file/file';
 
-    let { isReadOnly = false }: { isReadOnly?: boolean } = $props();
+    interface Props {
+        isReadOnly?: boolean;
+        lists: SpawnedList[];
+    }
+    
+    let { 
+        isReadOnly = false,
+        lists,
+    }: Props = $props();
 
     const PANEL_HEIGHT_STORAGE_PREFIX = 'list-tray-height';
     const PANEL_MIN_HEIGHT = 120;
@@ -56,7 +65,7 @@
 
     const selectedFileId = $derived($selectedFile?.id ?? '');
     const hasItemsInLists = $derived(
-        $selectedFile?.lists.some(list => list.items.length > 0) ?? false
+        lists.some(list => list.items.length > 0) ?? false
     );
 
     function createId() {
@@ -249,10 +258,10 @@
         });
 
         // FIXME: Remove then for testing
-        if (dev) {
-            $selectedFile!.lists = [
+        /* if (dev) {
+            lists = [
                 {
-                    id: 'list-dev-1',
+                    id: '1',
                     kind: 'unordered',
                     name: 'AI Bullet list',
                     icon: 'material-symbols:auto-awesome',
@@ -306,7 +315,7 @@
                     ]
                 }
             ]
-        }
+        } */
 
         return () => {
             unsubscribe();
@@ -319,7 +328,7 @@
 
 {#snippet listItemsContent()}
     <div class="list-items space-y-2">
-        {#each $selectedFile!.lists as spawnedList (spawnedList.id)}
+        {#each lists as spawnedList (spawnedList.id)}
             {#if spawnedList.kind === 'ordered'}
                 <OrderedListItem
                     onEmptyList={() => removeSpawnedList(spawnedList.id)}

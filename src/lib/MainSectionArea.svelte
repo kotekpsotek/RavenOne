@@ -16,6 +16,7 @@
     import { fileChatEditionPreviewShowing } from "./stores/aiRightSideChat";
     import EditorProposal from "./sideStripe/rightStripeChat/proposals/EditorProposal.svelte";
     import LoadingScreen from "./components/LoadingScreen.svelte";
+    import ListTrayProposal from "./sideStripe/rightStripeChat/proposals/ListTrayProposal.svelte";
 
     const canEditWorkspaceContent = derived(
         [workspaceSubscriptionCheckInProgress, workspaceHasActiveSubscription],
@@ -90,7 +91,16 @@
                     {/if}
                     
                     {#if $isPointsStripeOpen}
-                        <ListTray isReadOnly={!canEditWorkspaceContent}/>
+                        {#if $fileChatEditionPreviewShowing?.type === "tasks-manipulation"}
+                            <ListTrayProposal
+                                {canEditWorkspaceContent}
+                            />
+                        {:else}
+                            <ListTray
+                                isReadOnly={!canEditWorkspaceContent}
+                                lists={$selectedFile.lists ?? []}
+                            />
+                        {/if}
                     {/if}
                 {/if}
             </div>

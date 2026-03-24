@@ -17,6 +17,7 @@
     import { isCurrentUserSelectedFileEditor } from "$lib/stores/collaboration";
     import { activeChat, fileChatEditionPreviewShowing } from "$lib/stores/aiRightSideChat";
     import { callAcceptDocumentManipulation, callAcceptTasksManipulation, callDeclineDocumentManipulation, callDeclineTasksManipulation } from "../proposals/utilFunctions";
+    import { isPointsStripeOpen } from "$lib/stores/selectedSideStripes";
 
     const {
         message = $bindable()
@@ -92,10 +93,13 @@
          * 2. Show there the presentation of changes 
          * 3. Hide tray after closing if wasn't shown there
         */
-
-        if (!isTasksManipulationShowing) {
-            fileChatEditionPreviewShowing.setFileAsPreviewing($activeChat.id, message, "tasks-creation");
-
+       // Setup tray as open
+       
+       if (!isTasksManipulationShowing) {
+           // Setup points previewing
+           fileChatEditionPreviewShowing.setFileAsPreviewing($activeChat.id, message, "tasks-manipulation");
+           
+           isPointsStripeOpen.set(true);
         }
         else fileChatEditionPreviewShowing.unsetPreviewing();
     }
@@ -106,7 +110,7 @@
         const isThisMessage = preview?.chatId === $activeChat.id && preview?.outputMessage.id === message.id;
 
         isDocumentManipulationShowing = isThisMessage && preview?.type === "document-manipulation";
-        isTasksManipulationShowing = isThisMessage && preview?.type === "tasks-creation";
+        isTasksManipulationShowing = isThisMessage && preview?.type === "tasks-manipulation";
     });
 </script>
 
@@ -134,7 +138,7 @@
                     {#if targetElement!.status === "not-resolved"}
                         <button
                             class="btn btn-sm {!isOpen ? "btn-primary" : "btn-neutral"}"
-                            disabled={$fileChatEditionPreviewShowing !== undefined && !fileChatEditionPreviewShowing.isChatIdPreviewingMessageOutput($activeChat.id, message, version === "document" ? "document-manipulation" : "tasks-creation")}
+                            disabled={$fileChatEditionPreviewShowing !== undefined && !fileChatEditionPreviewShowing.isChatIdPreviewingMessageOutput($activeChat.id, message, version === "document" ? "document-manipulation" : "tasks-manipulation")}
                             onclick={handler}
                         >
                             {isOpen ? "Hide" : "Show"} Preview(s)

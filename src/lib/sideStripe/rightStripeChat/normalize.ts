@@ -21,7 +21,7 @@ export function normalizeAIChatMode(modeCandidate: AIChatMode): AIChatMode {
     if (
         modeCandidate === "regular-ask"
         || modeCandidate === "document-manipulation"
-        || modeCandidate === "tasks-creation"
+        || modeCandidate === "tasks-manipulation"
     ) {
         return modeCandidate;
     }

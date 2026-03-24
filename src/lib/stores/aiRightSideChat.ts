@@ -240,7 +240,7 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 	};
 
 	const normalizeSelectedMode = (modeCandidate: unknown): ChatTab["selectedMode"] => {
-		if (modeCandidate === "regular-ask" || modeCandidate === "tasks-creation" || modeCandidate === "document-manipulation") {
+		if (modeCandidate === "regular-ask" || modeCandidate === "tasks-manipulation" || modeCandidate === "document-manipulation") {
 			return modeCandidate;
 		}
 
@@ -583,7 +583,7 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 					tasksListManipulation: {
 						addedTasksToLists: [
 							{
-								taskListId: "1",
+								taskListId: "list-dev-1",
 								tasksListItems: [
 									{
 										id: "12",
@@ -595,7 +595,7 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 						],
 						newLists: [
 							{
-								id: "12",
+								id: "134",
 								kind: "ordered",
 								name: "Name",
 								icon: "x",
@@ -606,7 +606,46 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 										text: "AAA"
 									}
 								]
-							}
+							},
+							{
+								id: "5",
+								kind: "ordered",
+								name: "Name",
+								icon: "x",
+								items: [
+									{
+										id: "1",
+										depth: 0,
+										text: "AAA"
+									}
+								]
+							},
+							{
+								id: "9",
+								kind: "ordered",
+								name: "Name",
+								icon: "x",
+								items: [
+									{
+										id: "1",
+										depth: 0,
+										text: "AAA"
+									}
+								]
+							},
+							{
+								id: "10",
+								kind: "ordered",
+								name: "Name",
+								icon: "x",
+								items: [
+									{
+										id: "1",
+										depth: 0,
+										text: "AAA"
+									}
+								]
+							},
 						],
 						status: "not-resolved"
 					},
@@ -876,11 +915,11 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 const CHAT_MODE_TRANSLATIONS: Record<AIChatMode, string> = {
 	"regular-ask": "Ask",
 	"document-manipulation": "Document Manipulation",
-	"tasks-creation": "Create Document Tasks"
+	"tasks-manipulation": "Create Document Tasks"
 };
 
 const normalizeModeCandidate = (modeCandidate: AIChatMode): AIChatMode => {
-	if (modeCandidate === "regular-ask" || modeCandidate === "document-manipulation" || modeCandidate === "tasks-creation") {
+	if (modeCandidate === "regular-ask" || modeCandidate === "document-manipulation" || modeCandidate === "tasks-manipulation") {
 		return modeCandidate;
 	}
 
@@ -1535,7 +1574,7 @@ export const activeChat = derived(chatStripeTabsOfWorkspaceFile, (chatTabs) => {
 	return chatTabs.find(chatTab => chatTab.isActive) ?? chatTabs[0];
 });
 
-export type AIChatModeType = Extract<AIChatMode, "tasks-creation" | "document-manipulation">;
+export type AIChatModeType = Extract<AIChatMode, "tasks-manipulation" | "document-manipulation">;
 export interface FileChatEditionPreview {
 	chatId: string;
 	outputMessage: MessageOutput;
