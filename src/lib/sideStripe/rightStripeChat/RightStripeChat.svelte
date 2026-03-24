@@ -4,7 +4,7 @@
     import ChatsList from "./ChatsList.svelte";
     import ChatTabs from "./ChatTabs.svelte";
     import { chatLayoutStore } from "./config";
-    import { activeChat, chatStripeTabsOfWorkspaceFile, editorAIChat, rightSideStripeChat } from "$lib/stores/aiRightSideChat";
+    import { activeChat, chatStripeTabsOfWorkspaceFile, editorAIChat, processingChatsOfWorkspaceFile, rightSideStripeChat } from "$lib/stores/aiRightSideChat";
     import CollaboratorsBubbles from "$lib/components/CollaboratorsBubbles.svelte";
     import { mapChatCollaboratorsToBubbleCollabs } from "./utils";
 
@@ -21,6 +21,7 @@
 
     let chatStripeWidth = $derived($chatLayoutStore.width);
     let chatStripeHeight = $derived($chatLayoutStore.height);
+    let isActiveChatProcessing = $derived(Boolean($activeChat?.id && $processingChatsOfWorkspaceFile[$activeChat.id]));
 
     let chatMappedActiveCollaborators = $derived(mapChatCollaboratorsToBubbleCollabs($activeChat?.inFileCollaborators ?? []));
 
@@ -132,7 +133,7 @@
             </div>
 
             <div>
-                {#if $activeChat?.promptIdProcessing}
+                {#if isActiveChatProcessing}
                     <span class="loading loading-spinner loading-xs mr-2"></span>
                 {/if}
 

@@ -3,7 +3,8 @@
 	import {
 		activeChat,
 		chatStripeTabsOfWorkspaceFile,
-		loadedChatsOfWorkspaceFile
+		loadedChatsOfWorkspaceFile,
+		processingChatsOfWorkspaceFile
 	} from "$lib/stores/aiRightSideChat"
     import CollaboratorsBubbles from "$lib/components/CollaboratorsBubbles.svelte";
     import type { DownloadChat, ProfileActiveCollborator } from "@ravenlens/shared/chat-ai/backend/schema";
@@ -161,7 +162,7 @@
 								<div class="flex items-center justify-between gap-2">
 									<span class="truncate text-sm font-medium ">{chat.chatName}</span>
 									<div class="w-fit flex gap-3 items-center">
-										{#if chat.promptIdProcessing}
+										{#if $processingChatsOfWorkspaceFile[chat.id]}
 											<span class="loading loading-spinner loading-xs"></span>
 										{/if}
 										<CollaboratorsBubbles

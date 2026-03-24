@@ -10,6 +10,7 @@
         chatStripeTabsOfWorkspaceFile,
         editorAIChat,
         isLoadedChatsOfWorkspaceFileLoading,
+        processingChatsOfWorkspaceFile,
         rightSideStripeChat,
         selectedChatAnswerIds
     } from "$lib/stores/aiRightSideChat";
@@ -78,6 +79,7 @@
     let isMCPSpecificationAvailableForWorkspace = $derived(getMCPServersList(downloadMCPServersSpecification).length > 0)
     let selectedFileContextPayload = $state<ContextSpecificationPayload>(createEmptyContextPayload());
     let contextModalSelectedChatId = $state<string | null>(null);
+    let isActiveChatProcessing = $derived(Boolean($activeChat?.id && $processingChatsOfWorkspaceFile[$activeChat.id]));
         
     let chatConversations = $derived($activeChat ? getConversationEntries($activeChat) : []);
     let isMessagingActive = $derived(Boolean($selectedFile && !$rightSideStripeChat.isLoading && $rightSideStripeChatLayout.isOpen));
@@ -361,14 +363,18 @@
         // Simulate end
         setTimeout(() => {
             // Remove chat processing stage
-            chatStripeTabsOfWorkspaceFile.stopProcessing(chatId);
+            rightSideStripeChat.stopProcessing(chatId);
         }, 5_000);
     }
 
     // TODO: Intergrate with backend
     function onStopMessage() {
         // Remove chat processing stage
-        chatStripeTabsOfWorkspaceFile.stopProcessing($activeChat.id);
+        if (!$activeChat?.id) {
+            return;
+        }
+
+        rightSideStripeChat.stopProcessing($activeChat.id);
     }
 
     function onToggleMCPServersSelectionModal() {
@@ -755,7 +761,7 @@
 
         <div class="relative">
             {#key composerResetKey}
-                {@const isDisabled = !isMessagingActive || $activeChat?.promptIdProcessing ? true : false}
+                {@const isDisabled = !isMessagingActive || isActiveChatProcessing ? true : false}
                 <textarea
                     id="writable-for-chat"
                     class="w-full min-h-24 max-h-52 outline-none overflow-y-auto rounded-md border border-base-300 bg-base-100 p-2 text-sm"
@@ -768,7 +774,7 @@
                 ></textarea>
             {/key}
 
-            {#if $activeChat?.promptIdProcessing}
+            {#if isActiveChatProcessing}
                 <button
                     class="btn btn-neutral btn-sm btn-square rounded-full absolute bottom-2 right-2"
                     title="Stop Chat Processing"

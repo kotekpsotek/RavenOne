@@ -1,6 +1,6 @@
 <script lang="ts">
 	import Icon from "@iconify/svelte";
-	import { activeChat, chatStripeTabsOfWorkspaceFile, editorAIChat, rightSideStripeChat } from "$lib/stores/aiRightSideChat"
+	import { activeChat, chatStripeTabsOfWorkspaceFile, editorAIChat, processingChatsOfWorkspaceFile, rightSideStripeChat } from "$lib/stores/aiRightSideChat"
 
 	type TabDropPosition = "before" | "after";
 
@@ -285,6 +285,9 @@
 				onclick={() => onSelectChat(chat.id)}
 			>
 				<span class="truncate max-w-[120px]">{chat.chatName}</span>
+				{#if $processingChatsOfWorkspaceFile[chat.id]}
+					<span class="loading loading-spinner loading-xs"></span>
+				{/if}
 
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->

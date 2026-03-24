@@ -7,9 +7,101 @@ import { isChatSideStripeSelected } from "./selectedSideStripes";
 import { userProfile } from "./user";
 import type { File } from "@ravenlens/shared";
 import type { AIChatMode, ChatTab } from "@ravenlens/shared/chat-ai/frontend";
-import type { AIChatModel, BackendChatPopulated, DownloadChat, MessageOutput, MessageUserPrompt, SelectedTextRangeContext } from "@ravenlens/shared/chat-ai/backend/schema";
+import type { AIChatModel, BackendChatPopulated, DownloadChat, MessageOutput, MessageUserPrompt, PromptProcessing, SelectedTextRangeContext } from "@ravenlens/shared/chat-ai/backend/schema";
 
 export const isLoadedChatsOfWorkspaceFileLoading = writable<boolean>(false);
+
+type ProcessingChatsState = Record<string, PromptProcessing>;
+
+const pickPromptProcessing = (chatCandidate: unknown): PromptProcessing | undefined => {
+	if (!chatCandidate || typeof chatCandidate !== "object") {
+		return undefined;
+	}
+
+	if (!("promptIdProcessing" in chatCandidate)) {
+		return undefined;
+	}
+
+	const processing = (chatCandidate as { promptIdProcessing?: unknown }).promptIdProcessing;
+	if (!processing || typeof processing !== "object") {
+		return undefined;
+	}
+
+	return processing as PromptProcessing;
+};
+
+const collectProcessingChats = (chats: unknown[]): ProcessingChatsState => {
+	const nextState: ProcessingChatsState = {};
+
+	for (const chat of chats) {
+		if (!chat || typeof chat !== "object") {
+			continue;
+		}
+
+		const chatId = (chat as { id?: unknown }).id;
+		if (typeof chatId !== "string" || !chatId.trim().length) {
+			continue;
+		}
+
+		const processing = pickPromptProcessing(chat);
+		if (!processing) {
+			continue;
+		}
+
+		nextState[chatId] = processing;
+	}
+
+	return nextState;
+};
+
+export const processingChatsOfWorkspaceFile = (() => {
+	const { ...all } = writable<ProcessingChatsState>({});
+
+	return {
+		...all,
+		replaceAll(nextState: ProcessingChatsState) {
+			all.set({ ...nextState });
+		},
+		clear() {
+			all.set({});
+		},
+		startProcessing(chatId: string, promptMessageId: string, userSocketId: string, userId: string) {
+			all.update(state => ({
+				...state,
+				[chatId]: {
+					promptId: promptMessageId,
+					initializedByMember: {
+						userId,
+						socketId: userSocketId
+					}
+				}
+			}));
+		},
+		stopProcessing(chatId: string) {
+			all.update(state => {
+				if (!(chatId in state)) {
+					return state;
+				}
+
+				const nextState = { ...state };
+				delete nextState[chatId];
+				return nextState;
+			});
+		},
+		syncToChatIds(chatIds: string[]) {
+			all.update(state => {
+				const nextState = Object.fromEntries(
+					Object.entries(state).filter(([chatId]) => chatIds.includes(chatId))
+				);
+
+				return nextState;
+			});
+		},
+		isChatProcessing(chatId: string): boolean {
+			return Boolean(get(all)[chatId]);
+		}
+	};
+})();
 
 const normalizeLoadedChat = (chat: BackendChatPopulated | DownloadChat): DownloadChat => {
 	const inFileCollaborators = Array.isArray((chat as DownloadChat).inFileCollaborators)
@@ -18,8 +110,7 @@ const normalizeLoadedChat = (chat: BackendChatPopulated | DownloadChat): Downloa
 
 	return {
 		...chat,
-		inFileCollaborators,
-		promptIdProcessing: (chat as DownloadChat).promptIdProcessing
+		inFileCollaborators
 	};
 };
 
@@ -52,6 +143,7 @@ export const loadedChatsOfWorkspaceFile = (() => {
 			latestLoadRequestId += 1;
 			isLoadedChatsOfWorkspaceFileLoading.set(false);
 			loadedScopeKey = undefined;
+			processingChatsOfWorkspaceFile.clear();
 			all.set([]);
 			return;
 		}
@@ -69,6 +161,7 @@ export const loadedChatsOfWorkspaceFile = (() => {
 			currentScope.fileId,
 			currentScope.workspaceId
 		);
+		const processingChats = collectProcessingChats(chatsFromBackendRaw as unknown[]);
 		const chatsFromBackend: DownloadChat[] = chatsFromBackendRaw.map(normalizeLoadedChat);
 
 		if (requestId !== latestLoadRequestId) {
@@ -76,6 +169,7 @@ export const loadedChatsOfWorkspaceFile = (() => {
 		}
 
 		loadedScopeKey = scopeKey;
+		processingChatsOfWorkspaceFile.replaceAll(processingChats);
 		all.set(chatsFromBackend);
 		isLoadedChatsOfWorkspaceFileLoading.set(false);
 	};
@@ -422,14 +516,6 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 			id: tabId,
 			chatName: "Ask chat",
 			createdAt: new Date(),
-			// FIXME: Setup as undefined
-			/* promptIdProcessing: {
-				promptId: "1234",
-				initializedByMember: {
-					userId: user.id,
-					socketId: "11"
-				}
-			}, */
 			// FIXME: Setup as empty
 			messages: [
 				/* {
@@ -1034,6 +1120,10 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 
 			const normalizedTabs = normalizeActiveTab(tabsAfterRemoval, nextActiveTabId);
 			persistTabsForCurrentScope(normalizedTabs);
+
+			/** Doesn;t use since chats are processed in background and processing is performing in the background */
+			// processingChatsOfWorkspaceFile.stopProcessing(chatId);
+			
 			return true;
 		},
 		/** Use to select new chat as active when user select this chat */
@@ -1046,43 +1136,6 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 			const tabsWithOneActive = normalizeActiveTab(currentTabs, chatId);
 			persistTabsForCurrentScope(tabsWithOneActive);
 			return true;
-		},
-		startProcessing(chatId: string, promptMessageId: string, userSocketId: string) {
-			const wasUpdated = this.updateChatTabById(chatId, (chatTab) => {
-				return {
-					...chatTab,
-					promptIdProcessing: {
-						promptId: promptMessageId,
-						initializedByMember: {
-							userId: get(userProfile)?.id!,
-							socketId: userSocketId
-						}
-					}
-				}
-			});
-
-			return wasUpdated;
-		},
-		stopProcessing(chatId: string) {
-			const wasUpdated = this.updateChatTabById(chatId, (chatTab) => {
-                const userPrompt = chatTab.messages[chatTab.messages.length - 2];
-                const answer = chatTab.messages[chatTab.messages.length - 1];
-
-                delete userPrompt.isAnswering;
-                userPrompt.time.endAt = new Date();
-                delete answer.isAnswering;
-                answer.time.endAt = new Date();
-                
-				// Remove prompt as processing
-				delete chatTab.promptIdProcessing;
-				
-                return {
-                    ...chatTab,
-                    messages: chatTab.messages
-                };
-            });
-
-			return wasUpdated;
 		},
 		updateChatTabById(chatId: string, updater: (chatTab: ChatTab) => ChatTab): boolean {
 			let wasUpdated = false;
@@ -1299,10 +1352,15 @@ export const rightSideStripeChat = (() => {
 					messages: [...this.getChatMessages(chatTab), promptMessage]
 				};
 			});
-			// FIXME: Setup real socket.io id
-			const wasUpdatedChatProcessing = chatStripeTabsOfWorkspaceFile.startProcessing(activeChatLocal.id, promptMessage.id, "test");
+			const activeUserId = get(userProfile)?.id;
+			if (!activeUserId) {
+				return undefined;
+			}
 
-			if (!wasUpdatedMessages || !wasUpdatedChatProcessing) {
+			// FIXME: Setup real socket.io id
+			processingChatsOfWorkspaceFile.startProcessing(activeChatLocal.id, promptMessage.id, "test", activeUserId);
+
+			if (!wasUpdatedMessages) {
 				return undefined;
 			}
 
@@ -1342,7 +1400,6 @@ export const rightSideStripeChat = (() => {
 				id: createChatTabId(),
 				chatName: chatTitle,
 				createdAt: nowIso,
-				promptIdProcessing: activeTab?.promptIdProcessing,
 				messages: [],
 				selectedMode,
 				selectedModel: activeTab?.selectedModel,
@@ -1383,6 +1440,38 @@ export const rightSideStripeChat = (() => {
 		},
 		removeChat(chatId: string): boolean {
 			return chatStripeTabsOfWorkspaceFile.removeTab(chatId);
+		},
+		stopProcessing(chatId: string): boolean {
+			let wasUpdated = false;
+
+			chatStripeTabsOfWorkspaceFile.updateChatTabById(chatId, (chatTab) => {
+				const nextMessages = [...chatTab.messages];
+				const userPrompt = nextMessages[nextMessages.length - 2];
+				const answer = nextMessages[nextMessages.length - 1];
+
+				if (userPrompt && userPrompt.messageType === "message-user-prompt") {
+					delete userPrompt.isAnswering;
+					userPrompt.time.endAt = new Date();
+				}
+
+				if (answer && answer.messageType === "message-user-output") {
+					delete answer.isAnswering;
+					answer.time.endAt = new Date();
+				}
+
+				wasUpdated = true;
+				return {
+					...chatTab,
+					messages: nextMessages
+				};
+			});
+
+			if (!wasUpdated) {
+				return false;
+			}
+
+			processingChatsOfWorkspaceFile.stopProcessing(chatId);
+			return true;
 		}
 	};
 })();
