@@ -1121,6 +1121,8 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 			const normalizedTabs = normalizeActiveTab(tabsAfterRemoval, nextActiveTabId);
 			persistTabsForCurrentScope(normalizedTabs);
 
+			ChatTabPromptAreaSaving.clearPrompt(chatId);
+
 			/** Doesn;t use since chats are processed in background and processing is performing in the background */
 			// processingChatsOfWorkspaceFile.stopProcessing(chatId);
 			
@@ -1790,6 +1792,34 @@ export class SelectedChatAnswersContext {
 			SelectedChatAnswersContext.constructTabsRememberidIdKey(fileId),
 			JSON.stringify(answerIdsList)
 		);
+	}
+}
+
+export class ChatTabPromptAreaSaving {
+	static StoragePrefix = "chat-prompt-content:";
+
+	static savePrompt(chatId: string, content: string) {
+		if (typeof localStorage === "undefined") {
+			return;
+		}
+
+		localStorage.setItem(`${ChatTabPromptAreaSaving.StoragePrefix}${chatId}`, content);
+	}
+
+	static getPrompt(chatId: string): string | null {
+		if (typeof localStorage === "undefined") {
+			return null;
+		}
+
+		return localStorage.getItem(`${ChatTabPromptAreaSaving.StoragePrefix}${chatId}`);
+	}
+
+	static clearPrompt(chatId: string) {
+		if (typeof localStorage === "undefined") {
+			return;
+		}
+
+		localStorage.removeItem(`${ChatTabPromptAreaSaving.StoragePrefix}${chatId}`);
 	}
 }
 

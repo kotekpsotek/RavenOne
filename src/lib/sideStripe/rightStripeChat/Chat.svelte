@@ -2,9 +2,9 @@
     import ModelsListSelection from "$lib/ai/ModelsListSelection.svelte";
     import { selectedModelKey } from "$lib/ai/model";
     import { avaiableModels } from "$lib/config/models";
-    import McpServerSelectionModal from "$lib/mcp/components/McpServerSelectionModal.svelte";
     import ContextSelectionModal from "$lib/modals/ContextSelectionModal.svelte";
     import {
+        ChatTabPromptAreaSaving,
         SelectedAnswerFromChatContext,
         activeChat,
         chatStripeTabsOfWorkspaceFile,
@@ -23,15 +23,10 @@
     import type { AI } from "@ravenlens/shared";
     import type { AIChatMode, ChatTab } from "@ravenlens/shared/chat-ai/frontend";
     import type {
-        AIChatModel,
         MessageOutput,
-        MessageUserPrompt,
-
-        SelectedTextRangeContext
-
     } from "@ravenlens/shared/chat-ai/backend/schema";
     import { CHAT_MODES, chatLayoutStore as rightSideStripeChatLayout, type ChatModeValue } from "./config";
-    import { derived, get, writable } from "svelte/store";
+    import { get, writable } from "svelte/store";
     import { onMount, tick } from "svelte";
     import UserPrompt from "./bubbles/UserPrompt.svelte";
     import AIResponse from "./bubbles/AIResponse.svelte";
@@ -292,6 +287,26 @@
         isModeSelectingTrayOpen = false;
     }
 
+    function onInputPrompt() {
+        const activeChatLocal = get(activeChat);
+        if (!activeChatLocal) {
+            return;
+        }
+
+        savePromptDebounced(activeChatLocal.id, textContent);
+    }
+
+    let savePromptTimeout: ReturnType<typeof setTimeout> | undefined;
+    function savePromptDebounced(chatId: string, content: string) {
+        if (savePromptTimeout) {
+            clearTimeout(savePromptTimeout);
+        }
+
+        savePromptTimeout = setTimeout(() => {
+            ChatTabPromptAreaSaving.savePrompt(chatId, content);
+        }, 300);
+    }
+
     // FIXME: Remove
     function buildMockResponse(prompt: string, mode: AIChatMode, chatTab: ChatTab): MessageOutput[] {
         const escapedPrompt = escapeHtml(prompt || "context only prompt");
@@ -344,6 +359,7 @@
         }
 
         const { chatId } = appended;
+        ChatTabPromptAreaSaving.clearPrompt(chatId);
         void chatId;
 
         const activeChatSnapshot = $activeChat;
@@ -443,6 +459,17 @@
     // Effects
     $effect(() => {
         rightSideStripeChat.setLoading($isLoadedChatsOfWorkspaceFileLoading);
+    });
+
+    $effect(() => {
+        const activeChatLocal = $activeChat;
+        if (!activeChatLocal) {
+            textContent = "";
+            return;
+        }
+
+        const savedPrompt = ChatTabPromptAreaSaving.getPrompt(activeChatLocal.id);
+        textContent = savedPrompt ?? "";
     });
 
     $effect(() => {
@@ -770,6 +797,7 @@
                     disabled={isDisabled}
                     placeholder={$editorAIChat.selectedTextRanges?.length ? "Type order to context..." : "Type subject..."}
                     bind:value={textContent}
+                    oninput={onInputPrompt}
                     bind:this={composerTextareaElement}
                 ></textarea>
             {/key}
