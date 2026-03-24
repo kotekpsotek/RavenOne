@@ -4,6 +4,10 @@
 		rightSideStripeChat,
 		type AIChatThread
 	} from "$lib/stores/aiRightSideChat"
+    import CollaboratorsBubbles from "$lib/components/CollaboratorsBubbles.svelte";
+    import type { ChatTab } from "@ravenlens/shared/chat-ai/frontend";
+    import type { ProfileActiveCollborator } from "@ravenlens/shared/chat-ai/backend/schema";
+    import { mapChatCollaboratorsToBubbleCollabs } from "./utils";
 
 	type ChatGroup = {
 		key: string;
@@ -109,6 +113,27 @@
 		rightSideStripeChat.setSelectedChatId(chatId);
 		onOpenChat();
 	}
+
+	function getChatCollaborators(chat: ChatTab) {
+		const activeCollaborators = chat.inFileCollaborators.filter(
+			(collab) => (collab as ProfileActiveCollborator).isActive
+		);
+		const allCollaborators = [...activeCollaborators, ...chat.collaborators];
+
+		// Gets only unique collabs
+		const uniqueCollaborators = Array.from(
+			new Map(allCollaborators.map((c) => [c.id, c])).values()
+		).map(collab => ({ // Has to be done since original acitve collabs looses context
+			...collab,
+			isActive: activeCollaborators.some(collabThere => collabThere.id === collab.id && (collabThere as ProfileActiveCollborator).isActive) ?? false
+		}));
+		
+		// Maps collabs to 
+		const mapped = mapChatCollaboratorsToBubbleCollabs(uniqueCollaborators);
+
+		// List with collabs
+		return mapped;
+	}
 </script>
 
 <section class="h-full flex flex-col min-h-0">
@@ -127,10 +152,16 @@
 							>
 								<div class="flex items-center justify-between gap-2">
 									<span class="truncate text-sm font-medium ">{chat.chatName}</span>
-									<div class="w-fit">
+									<div class="w-fit flex gap-3 items-center">
 										{#if chat.promptIdProcessing}
 											<span class="loading loading-spinner loading-xs"></span>
 										{/if}
+										<CollaboratorsBubbles
+											collaborators={getChatCollaborators(chat)}
+											MAX_VISIBLE_COLLABORATORS={3}
+											activeUserSuffix="Interacting User"
+											size="small"
+										/>
 										<span class="shrink-0 text-xs text-base-content/60">{formatChatTime(chat.createdAt.toString())}</span>
 									</div>
 								</div>

@@ -1,5 +1,8 @@
 import type { AIChatMode, AIChatThread, ChatDropPosition, ChatStoreState, SelectedFileForChat } from "@ravenlens/backend";
 import { normalizeText, normalizeWorkspaceId } from "./normalize";
+import type { Profile } from "@ravenlens/shared";
+import type { ProfileActiveCollborator } from "@ravenlens/shared/chat-ai/backend/schema";
+import type { Collaborator } from "$lib/components/CollaboratorsBubble.types";
 
 export function createId(): string {
 	if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -86,4 +89,13 @@ export function reorderChatsByPosition(
 
     nextChats.splice(insertionIndex, 0, draggedChat);
     return nextChats;
+}
+
+export function mapChatCollaboratorsToBubbleCollabs(collabsEntry: (Profile | ProfileActiveCollborator)[]): Collaborator[] {
+    return collabsEntry.map(collab => ({
+        id: collab.id,
+        name: collab.name,
+        profileImgURL: collab.profileImgURL,
+        isEditor: (collab as ProfileActiveCollborator).isActive ?? false
+    } satisfies Collaborator))
 }

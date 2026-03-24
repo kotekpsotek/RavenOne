@@ -1165,6 +1165,7 @@ const toRightSideStripeState = (tabs: ChatTab[], isLoading: boolean): RightSideS
 	};
 };
 
+// TODO: Download real chats from backend service
 export const rightSideStripeChat = (() => {
 	const { ...all } = writable<RightSideStripeChatState>(toRightSideStripeState([], false));
 

@@ -9,6 +9,7 @@
     import type { ProfileActiveCollborator } from "@ravenlens/shared/chat-ai/backend/schema";
     import type { Profile } from "@ravenlens/shared";
     import type { Collaborator } from "$lib/components/CollaboratorsBubble.types";
+    import { mapChatCollaboratorsToBubbleCollabs } from "./utils";
 
     let screenWidth = $state(typeof window !== "undefined" ? window.innerWidth : 1440);
     /** Shows chats-list or the list with chat bubbles */
@@ -24,15 +25,7 @@
     let chatStripeWidth = $derived($chatLayoutStore.width);
     let chatStripeHeight = $derived($chatLayoutStore.height);
 
-    function collabsMap(collabsEntry: (Profile | ProfileActiveCollborator)[]): Collaborator[] {
-        return collabsEntry.map(collab => ({
-            id: collab.id,
-            name: collab.name,
-            profileImgURL: collab.profileImgURL,
-            isEditor: (collab as ProfileActiveCollborator).isActive ?? false
-        } satisfies Collaborator))
-    }
-    let chatMappedActiveCollaborators = $derived(collabsMap($activeChat?.inFileCollaborators ?? []));
+    let chatMappedActiveCollaborators = $derived(mapChatCollaboratorsToBubbleCollabs($activeChat?.inFileCollaborators ?? []));
 
     function onWindowResize() {
         screenWidth = window.innerWidth;
@@ -159,7 +152,9 @@
 
         <div class="relative flex flex-1 min-h-0 flex-col border-x border-base-300 bg-base-100">
             {#if isChatsListSectionOpen}
-                <ChatsList onOpenChat={onOpenChatFromList} />
+                <ChatsList 
+                    onOpenChat={onOpenChatFromList}
+                />
             {:else}
                 <Chat
                     bind:isModeSelectingTrayOpen
