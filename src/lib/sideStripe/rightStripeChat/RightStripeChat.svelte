@@ -5,6 +5,10 @@
     import ChatTabs from "./ChatTabs.svelte";
     import { chatLayoutStore } from "./config";
     import { activeChat, editorAIChat, rightSideStripeChat } from "$lib/stores/aiRightSideChat";
+    import CollaboratorsBubbles from "$lib/components/CollaboratorsBubbles.svelte";
+    import type { ProfileActiveCollborator } from "@ravenlens/shared/chat-ai/backend/schema";
+    import type { Profile } from "@ravenlens/shared";
+    import type { Collaborator } from "$lib/components/CollaboratorsBubble.types";
 
     let screenWidth = $state(typeof window !== "undefined" ? window.innerWidth : 1440);
     /** Shows chats-list or the list with chat bubbles */
@@ -19,6 +23,16 @@
 
     let chatStripeWidth = $derived($chatLayoutStore.width);
     let chatStripeHeight = $derived($chatLayoutStore.height);
+
+    function collabsMap(collabsEntry: (Profile | ProfileActiveCollborator)[]): Collaborator[] {
+        return collabsEntry.map(collab => ({
+            id: collab.id,
+            name: collab.name,
+            profileImgURL: collab.profileImgURL,
+            isEditor: (collab as ProfileActiveCollborator).isActive ?? false
+        } satisfies Collaborator))
+    }
+    let chatMappedActiveCollaborators = $derived(collabsMap($activeChat?.inFileCollaborators ?? []));
 
     function onWindowResize() {
         screenWidth = window.innerWidth;
@@ -114,6 +128,17 @@
                     <Icon icon="material-symbols:chat-bubble-outline-rounded" class="text-lg"/>
                 </button>
                 <h2 class="font-semibold">RavenOne AI Chat</h2>
+
+                {#if chatMappedActiveCollaborators}
+                    <div class="mx-2">
+                        <CollaboratorsBubbles
+                            collaborators={chatMappedActiveCollaborators}
+                            MAX_VISIBLE_COLLABORATORS={3}
+                            size="small"
+                            activeUserSuffix="Interacting User"
+                        />
+                    </div>
+                {/if}
             </div>
 
             <div>
