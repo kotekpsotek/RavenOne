@@ -518,103 +518,6 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 			createdAt: new Date(),
 			// FIXME: Setup as empty
 			messages: [
-				/* {
-					id: "1",
-					messageType: "message-user-prompt",
-					messageContentHTML: "This is user prompt;This is user prompt;This is user prompt;This is user prompt;This is user prompt;",
-					model: {
-						model: "gpt-4o",
-						provider: "OpenAI",
-						weight: 1
-					},
-					aiChatMode: "regular-ask",
-					isStopped: true,
-					time: {
-						startAt: new Date(Date.now()),
-						endAt: new Date(Date.now() + 1_000 * 120)
-					}
-				},
-				{
-					id: "2",
-					messageType: "message-user-output",
-					messageContentHTML: "Hello! I'm your AI assistant. How can I help you today?",
-					model: {
-						model: "gpt-4o",
-						provider: "OpenAI",
-						weight: 1
-					},
-					aiChatMode: "regular-ask",
-					reasoning: [
-						{
-							phase: "thinking",
-							thoughts: ["Though 1", "Thought 2"]
-						},
-						{
-							phase: "todo",
-							todo: [
-								{
-									id: "1",
-									content: "The content",
-									event: "created"
-								},
-								{
-									id: "2",
-									content: "The content",
-									event: "finished"
-								}
-							]
-						},
-						{
-							phase: "tools-usage",
-							tools: [
-								{
-									toolName: "tool-1",
-									params: {},
-									isMCP: true
-								}
-							]
-						}
-					],
-					documentManipulation: {
-						pasteTo: 0,
-						pasteContent: "Hi Hi Hello",
-						status: "not-resolved"
-					},
-					tasksListManipulation: {
-						addedTasksToLists: [
-							{
-								taskListId: "1",
-								tasksListItems: [
-									{
-										id: "12",
-										text: "Added point",
-										depth: 0
-									}
-								]
-							}
-						],
-						newLists: [
-							{
-								id: "12",
-								kind: "ordered",
-								name: "Name",
-								icon: "x",
-								items: [
-									{
-										id: "1",
-										depth: 0,
-										text: "AAA"
-									}
-								]
-							}
-						],
-						status: "not-resolved"
-					},
-					time: {
-						startAt: new Date(Date.now()),
-						endAt: new Date(Date.now() + 1_000 * 120)
-					},
-				},
 				{
 					id: "1",
 					messageType: "message-user-prompt",
@@ -905,7 +808,104 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 						startAt: new Date(Date.now()),
 						endAt: new Date(Date.now() + 1_000 * 120)
 					},
-				}, */
+				},
+				{
+					id: "1",
+					messageType: "message-user-prompt",
+					messageContentHTML: "This is user prompt;This is user prompt;This is user prompt;This is user prompt;This is user prompt;",
+					model: {
+						model: "gpt-4o",
+						provider: "OpenAI",
+						weight: 1
+					},
+					aiChatMode: "regular-ask",
+					isStopped: true,
+					time: {
+						startAt: new Date(Date.now()),
+						endAt: new Date(Date.now() + 1_000 * 120)
+					}
+				},
+				{
+					id: "2",
+					messageType: "message-user-output",
+					messageContentHTML: "Hello! I'm your AI assistant. How can I help you today?",
+					model: {
+						model: "gpt-4o",
+						provider: "OpenAI",
+						weight: 1
+					},
+					aiChatMode: "regular-ask",
+					reasoning: [
+						{
+							phase: "thinking",
+							thoughts: ["Though 1", "Thought 2"]
+						},
+						{
+							phase: "todo",
+							todo: [
+								{
+									id: "1",
+									content: "The content",
+									event: "created"
+								},
+								{
+									id: "2",
+									content: "The content",
+									event: "finished"
+								}
+							]
+						},
+						{
+							phase: "tools-usage",
+							tools: [
+								{
+									toolName: "tool-1",
+									params: {},
+									isMCP: true
+								}
+							]
+						}
+					],
+					documentManipulation: {
+						pasteTo: 0,
+						pasteContent: "Hi Hi Hello",
+						status: "not-resolved"
+					},
+					tasksListManipulation: {
+						addedTasksToLists: [
+							{
+								taskListId: "1",
+								tasksListItems: [
+									{
+										id: "12",
+										text: "Added point",
+										depth: 0
+									}
+								]
+							}
+						],
+						newLists: [
+							{
+								id: "12",
+								kind: "ordered",
+								name: "Name",
+								icon: "x",
+								items: [
+									{
+										id: "1",
+										depth: 0,
+										text: "AAA"
+									}
+								]
+							}
+						],
+						status: "not-resolved"
+					},
+					time: {
+						startAt: new Date(Date.now()),
+						endAt: new Date(Date.now() + 1_000 * 120)
+					},
+				},
 			],
 			selectedMode: "regular-ask",
 			selectedModel: undefined,

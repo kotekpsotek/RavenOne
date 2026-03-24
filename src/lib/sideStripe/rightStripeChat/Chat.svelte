@@ -591,6 +591,28 @@
         updateHistoryBottomPadding();
     });
 
+    $effect(() => {
+        // Has to be to detect loading finish to scroll once chat stop loading
+        $rightSideStripeChat.isLoading;
+        
+        // Auto-scroll chat history to bottom when active chat or messages change
+        (async () => {
+            await tick();
+            if (!chatHistoryElement) return;
+
+            // Only scroll when overflow present
+            if (chatHistoryElement.scrollHeight <= chatHistoryElement.clientHeight) return;
+
+            try {
+                chatHistoryElement.scrollTo({ top: chatHistoryElement.scrollHeight, behavior: 'smooth' });
+            }
+            catch (e) {
+                // Fallback for environments that don't support smooth option
+                chatHistoryElement.scrollTop = chatHistoryElement.scrollHeight;
+            }
+        })();
+    });
+
     // Lifecycle hooks
     onMount(() => {
         let resizeObserver: ResizeObserver | undefined;
