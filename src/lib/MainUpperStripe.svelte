@@ -6,6 +6,7 @@
     import { availableTools, playMode, selectedFile, selectedTools } from "./stores/files";
     import { selectedModel } from "./stores/files";
     import { selectedWorkspace } from "./stores/workspace";
+    import { tick } from "svelte";
     import { contextSpecification } from "./stores/contextSpec";
     import { mcpConfigurationStore, selectedMcpServers } from "./stores/mcpConfig";
     import { alertState } from "./utils/alert";
@@ -24,6 +25,8 @@
     import { browser } from "$app/environment";
 
     type DropdownName = "model-settings" | "mcp-tools" | "play-settings" | "share";
+
+    let isDownloadingPdf = $state(false);
 
     const selectedModelKey = (() => {
         const initialModelKey = avaiableModels[0]?.model ?? "";
@@ -362,6 +365,91 @@
         playableDocumentsAndListsWithPoints.stopPlayingDocument($selectedFile);
     }
 
+    function collectCurrentPageStyles(): string {
+        let styles = "";
+
+        for (const styleSheet of Array.from(document.styleSheets)) {
+            try {
+                const cssRules = (styleSheet as CSSStyleSheet).cssRules;
+                if (cssRules) {
+                    styles += Array.from(cssRules)
+                        .map((rule) => rule.cssText)
+                        .join("\n");
+                }
+            } catch {
+                // For cross-origin stylesheets where cssRules are inaccessible,
+                // keep the stylesheet reference so the exported HTML can still load it.
+                const href = (styleSheet as CSSStyleSheet).href;
+                if (href) {
+                    styles += `\n@import url("${href}");`;
+                }
+            }
+        }
+
+        return styles;
+    }
+
+    async function onDownloadHTML() {
+        if (isDownloadingPdf) {
+            return;
+        }
+
+        if (typeof window === "undefined" || typeof document === "undefined") {
+            return;
+        }
+
+        isDownloadingPdf = true;
+
+        try {
+            // Ensure dropdowns are closed before taking the HTML snapshot.
+            openDropdown = undefined;
+            await tick();
+
+            const selectedFileName = ($selectedFile?.name?.trim() || document.title || "webpage")
+                .replace(/[\\/:*?"<>|]+/g, "-");
+            const pageMarkup = document.documentElement.outerHTML;
+            const serializedStyles = collectCurrentPageStyles();
+
+            const withInjectedStyles = pageMarkup.includes("</head>")
+                ? pageMarkup.replace("</head>", `<style id=\"exported-inline-styles\">${serializedStyles}</style></head>`)
+                : `<!doctype html><html><head><style id=\"exported-inline-styles\">${serializedStyles}</style></head><body>${pageMarkup}</body></html>`;
+
+            const htmlBlob = new Blob([withInjectedStyles], { type: "text/html;charset=utf-8" });
+            const objectUrl = URL.createObjectURL(htmlBlob);
+
+            const downloadLink = document.createElement("a");
+            downloadLink.href = objectUrl;
+            downloadLink.download = `${selectedFileName}.html`;
+            downloadLink.style.display = "none";
+
+            document.body.append(downloadLink);
+            downloadLink.click();
+            downloadLink.remove();
+            URL.revokeObjectURL(objectUrl);
+
+            alertState.set({
+                alert: {
+                    name: "HTML downloaded",
+                    description: "The current page has been downloaded as HTML with styles.",
+                    type: "success"
+                },
+                timeoutMs: 2500
+            });
+        } catch (error) {
+            console.error("HTML download failed:", error);
+            alertState.set({
+                alert: {
+                    name: "HTML download failed",
+                    description: "Could not download the current page as HTML.",
+                    type: "error"
+                },
+                timeoutMs: 3500
+            });
+        } finally {
+            isDownloadingPdf = false;
+        }
+    }
+
     function playingDisabledReason(isFilePlayable: boolean, isSomePointPlaying: boolean) {
         if (!isFilePlayable) {
             return "Playing is disabled since document has no playable node/element; Add some playable AI Node/Element first to make file playable";
@@ -627,6 +715,18 @@
                         <div class="mt-5 space-y-2">
                             <p class="text-base font-semibold">Share to</p>
                             <div class="grid grid-cols-5 gap-1 text-center">
+                                <button
+                                    class="space-y-1 disabled:opacity-40"
+                                    onclick={onDownloadHTML}
+                                    disabled={isDownloadingPdf}
+                                    title="Download HTML"
+                                    aria-label="Download HTML"
+                                >
+                                    <span class="mx-auto flex h-8 w-8 items-center justify-center rounded-full bg-base-200">
+                                        <Icon icon="material-symbols:code-blocks-outline-rounded" class="w-5 h-5 text-info" />
+                                    </span>
+                                    <span class="text-[10px]">HTML</span>
+                                </button>
                                 <button class="space-y-1 disabled:opacity-40" type="button" title="Share to Facebook" onclick={() => openSocialShare("facebook")} disabled={!shareUrl || isShareLinkGenerating}>
                                     <span class="mx-auto flex h-8 w-8 items-center justify-center rounded-full bg-base-200">
                                         <Icon icon="logos:facebook" class="h-6 w-6" />
@@ -644,7 +744,7 @@
                                         <Icon icon="logos:whatsapp-icon" class="h-6 w-6" />
                                     </span>
                                     <span class="text-[10px]">Whatsapp</span>
-                                </button>
+                            </button>
                                 <button class="space-y-1 disabled:opacity-40" type="button" title="Share to Telegram" onclick={() => openSocialShare("telegram")} disabled={!shareUrl || isShareLinkGenerating}>
                                     <span class="mx-auto flex h-8 w-8 items-center justify-center rounded-full bg-base-200">
                                         <Icon icon="logos:telegram" class="h-6 w-6" />

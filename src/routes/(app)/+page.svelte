@@ -50,7 +50,7 @@
 	});
 </script>
 
-<div class="flex h-full w-full flex-col min-h-0">
+<div id="main-section-area" class="flex h-full w-full flex-col min-h-0">
 	<MainUpperStripe/>
 	<div class="flex-1 min-h-0">
 		<MainSectionArea/>
