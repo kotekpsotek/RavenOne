@@ -575,12 +575,15 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 							]
 						}
 					],
+					isError: true,
 					documentManipulation: {
+						type: "document-manipulation",
 						oldDocumentContentHTML: "<p>Before</p>",
 						newDocumentContentHTML: "<p>Hi</p>",
 						status: "not-resolved"
 					},
 					tasksListManipulation: {
+						type: "task-manipulation",
 						addedTasksToLists: [
 							{
 								taskListId: "list-dev-1",

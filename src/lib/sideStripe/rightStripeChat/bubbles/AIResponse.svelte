@@ -26,6 +26,7 @@
         id,
         model,
         isStopped,
+        isError,
         messageContentHTML,
         documentManipulation,
         tasksListManipulation,
@@ -186,6 +187,7 @@
     <div
         class="bubble border-t pt-2 rounded-t-none border-base-300 flex flex-col gap-3 w-full p-2 rounded-lg"
         class:stoped={isStopped}
+        class:error={isError !== undefined}
         data-message-id={id}
     >
         <div 
@@ -214,7 +216,7 @@
 
         {#if isMessageOpen}
             <!-- Show once reason steps are defined for the action -->
-            {#if reasoning.length}
+            {#if reasoning.length && !isError}
                 <div 
                     class="progress-outcome border border-base-300 rounded-md bg-base-200 p-2"
                 >
@@ -263,23 +265,32 @@
         
             <!-- Content -->
             <div class="message-output text-[16px]">
-                <EditorContent 
-                    editor={$answerEditor}
-                />
+                {#if isError}
+                    <p class="text-error">
+                        <span class="font-semibold">Error:</span>
+                        Cannot show message because of error while processing
+                    </p>
+                {:else}
+                    <EditorContent 
+                        editor={$answerEditor}
+                    />
+                {/if}
             </div>
 
             <!-- Proposals -->
-            <div
-                class="flex flex-col gap-5 mt-10"
-            >
-                {#if documentManipulation}
-                    {@render ManipulationTray("document")}
-                {/if}
-    
-                {#if tasksListManipulation}
-                    {@render ManipulationTray("tasks")}
-                {/if}
-            </div>
+            {#if !isError}
+                <div
+                    class="flex flex-col gap-5 mt-10"
+                >
+                    {#if documentManipulation}
+                        {@render ManipulationTray("document")}
+                    {/if}
+        
+                    {#if tasksListManipulation}
+                        {@render ManipulationTray("tasks")}
+                    {/if}
+                </div>
+            {/if}
 
             <!-- Information about mode, model and time -->
             <ModelModelAndTime
@@ -291,3 +302,15 @@
         {/if}
     </div>
 </div>
+
+<style>
+    @reference "../../../../app.css";
+
+    .bubble.stoped {
+        @apply border border-dashed border-error;
+    }
+
+    .bubble.error {
+        @apply border border-error rounded-lg;
+    }
+</style>

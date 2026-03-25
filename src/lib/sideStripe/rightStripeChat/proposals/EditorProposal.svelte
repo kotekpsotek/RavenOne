@@ -4,6 +4,7 @@
     import { createEditorExtensions } from "$lib/stores/editor";
     import Icon from "@iconify/svelte";
     import { callAcceptDocumentManipulation, callDeclineDocumentManipulation } from "./utilFunctions";
+    import { isCurrentUserSelectedFileEditor } from "$lib/stores/collaboration";
 
     /* TODO: Show in future the differences as:
         - red markers - for the deleted elements
@@ -40,6 +41,7 @@
                     <button
                         class="btn btn-sm btn-outline btn-success"
                         title="Accept new document proposition"
+                        disabled={!$isCurrentUserSelectedFileEditor}
                         onclick={callAcceptDocumentManipulation($fileChatEditionPreviewShowing?.outputMessage!)}
                     >
                         Accept
@@ -47,6 +49,7 @@
                     <button
                         class="btn btn-sm btn-outline btn-error"
                         title="Decline new document proposition"
+                        disabled={!$isCurrentUserSelectedFileEditor}
                         onclick={callDeclineDocumentManipulation($fileChatEditionPreviewShowing?.outputMessage!)}
                     >
                         Decline
