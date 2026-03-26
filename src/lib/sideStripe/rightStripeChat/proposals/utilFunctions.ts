@@ -8,8 +8,10 @@
 import { activeChat, chatStripeTabsOfWorkspaceFile, fileChatEditionPreviewShowing } from "$lib/stores/aiRightSideChat";
 import { loadingState } from "$lib/stores/loadingScreen";
 import { userProfile } from "$lib/stores/user";
+import { setAlert } from "$lib/utils/alert";
 import { get } from "svelte/store";
 import type { DocumentManipulation, MessageOutput } from "@ravenlens/shared/chat-ai/backend/schema";
+import { chatServiceConnection } from "../connections";
 
 function setupDocumentManipulationStatus(chatId: string, outputMessage: MessageOutput, status: DocumentManipulation["status"]) {
     chatStripeTabsOfWorkspaceFile.update(chats => {
@@ -46,12 +48,19 @@ function setupDocumentManipulationStatus(chatId: string, outputMessage: MessageO
 export function callAcceptDocumentManipulation(outputMessage: MessageOutput) {
     return async () => {
         const activeChatState = get(activeChat);
-        const editionPreviewState = get(fileChatEditionPreviewShowing);
+        if (!activeChatState?.id) {
+            return;
+        }
         
         // Set loading state
         loadingState.setLoadingState(true);
         
-        // 1. TODO:
+        const success = await chatServiceConnection.emitAcceptProposal(activeChatState.id, outputMessage.id, "documentManipulation");
+        if (!success) {
+            loadingState.setLoadingState(false);
+            setAlert("error", "Proposal accept failed", "Cannot accept the document proposal right now.");
+            return;
+        }
     
         // 2. If backend returned success
         setupDocumentManipulationStatus(activeChatState.id, outputMessage, "accepted");
@@ -67,12 +76,19 @@ export function callAcceptDocumentManipulation(outputMessage: MessageOutput) {
 export function callDeclineDocumentManipulation(outputMessage: MessageOutput) {
     return async () => {
         const activeChatState = get(activeChat);
-        const editionPreviewState = get(fileChatEditionPreviewShowing);
+        if (!activeChatState?.id) {
+            return;
+        }
         
         // Set loading state
         loadingState.setLoadingState(true);
 
-        // 1. TODO: Call socket.io
+        const success = await chatServiceConnection.emitDeclineProposal(activeChatState.id, outputMessage.id, "documentManipulation");
+        if (!success) {
+            loadingState.setLoadingState(false);
+            setAlert("error", "Proposal decline failed", "Cannot decline the document proposal right now.");
+            return;
+        }
     
         // 2. If backend returned success
         setupDocumentManipulationStatus(activeChatState.id, outputMessage, "declined");
@@ -121,11 +137,19 @@ function setupTaskListManipulationState(chatId: string, outputMessage: MessageOu
 export function callAcceptTasksManipulation(outputMessage: MessageOutput) {
     return async () => {
         const activeChatState = get(activeChat);
+        if (!activeChatState?.id) {
+            return;
+        }
 
         // Set loading state
         loadingState.setLoadingState(true);
 
-        // 1. TODO: Call backend to apply list changes
+        const success = await chatServiceConnection.emitAcceptProposal(activeChatState.id, outputMessage.id, "tasksListManipulation");
+        if (!success) {
+            loadingState.setLoadingState(false);
+            setAlert("error", "Proposal accept failed", "Cannot accept the task proposal right now.");
+            return;
+        }
 
         // 2. Update local state
         setupTaskListManipulationState(activeChatState.id, outputMessage, "accepted");
@@ -141,11 +165,19 @@ export function callAcceptTasksManipulation(outputMessage: MessageOutput) {
 export function callDeclineTasksManipulation(outputMessage: MessageOutput) {
     return async () => {
         const activeChatState = get(activeChat);
+        if (!activeChatState?.id) {
+            return;
+        }
 
         // Set loading state
         loadingState.setLoadingState(true);
 
-        // 1. TODO: Call backend to decline list changes
+        const success = await chatServiceConnection.emitDeclineProposal(activeChatState.id, outputMessage.id, "tasksListManipulation");
+        if (!success) {
+            loadingState.setLoadingState(false);
+            setAlert("error", "Proposal decline failed", "Cannot decline the task proposal right now.");
+            return;
+        }
 
         // 2. Update local state
         setupTaskListManipulationState(activeChatState.id, outputMessage, "declined");

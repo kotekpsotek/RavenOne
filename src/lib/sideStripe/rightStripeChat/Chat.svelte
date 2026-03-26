@@ -17,6 +17,7 @@
     import { selectedFile, selectedModel } from "$lib/stores/files";
     import { isPointsStripeOpen } from "$lib/stores/selectedSideStripes";
     import { selectedWorkspace } from "$lib/stores/workspace";
+    import { setAlert } from "$lib/utils/alert";
     import { fetchAuthenticated } from "$lib/utils/fetch";
     import Icon from "@iconify/svelte";
     import { File } from "@ravenlens/shared";
@@ -25,6 +26,7 @@
     import type {
         MessageOutput,
     } from "@ravenlens/shared/chat-ai/backend/schema";
+    import { chatServiceConnection, loadChatsFromFileRequest } from "./connections";
     import { CHAT_MODES, chatLayoutStore as rightSideStripeChatLayout, type ChatModeValue } from "./config";
     import { get, writable } from "svelte/store";
     import { onMount, tick } from "svelte";
@@ -307,27 +309,49 @@
         }, 300);
     }
 
-    // FIXME: Remove
-    function buildMockResponse(prompt: string, mode: AIChatMode, chatTab: ChatTab): MessageOutput[] {
-        const escapedPrompt = escapeHtml(prompt || "context only prompt");
-        const outputMessage: MessageOutput = {
-            id: '111111',
-            time: {
-                startAt: new Date(),
-            },
-            messageType: "message-user-output",
-            messageContentHTML: `<p><strong>Mode:</strong> ${escapeHtml(getTextFieldModeName(mode))}</p><p>Generated response for: ${escapedPrompt}</p>`,
-            model: rightSideStripeChat.createModelForMessage(chatTab),
-            reasoning: [],
-            aiChatMode: "regular-ask",
-            isAnswering: true
-        };
-
-        return [outputMessage];
+    function sleep(timeoutMs: number): Promise<void> {
+        return new Promise(resolve => setTimeout(resolve, timeoutMs));
     }
 
-    // TODO: Integrate with backend
-    function onSendMessage() {
+    async function syncPromptOutputFromBackend(chatId: string, outputMessageId: string, scope: { fileId: string; workspaceId: string }) {
+        for (let attempt = 0; attempt < 40; attempt += 1) {
+            if ($selectedFile?.id !== scope.fileId || $selectedWorkspace?.id !== scope.workspaceId) {
+                return;
+            }
+
+            if (attempt > 0 && !$processingChatsOfWorkspaceFile[chatId]) {
+                return;
+            }
+
+            const chatsFromBackend = await loadChatsFromFileRequest(scope.fileId, scope.workspaceId);
+            const backendChat = chatsFromBackend.find(chat => chat.id === chatId);
+            if (!backendChat) {
+                await sleep(1200);
+                continue;
+            }
+
+            const outputMessage = backendChat.messages.find(message => {
+                return message.messageType === "message-user-output" && message.id === outputMessageId;
+            }) as MessageOutput | undefined;
+
+            if (!outputMessage) {
+                await sleep(1200);
+                continue;
+            }
+
+            rightSideStripeChat.upsertOutputMessage(chatId, outputMessage);
+
+            const isStillProcessing = Boolean((backendChat as { promptIdProcessing?: unknown }).promptIdProcessing);
+            if (!outputMessage.isAnswering || outputMessage.time.endAt || !isStillProcessing) {
+                rightSideStripeChat.stopProcessing(chatId);
+                return;
+            }
+
+            await sleep(1200);
+        }
+    }
+
+    async function onSendMessage() {
         if (!isMessagingActive) {
             return;
         }
@@ -358,35 +382,51 @@
             return;
         }
 
-        const { chatId } = appended;
+        const { chatId, promptMessage } = appended;
         ChatTabPromptAreaSaving.clearPrompt(chatId);
-        void chatId;
-
-        const activeChatSnapshot = $activeChat;
-        if (!activeChatSnapshot) {
-            return;
-        }
 
         editorAIChat.clearSelectedText();
         displayContextForMessages.set([]);
         isSelectedTextPreviewOpen = true;
 
-        // Simulate answer
-        setTimeout(() => {
-            rightSideStripeChat.appendOutputMessages(chatId, buildMockResponse(promptText, mode, activeChatSnapshot));
-        }, 300);
-
-        // Simulate end
-        setTimeout(() => {
-            // Remove chat processing stage
+        const sendResult = await chatServiceConnection.emitSendPrompt(chatId, promptMessage);
+        if ("error" in sendResult) {
+            setAlert("error", "Prompt failed", `Chat service rejected the prompt: ${sendResult.reason}`);
+            rightSideStripeChat.markOutputMessageAsError(chatId, undefined, sendResult.reason);
             rightSideStripeChat.stopProcessing(chatId);
-        }, 5_000);
+            return;
+        }
+
+        if (sendResult.idPromptProcessing) {
+            processingChatsOfWorkspaceFile.setPromptId(chatId, sendResult.idPromptProcessing);
+        }
+
+        if (sendResult.outputMessage) {
+            rightSideStripeChat.upsertOutputMessage(chatId, sendResult.outputMessage);
+
+            if ($selectedFile?.id && $selectedWorkspace?.id) {
+                void syncPromptOutputFromBackend(chatId, sendResult.outputMessage.id, {
+                    fileId: $selectedFile.id,
+                    workspaceId: $selectedWorkspace.id
+                });
+            }
+        }
     }
 
-    // TODO: Intergrate with backend
-    function onStopMessage() {
-        // Remove chat processing stage
+    async function onStopMessage() {
         if (!$activeChat?.id) {
+            return;
+        }
+
+        const promptProcessing = $processingChatsOfWorkspaceFile[$activeChat.id];
+        if (!promptProcessing?.promptId) {
+            rightSideStripeChat.stopProcessing($activeChat.id);
+            return;
+        }
+
+        const stopResult = await chatServiceConnection.emitStopPrompt($activeChat.id, promptProcessing.promptId);
+        if (!stopResult.success) {
+            setAlert("warning", "Stop unavailable", stopResult.reason ?? "Cannot stop the active prompt.");
             return;
         }
 

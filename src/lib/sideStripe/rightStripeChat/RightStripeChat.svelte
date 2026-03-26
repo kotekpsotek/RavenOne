@@ -72,9 +72,9 @@
         resizeAxis = null;
     }
 
-    function onCreateChat() {
+    async function onCreateChat() {
         const nextMode = $editorAIChat.textFieldMode;
-        const newChatId = rightSideStripeChat.createChat(nextMode, `${editorAIChat.getTextFieldModeTranslation(nextMode)} chat`);
+        const newChatId = await rightSideStripeChat.createChat(nextMode, `${editorAIChat.getTextFieldModeTranslation(nextMode)} chat`);
 
         if (newChatId && isChatsListSectionOpen) {
             chatStripeTabsOfWorkspaceFile.setActive(newChatId);

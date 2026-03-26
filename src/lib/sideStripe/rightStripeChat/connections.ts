@@ -7,10 +7,14 @@ import { JWTAuth } from "$lib/utils/auth";
 import { fetchAuthenticated } from "$lib/utils/fetch";
 import type { BackendChatPopulated, MessageOutput, MessageUserPrompt } from "@ravenlens/shared/chat-ai/backend/schema";
 import { io, type Socket } from "socket.io-client";
-import { get } from "svelte/store";
-import { LangchainAgent } from "@ravenlens/ai";
+import { get, writable } from "svelte/store";
+import type { LangchainAgent } from "@ravenlens/ai";
 import type { AIAgentOutputMessage, ChatMember } from "../../../../../../packages/shared/dist/types/chat-ai/universal";
 import type { PromptProcessingProgess } from "@ravenlens/shared/chat-ai";
+
+type CreateChatResult = { success: true; chatId: string } | { success: false; reason?: string };
+type SendPromptResult = { error: true; reason: string } | { success: true; idPromptProcessing?: string | undefined; outputMessage?: MessageOutput };
+type StopPromptResult = { success: true } | { success: false; reason?: string };
 
 export async function loadChatsFromFileRequest(
     fileId: string,
@@ -44,6 +48,11 @@ export class SocketIoChatService {
     connection: Socket | undefined;
     workspaceId: string = "";
     fileId: string = "";
+
+    private refreshScopeFromStores(): void {
+        this.fileId = get(selectedFile)?.id ?? "";
+        this.workspaceId = get(selectedWorkspace)?.id ?? "";
+    }
     
     constructor() {
         if (!browser){
@@ -71,14 +80,11 @@ export class SocketIoChatService {
         this.connection.on("connect_error", error => {
             console.error("Chat service socket connection error:", error?.message ?? error);
         });
-
-        // Should be always pointing to actually selected file
-        this.fileId = get(selectedFile)?.id ?? "";
-        this.workspaceId = get(selectedWorkspace)?.id ?? "";
     }
 
     // Emitters
     emitJoinChat(chatId: string): Promise<boolean> {
+        this.refreshScopeFromStores();
         return new Promise<boolean>(res => {
             this.connection?.emit(
                 "joinChat",
@@ -93,6 +99,7 @@ export class SocketIoChatService {
     }
 
     emitLeaveChat(chatId: string): Promise<boolean> {
+        this.refreshScopeFromStores();
         return new Promise<boolean>(res => {
             this.connection?.emit(
                 "leaveChat",
@@ -107,6 +114,7 @@ export class SocketIoChatService {
     }
 
     emitAcceptProposal(chatId: string, messageOutputId: string, proposalType: keyof Pick<MessageOutput, "tasksListManipulation" | "documentManipulation">): Promise<boolean> {
+        this.refreshScopeFromStores();
         return new Promise<boolean>(res => {
             this.connection?.emit(
                 "accept-proposal",
@@ -123,6 +131,7 @@ export class SocketIoChatService {
     }
 
     emitDeclineProposal(chatId: string, messageOutputId: string, proposalType: keyof Pick<MessageOutput, "tasksListManipulation" | "documentManipulation">): Promise<boolean> {
+        this.refreshScopeFromStores();
         return new Promise<boolean>(res => {
             this.connection?.emit(
                 "decline-proposal",
@@ -138,7 +147,34 @@ export class SocketIoChatService {
         });
     }
 
-    emitSendPrompt(chatId: string, message: MessageUserPrompt): Promise<{ error: true, reason: string } | { success: true, idPromptProcessing?: string | undefined, outputMessage?: MessageOutput }> {
+    emitCreateChat(chatName?: string): Promise<CreateChatResult> {
+        this.refreshScopeFromStores();
+        return new Promise<CreateChatResult>(res => {
+            this.connection?.emit(
+                "createChat",
+                this.workspaceId,
+                this.fileId,
+                chatName,
+                (success: boolean, chatId?: string, reason?: string) => {
+                    if (success && chatId) {
+                        res({
+                            success: true,
+                            chatId
+                        });
+                        return;
+                    }
+
+                    res({
+                        success: false,
+                        ...(reason ? { reason } : {})
+                    });
+                }
+            );
+        });
+    }
+
+    emitSendPrompt(chatId: string, message: MessageUserPrompt): Promise<SendPromptResult> {
+        this.refreshScopeFromStores();
         return new Promise(res => {
             this.connection?.emit(
                 "prompt",
@@ -165,7 +201,8 @@ export class SocketIoChatService {
         });
     }
 
-    emitStopPrompt(chatId: string, promptProcessId: string): Promise<{ success: true } | { success: false, reason?: string }> {
+    emitStopPrompt(chatId: string, promptProcessId: string): Promise<StopPromptResult> {
+        this.refreshScopeFromStores();
         return new Promise(res => {
             this.connection?.emit(
                 "stopPrompt",
@@ -220,3 +257,50 @@ export class SocketIoChatService {
         this.connection?.on("prompt-success", listener);
     }
 }
+
+/**
+ * Rules:
+ * 1. When user opens chat should join to it (User can join to multiple chats atime)
+ * 2. When user leaves the chat should leave it e.g:
+ *  - when user closes chat
+ * 3. Implement the listeners and apply changes to the storage
+ */
+export const chatServiceConnection = (() => {
+    const { ...all } = writable<SocketIoChatService | undefined>(undefined);
+
+    const getConnection = () => get(all);
+
+    if (browser) {
+        // Initializes connection
+        all.set(
+            new SocketIoChatService()
+        );
+
+        // Setups listeners
+    }
+
+    return {
+        ...all,
+        emitJoinChat(chatId: string): Promise<boolean> {
+            return getConnection()?.emitJoinChat(chatId) ?? Promise.resolve(false);
+        },
+        emitLeaveChat(chatId: string): Promise<boolean> {
+            return getConnection()?.emitLeaveChat(chatId) ?? Promise.resolve(false);
+        },
+        emitAcceptProposal(chatId: string, messageOutputId: string, proposalType: keyof Pick<MessageOutput, "tasksListManipulation" | "documentManipulation">): Promise<boolean> {
+            return getConnection()?.emitAcceptProposal(chatId, messageOutputId, proposalType) ?? Promise.resolve(false);
+        },
+        emitDeclineProposal(chatId: string, messageOutputId: string, proposalType: keyof Pick<MessageOutput, "tasksListManipulation" | "documentManipulation">): Promise<boolean> {
+            return getConnection()?.emitDeclineProposal(chatId, messageOutputId, proposalType) ?? Promise.resolve(false);
+        },
+        emitCreateChat(chatName?: string): Promise<CreateChatResult> {
+            return getConnection()?.emitCreateChat(chatName) ?? Promise.resolve({ success: false, reason: "chat_service_not_connected" });
+        },
+        emitSendPrompt(chatId: string, message: MessageUserPrompt): Promise<SendPromptResult> {
+            return getConnection()?.emitSendPrompt(chatId, message) ?? Promise.resolve({ error: true, reason: "chat_service_not_connected" });
+        },
+        emitStopPrompt(chatId: string, promptProcessId: string): Promise<StopPromptResult> {
+            return getConnection()?.emitStopPrompt(chatId, promptProcessId) ?? Promise.resolve({ success: false, reason: "chat_service_not_connected" });
+        }
+    }
+})();

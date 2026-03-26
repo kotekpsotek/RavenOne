@@ -1,10 +1,11 @@
 import { derived, get, writable, type Updater } from "svelte/store";
 import { selectedFile, selectedModel } from "./files";
 import { browser } from "$app/environment";
-import { loadChatsFromFileRequest } from "$lib/sideStripe/rightStripeChat/connections";
+import { chatServiceConnection, loadChatsFromFileRequest } from "$lib/sideStripe/rightStripeChat/connections";
 import { selectedWorkspace } from "./workspace";
 import { isChatSideStripeSelected } from "./selectedSideStripes";
 import { userProfile } from "./user";
+import { setAlert } from "$lib/utils/alert";
 import type { File } from "@ravenlens/shared";
 import type { AIChatMode, ChatTab } from "@ravenlens/shared/chat-ai/frontend";
 import type { AIChatModel, BackendChatPopulated, DownloadChat, MessageOutput, MessageUserPrompt, PromptProcessing, SelectedTextRangeContext } from "@ravenlens/shared/chat-ai/backend/schema";
@@ -12,6 +13,18 @@ import type { AIChatModel, BackendChatPopulated, DownloadChat, MessageOutput, Me
 export const isLoadedChatsOfWorkspaceFileLoading = writable<boolean>(false);
 
 type ProcessingChatsState = Record<string, PromptProcessing>;
+
+type ChatScope = {
+	fileId: string;
+	workspaceId: string;
+};
+
+type ChatPresenceMember = {
+	socketId: string;
+	user: {
+		id: string;
+	};
+};
 
 const pickPromptProcessing = (chatCandidate: unknown): PromptProcessing | undefined => {
 	if (!chatCandidate || typeof chatCandidate !== "object") {
@@ -88,6 +101,30 @@ export const processingChatsOfWorkspaceFile = (() => {
 				return nextState;
 			});
 		},
+		setPromptId(chatId: string, promptId: string) {
+			if (!chatId.trim().length || !promptId.trim().length) {
+				return false;
+			}
+
+			let wasUpdated = false;
+			all.update(state => {
+				const current = state[chatId];
+				if (!current || current.promptId === promptId) {
+					return state;
+				}
+
+				wasUpdated = true;
+				return {
+					...state,
+					[chatId]: {
+						...current,
+						promptId
+					}
+				};
+			});
+
+			return wasUpdated;
+		},
 		syncToChatIds(chatIds: string[]) {
 			all.update(state => {
 				const nextState = Object.fromEntries(
@@ -96,6 +133,13 @@ export const processingChatsOfWorkspaceFile = (() => {
 
 				return nextState;
 			});
+		},
+		findChatIdByPromptId(promptId: string): string | undefined {
+			if (!promptId.trim().length) {
+				return undefined;
+			}
+
+			return Object.entries(get(all)).find(([, processing]) => processing.promptId === promptId)?.[0];
 		},
 		isChatProcessing(chatId: string): boolean {
 			return Boolean(get(all)[chatId]);
@@ -111,6 +155,73 @@ const normalizeLoadedChat = (chat: BackendChatPopulated | DownloadChat): Downloa
 	return {
 		...chat,
 		inFileCollaborators
+	};
+};
+
+const getCurrentChatScope = (): ChatScope | undefined => {
+	const selectedFileLocal = get(selectedFile);
+	const selectedWorkspaceLocal = get(selectedWorkspace);
+
+	if (!selectedFileLocal || !selectedWorkspaceLocal) {
+		return undefined;
+	}
+
+	return {
+		fileId: selectedFileLocal.id,
+		workspaceId: selectedWorkspaceLocal.id
+	};
+};
+
+const areChatScopesEqual = (left?: ChatScope, right?: ChatScope): boolean => {
+	if (!left && !right) {
+		return true;
+	}
+
+	if (!left || !right) {
+		return false;
+	}
+
+	return left.fileId === right.fileId && left.workspaceId === right.workspaceId;
+};
+
+const syncChatMemberPresence = <T extends { collaborators: unknown[]; inFileCollaborators?: unknown[] }>(
+	chat: T,
+	member: ChatPresenceMember,
+	isActive: boolean
+): T => {
+	const collaboratorId = member.user.id;
+	if (!collaboratorId) {
+		return chat;
+	}
+
+	const collaborators = [...(chat.collaborators as Array<{ id: string } & Record<string, unknown>> )];
+	const inFileCollaborators = Array.isArray(chat.inFileCollaborators)
+		? [...(chat.inFileCollaborators as Array<{ id: string; isActive?: boolean } & Record<string, unknown>>)]
+		: [];
+
+	const nextCollaborators = collaborators.some(collaborator => collaborator.id === collaboratorId)
+		? collaborators.map(collaborator => collaborator.id === collaboratorId ? { ...collaborator, ...member.user } : collaborator)
+		: [...collaborators, member.user as unknown as { id: string } & Record<string, unknown>];
+	const collaboratorIndex = inFileCollaborators.findIndex(collaborator => collaborator.id === collaboratorId);
+
+	if (collaboratorIndex >= 0) {
+		inFileCollaborators[collaboratorIndex] = {
+			...inFileCollaborators[collaboratorIndex],
+			...member.user,
+			isActive
+		};
+	}
+	else {
+		inFileCollaborators.push({
+			...(member.user as unknown as { id: string } & Record<string, unknown>),
+			isActive
+		});
+	}
+
+	return {
+		...chat,
+		collaborators: nextCollaborators as T["collaborators"],
+		inFileCollaborators: inFileCollaborators as T["inFileCollaborators"]
 	};
 };
 
@@ -194,6 +305,22 @@ export const loadedChatsOfWorkspaceFile = (() => {
 	// 
 	return {
 		...all,
+		updateChatById(chatId: string, updater: (chat: DownloadChat) => DownloadChat): boolean {
+			let wasUpdated = false;
+
+			all.update(chats => {
+				return chats.map(chat => {
+					if (chat.id !== chatId) {
+						return chat;
+					}
+
+					wasUpdated = true;
+					return updater(chat);
+				});
+			});
+
+			return wasUpdated;
+		},
 		/**
 		 * Role:
 		 * 1. Add chat to storage
@@ -498,192 +625,9 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 		};
 	};
 
-	// TODO: Send to backend the request to create the chat and then display the tab -> show the loading spinner for chat -> implement then
-	const createDefaultDraftTab = (): ChatTab | undefined => {
-		const user = get(userProfile);
-		const selectedFileLocal = get(selectedFile);
-		const selectedWorkspaceLocal = get(selectedWorkspace);
-
-		if (!user || !selectedFileLocal || !selectedWorkspaceLocal) {
-			return undefined;
-		}
-
-		const tabId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-			? crypto.randomUUID()
-			: `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-
-		return {
-			id: tabId,
-			chatName: "Ask chat",
-			createdAt: new Date(),
-			// FIXME: Setup as empty
-			messages: [
-				{
-					id: "7",
-					messageType: "message-user-prompt",
-					messageContentHTML: "This is user prompt;This is user prompt;This is user prompt;This is user prompt;This is user prompt;",
-					model: {
-						model: "gpt-4o",
-						provider: "OpenAI",
-						weight: 1
-					},
-					aiChatMode: "regular-ask",
-					isStopped: true,
-					time: {
-						startAt: new Date(Date.now()),
-						endAt: new Date(Date.now() + 1_000 * 120)
-					}
-				},
-				{
-					id: "8",
-					messageType: "message-user-output",
-					messageContentHTML: "Hello! I'm your AI assistant. How can I help you today?",
-					model: {
-						model: "gpt-4o",
-						provider: "OpenAI",
-						weight: 1
-					},
-					aiChatMode: "regular-ask",
-					reasoning: [
-						{
-							phase: "thinking",
-							thoughts: ["Though 1", "Thought 2"]
-						},
-						{
-							phase: "todo",
-							todo: [
-								{
-									id: "1",
-									content: "The content",
-									event: "created"
-								},
-								{
-									id: "2",
-									content: "The content",
-									event: "finished"
-								}
-							]
-						},
-						{
-							phase: "tools-usage",
-							tools: [
-								{
-									toolName: "tool-1",
-									params: {},
-									isMCP: true
-								}
-							]
-						}
-					],
-					isError: true,
-					documentManipulation: {
-						type: "document-manipulation",
-						oldDocumentContentHTML: "<p>Before</p>",
-						newDocumentContentHTML: "<p>Hi</p>",
-						status: "not-resolved"
-					},
-					tasksListManipulation: {
-						type: "task-manipulation",
-						addedTasksToLists: [
-							{
-								taskListId: "list-dev-1",
-								tasksListItems: [
-									{
-										id: "12",
-										text: "Added point",
-										depth: 0
-									}
-								]
-							}
-						],
-						newLists: [
-							{
-								id: "134",
-								kind: "ordered",
-								name: "Name",
-								icon: "x",
-								items: [
-									{
-										id: "1",
-										depth: 0,
-										text: "AAA"
-									}
-								]
-							},
-							{
-								id: "5",
-								kind: "ordered",
-								name: "Name",
-								icon: "x",
-								items: [
-									{
-										id: "1",
-										depth: 0,
-										text: "AAA"
-									}
-								]
-							},
-							{
-								id: "9",
-								kind: "ordered",
-								name: "Name",
-								icon: "x",
-								items: [
-									{
-										id: "1",
-										depth: 0,
-										text: "AAA"
-									}
-								]
-							},
-							{
-								id: "10",
-								kind: "ordered",
-								name: "Name",
-								icon: "x",
-								items: [
-									{
-										id: "1",
-										depth: 0,
-										text: "AAA"
-									}
-								]
-							},
-						],
-						status: "not-resolved"
-					},
-					time: {
-						startAt: new Date(Date.now()),
-						endAt: new Date(Date.now() + 1_000 * 120)
-					},
-				},
-			],
-			selectedMode: "regular-ask",
-			selectedModel: undefined,
-			selectedContext: createDefaultSelectedContext(),
-			selectedMCPServers: [],
-			isActive: true,
-			createdByAuthor: user,
-			collaborators: [user],
-			workspaceId: selectedWorkspaceLocal.id,
-			fileId: selectedFileLocal.id,
-			inFileCollaborators: [{ ...user, isActive: true }]
-		} satisfies ChatTab;
-	};
-
 	const loadTabChats = (tabsId: string[], fileId: string, workspaceId: string): ChatTab[] => {
 		const fileChatsStateLocal = get(loadedChatsOfWorkspaceFile);
 		if (!fileChatsStateLocal.length) {
-			// Create tab and call to backend to make the chat-tab
-			const defaultDraftTab = createDefaultDraftTab();
-
-			// Add chat to chats list
-			if (defaultDraftTab) {
-				loadedChatsOfWorkspaceFile.addChat(defaultDraftTab);
-				return [defaultDraftTab];
-			}
-
-			// Return otherwise empty array
 			return [];
 		}
 
@@ -1001,6 +945,7 @@ interface RightSideStripeChatState {
 interface AppendedPromptMessageResult {
 	chatId: string;
 	promptIndex: number;
+	promptMessage: MessageUserPrompt;
 };
 
 const toRightSideStripeState = (tabs: ChatTab[], isLoading: boolean): RightSideStripeChatState => {
@@ -1085,7 +1030,7 @@ export const rightSideStripeChat = (() => {
 			}
 
 			const promptMessage: MessageUserPrompt = {
-				id: "222222",
+				id: createChatTabId(),
 				time: {
 					startAt: new Date()
 				},
@@ -1118,7 +1063,8 @@ export const rightSideStripeChat = (() => {
 
 			return {
 				chatId: activeChatLocal.id,
-				promptIndex
+				promptIndex,
+				promptMessage
 			};
 		},
 		appendOutputMessages(chatId: string, messagesToAppend: MessageOutput[]) {
@@ -1129,27 +1075,145 @@ export const rightSideStripeChat = (() => {
 				};
 			});
 		},
+		upsertOutputMessage(chatId: string, outputMessage: MessageOutput) {
+			chatStripeTabsOfWorkspaceFile.updateChatTabById(chatId, (chatTab) => {
+				const messages = this.getChatMessages(chatTab);
+				const existingIndex = messages.findIndex(message => {
+					return message.messageType === "message-user-output" && message.id === outputMessage.id;
+				});
+
+				if (existingIndex < 0) {
+					return {
+						...chatTab,
+						messages: [...messages, outputMessage]
+					};
+				}
+
+				const nextMessages = [...messages];
+				nextMessages[existingIndex] = outputMessage;
+
+				return {
+					...chatTab,
+					messages: nextMessages
+				};
+			});
+		},
+		appendReasoningToLastAnsweringOutput(chatId: string, reasoningPhase: MessageOutput["reasoning"][number]) {
+			chatStripeTabsOfWorkspaceFile.updateChatTabById(chatId, (chatTab) => {
+				const messages = this.getChatMessages(chatTab);
+				const nextMessages = [...messages];
+
+				for (let messageIndex = nextMessages.length - 1; messageIndex >= 0; messageIndex -= 1) {
+					const message = nextMessages[messageIndex];
+					if (message.messageType !== "message-user-output" || !message.isAnswering) {
+						continue;
+					}
+
+					nextMessages[messageIndex] = {
+						...message,
+						reasoning: [...message.reasoning, reasoningPhase]
+					};
+
+					return {
+						...chatTab,
+						messages: nextMessages
+					};
+				}
+
+				return chatTab;
+			});
+		},
+		markOutputMessageAsError(chatId: string, outputMessageId?: string, errorMessage: string = "Cannot show message because of error while processing") {
+			chatStripeTabsOfWorkspaceFile.updateChatTabById(chatId, (chatTab) => {
+				const messages = this.getChatMessages(chatTab);
+				let wasUpdated = false;
+				const nextMessages = messages.map(message => {
+					if (message.messageType !== "message-user-output") {
+						return message;
+					}
+
+					if (outputMessageId && message.id !== outputMessageId) {
+						return message;
+					}
+
+					wasUpdated = true;
+					return {
+						...message,
+						isAnswering: false,
+						isError: errorMessage,
+						time: {
+							...message.time,
+							endAt: new Date()
+						}
+					};
+				});
+
+				if (wasUpdated) {
+					return {
+						...chatTab,
+						messages: nextMessages
+					};
+				}
+
+				const errorOutputMessage: MessageOutput = {
+					id: outputMessageId ?? createChatTabId(),
+					time: {
+						startAt: new Date(),
+						endAt: new Date()
+					},
+					messageType: "message-user-output",
+					messageContentHTML: "",
+					model: this.createModelForMessage(chatTab),
+					aiChatMode: chatTab.selectedMode,
+					reasoning: [],
+					isError: errorMessage
+				};
+
+				return {
+					...chatTab,
+					messages: [...messages, errorOutputMessage]
+				};
+			});
+		},
 		setSelectedChatId(chatId: string): boolean {
 			return chatStripeTabsOfWorkspaceFile.setActive(chatId);
 		},
-		// TODO: Send request to backend service -> show loading circle meanwhile -> when loaded show the chat with empty content
-		createChat(modeCandidate: AIChatMode, titleCandidate?: string): string {
+		async createChat(modeCandidate: AIChatMode, titleCandidate?: string): Promise<string | undefined> {
 			const selectedMode = normalizeModeCandidate(modeCandidate);
 			const chatTabs = get(chatStripeTabsOfWorkspaceFile);
 			const activeTab = getActiveTabFromState(chatTabs);
 			const user = get(userProfile);
+			const selectedFileLocal = get(selectedFile);
+			const selectedWorkspaceLocal = get(selectedWorkspace);
+			const chatServiceConnectionLocal = get(chatServiceConnection);
 			if (!user) {
-				throw('Cannot create user since his profile isn\'t specified');
+				setAlert("error", "Chat unavailable", "User profile is required before creating a chat.");
+				return undefined;
+			}
+
+			if (!selectedFileLocal || !selectedWorkspaceLocal) {
+				setAlert("warning", "Chat unavailable", "Select a workspace file before creating a chat.");
+				return undefined;
+			}
+
+			if (!chatServiceConnectionLocal) {
+				setAlert("error", "Chat unavailable", "Chat service connection is not initialized.");
+				return undefined;
 			}
 
 			const chatTitle = typeof titleCandidate === "string" && titleCandidate.trim().length > 0
 				? titleCandidate.trim()
 				: `${CHAT_MODE_TRANSLATIONS[selectedMode]} chat`;
+			const createChatResult = await chatServiceConnectionLocal.emitCreateChat(chatTitle);
+			if (!createChatResult.success) {
+				setAlert("error", "Chat creation failed", createChatResult.reason ?? "Cannot create chat right now.");
+				return undefined;
+			}
 
 			const nowIso = new Date();
 			const newChatTab = {
 				...(activeTab ? { ...activeTab } : {}),
-				id: createChatTabId(),
+				id: createChatResult.chatId,
 				chatName: chatTitle,
 				createdAt: nowIso,
 				messages: [],
@@ -1162,12 +1226,10 @@ export const rightSideStripeChat = (() => {
 				isActive: true,
 				createdByAuthor: user,
 				collaborators: [user],
-				workspaceId: get(selectedWorkspace)?.id!,
-				fileId: get(selectedFile)?.id!,
+				workspaceId: selectedWorkspaceLocal.id,
+				fileId: selectedFileLocal.id,
 				inFileCollaborators: [{...user, isActive: true}]
 			} satisfies ChatTab;
-
-			// TODO: When backend return succesWhen success do the below things
 
 			// Add chat tab
 			chatStripeTabsOfWorkspaceFile.update(tabs => {
@@ -1612,3 +1674,260 @@ export const fileChatEditionPreviewShowing = (() => {
 		}
 	}
 })();
+
+// Chat Connection to chat service
+const updateChatMemberPresence = (chatId: string, member: ChatPresenceMember, isActive: boolean) => {
+	loadedChatsOfWorkspaceFile.updateChatById(chatId, chat => syncChatMemberPresence(chat, member, isActive));
+	chatStripeTabsOfWorkspaceFile.updateChatTabById(chatId, chatTab => syncChatMemberPresence(chatTab, member, isActive));
+};
+
+const updateCurrentUserPresence = (chatId: string, isActive: boolean) => {
+	const currentUser = get(userProfile);
+	if (!currentUser?.id) {
+		return;
+	}
+
+	updateChatMemberPresence(chatId, {
+		socketId: "self",
+		user: currentUser as unknown as ChatPresenceMember["user"]
+	}, isActive);
+};
+
+const findChatIdByOutputMessageId = (outputMessageId: string): string | undefined => {
+	if (!outputMessageId.trim().length) {
+		return undefined;
+	}
+
+	for (const chatTab of get(chatStripeTabsOfWorkspaceFile)) {
+		if (chatTab.messages.some(message => message.messageType === "message-user-output" && message.id === outputMessageId)) {
+			return chatTab.id;
+		}
+	}
+
+	return undefined;
+};
+
+const findReasoningTargetChatId = (): string | undefined => {
+	const processingChatIds = Object.keys(get(processingChatsOfWorkspaceFile));
+	if (processingChatIds.length === 1) {
+		return processingChatIds[0];
+	}
+
+	const chatsWithAnsweringOutput = get(chatStripeTabsOfWorkspaceFile)
+		.filter(chatTab => chatTab.messages.some(message => message.messageType === "message-user-output" && Boolean(message.isAnswering)))
+		.map(chatTab => chatTab.id);
+
+	return chatsWithAnsweringOutput.length === 1 ? chatsWithAnsweringOutput[0] : undefined;
+};
+
+const toOutputMessageFromEvent = (outcomeMessage: unknown, outputMessageId: string): MessageOutput => {
+	const outcome = outcomeMessage as Partial<MessageOutput> | undefined;
+	const outcomeTime = outcome?.time;
+
+	return {
+		...(outcome as MessageOutput),
+		id: outputMessageId,
+		messageType: "message-user-output",
+		reasoning: Array.isArray(outcome?.reasoning) ? outcome.reasoning : [],
+		time: {
+			startAt: outcomeTime?.startAt ?? new Date(),
+			...(outcomeTime?.endAt ? { endAt: outcomeTime.endAt } : {})
+		}
+	};
+};
+
+if (browser) {
+	queueMicrotask(() => {
+		const joinedChatIds = new Set<string>();
+		let previousScope = getCurrentChatScope();
+		const chatServiceConnectionLocal = get(chatServiceConnection);
+		if (!chatServiceConnectionLocal) {
+			throw("Cannot establish chat connection")
+		}
+
+		const leaveJoinedChats = (scope: ChatScope) => {
+			const chatIdsToLeave = [...joinedChatIds];
+			joinedChatIds.clear();
+
+			for (const chatId of chatIdsToLeave) {
+				updateCurrentUserPresence(chatId, false);
+				chatServiceConnectionLocal.emitLeaveChat(chatId);
+			}
+		};
+
+		const syncJoinedChatRooms = () => {
+			const currentScope = getCurrentChatScope();
+
+			if (!currentScope) {
+				if (previousScope && joinedChatIds.size) {
+					leaveJoinedChats(previousScope);
+				}
+
+				previousScope = undefined;
+				return;
+			}
+
+			if (!areChatScopesEqual(previousScope, currentScope) && previousScope && joinedChatIds.size) {
+				leaveJoinedChats(previousScope);
+			}
+
+			previousScope = currentScope;
+
+			const openChatIds = new Set(
+				get(chatStripeTabsOfWorkspaceFile)
+					.filter(chatTab => chatTab.fileId === currentScope.fileId && chatTab.workspaceId === currentScope.workspaceId)
+					.map(chatTab => chatTab.id)
+			);
+
+			for (const joinedChatId of [...joinedChatIds]) {
+				if (openChatIds.has(joinedChatId)) {
+					continue;
+				}
+
+				joinedChatIds.delete(joinedChatId);
+				updateCurrentUserPresence(joinedChatId, false);
+				void chatServiceConnectionLocal.emitLeaveChat(joinedChatId);
+			}
+
+			for (const chatId of openChatIds) {
+				if (joinedChatIds.has(chatId)) {
+					continue;
+				}
+
+				joinedChatIds.add(chatId);
+				updateCurrentUserPresence(chatId, true);
+				void chatServiceConnectionLocal.emitJoinChat(chatId).then((status) => {
+					if (status) {
+						return;
+					}
+
+					joinedChatIds.delete(chatId);
+					updateCurrentUserPresence(chatId, false);
+				});
+			}
+		};
+
+		chatStripeTabsOfWorkspaceFile.subscribe(() => {
+			syncJoinedChatRooms();
+		});
+
+		selectedFile.subscribe(() => {
+			syncJoinedChatRooms();
+		});
+
+		selectedWorkspace.subscribe(() => {
+			syncJoinedChatRooms();
+		});
+
+		chatServiceConnectionLocal.onNewMember((member) => {
+			if (joinedChatIds.size !== 1) {
+				return;
+			}
+
+			const [chatId] = [...joinedChatIds];
+			if (!chatId) {
+				return;
+			}
+
+			updateChatMemberPresence(chatId, member as unknown as ChatPresenceMember, true);
+		});
+
+		chatServiceConnectionLocal.onLeaveMember((member) => {
+			if (joinedChatIds.size !== 1) {
+				return;
+			}
+
+			const [chatId] = [...joinedChatIds];
+			if (!chatId) {
+				return;
+			}
+
+			updateChatMemberPresence(chatId, member as unknown as ChatPresenceMember, false);
+		});
+
+		chatServiceConnectionLocal.onNoModelsAbleToProcessAttachements((mediaType) => {
+			setAlert("warning", "Attachment unsupported", `No configured model can process ${String(mediaType)} attachments.`);
+		});
+
+		chatServiceConnectionLocal.onPromptProgressMessage((messageContent) => {
+			if (!messageContent) {
+				return;
+			}
+
+			const chatId = findReasoningTargetChatId();
+			if (!chatId) {
+				return;
+			}
+
+			rightSideStripeChat.appendReasoningToLastAnsweringOutput(chatId, {
+				phase: "thinking",
+				thoughts: [messageContent]
+			} as MessageOutput["reasoning"][number]);
+		});
+
+		chatServiceConnectionLocal.onPromptProgressTool((toolEvent) => {
+			const chatId = findReasoningTargetChatId();
+			if (!chatId) {
+				return;
+			}
+
+			const normalizedToolEvent = toolEvent as {
+				toolName?: string;
+				params?: Record<string, unknown>;
+				isMCP?: boolean;
+			};
+
+			rightSideStripeChat.appendReasoningToLastAnsweringOutput(chatId, {
+				phase: "tools-usage",
+				tools: [{
+					toolName: normalizedToolEvent.toolName ?? "tool",
+					params: normalizedToolEvent.params ?? {},
+					...(typeof normalizedToolEvent.isMCP === "boolean" ? { isMCP: normalizedToolEvent.isMCP } : {})
+				}]
+			} as MessageOutput["reasoning"][number]);
+		});
+
+		chatServiceConnectionLocal.onPromptPlaying((promptId) => {
+			const currentProcessingChatIds = Object.keys(get(processingChatsOfWorkspaceFile));
+			if (currentProcessingChatIds.length !== 1) {
+				return;
+			}
+
+			processingChatsOfWorkspaceFile.setPromptId(currentProcessingChatIds[0], promptId);
+		});
+
+		chatServiceConnectionLocal.onPromptError((promptId, outputMessageId) => {
+			const chatId = findChatIdByOutputMessageId(outputMessageId)
+				?? (typeof promptId === "string" ? processingChatsOfWorkspaceFile.findChatIdByPromptId(promptId) : undefined)
+				?? findReasoningTargetChatId();
+
+			if (!chatId) {
+				return;
+			}
+
+			rightSideStripeChat.markOutputMessageAsError(chatId, outputMessageId);
+			rightSideStripeChat.stopProcessing(chatId);
+		});
+
+		chatServiceConnectionLocal.onStopPlaying((_member, fileId, chatId) => {
+			const currentScope = getCurrentChatScope();
+			if (!currentScope || currentScope.fileId !== fileId) {
+				return;
+			}
+
+			rightSideStripeChat.stopProcessing(chatId);
+		});
+
+		chatServiceConnectionLocal.onPromptSuccess((outcomeMessage, outputMessageId) => {
+			const chatId = findChatIdByOutputMessageId(outputMessageId) ?? findReasoningTargetChatId();
+			if (!chatId) {
+				return;
+			}
+
+			rightSideStripeChat.upsertOutputMessage(chatId, toOutputMessageFromEvent(outcomeMessage, outputMessageId));
+			rightSideStripeChat.stopProcessing(chatId);
+		});
+
+		syncJoinedChatRooms();
+	});
+}

@@ -239,9 +239,9 @@
 		chatActionsDropdownPosition = null;
 	}
 
-	function onCreateChatFromDropdown() {
+	async function onCreateChatFromDropdown() {
 		const nextMode = $editorAIChat.textFieldMode;
-		rightSideStripeChat.createChat(nextMode, `${editorAIChat.getTextFieldModeTranslation(nextMode)} chat`);
+		await rightSideStripeChat.createChat(nextMode, `${editorAIChat.getTextFieldModeTranslation(nextMode)} chat`);
 		isChatActionsDropdownOpen = false;
 		isSelectChatListOpen = false;
 		chatActionsDropdownPosition = null;
