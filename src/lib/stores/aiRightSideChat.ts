@@ -158,17 +158,44 @@ const normalizeLoadedChat = (chat: BackendChatPopulated | DownloadChat): Downloa
 	};
 };
 
+const normalizeScopeId = (idCandidate: unknown): string | undefined => {
+	if (typeof idCandidate !== "string") {
+		return undefined;
+	}
+
+	const normalizedId = idCandidate.trim();
+	return normalizedId.length ? normalizedId : undefined;
+};
+
+const resolveWorkspaceScopeId = (
+	selectedFileLocal?: File.File.File,
+	selectedWorkspaceLocal?: { id?: string }
+): string | undefined => {
+	const fileWorkspaceId = normalizeScopeId((selectedFileLocal as { createdByAuthorId?: unknown } | undefined)?.createdByAuthorId);
+	if (fileWorkspaceId) {
+		return fileWorkspaceId;
+	}
+
+	const selectedWorkspaceId = normalizeScopeId(selectedWorkspaceLocal?.id);
+	if (selectedWorkspaceId) {
+		return selectedWorkspaceId;
+	}
+
+	return undefined;
+};
+
 const getCurrentChatScope = (): ChatScope | undefined => {
 	const selectedFileLocal = get(selectedFile);
 	const selectedWorkspaceLocal = get(selectedWorkspace);
+	const workspaceId = resolveWorkspaceScopeId(selectedFileLocal, selectedWorkspaceLocal);
 
-	if (!selectedFileLocal || !selectedWorkspaceLocal) {
+	if (!selectedFileLocal || !workspaceId) {
 		return undefined;
 	}
 
 	return {
 		fileId: selectedFileLocal.id,
-		workspaceId: selectedWorkspaceLocal.id
+		workspaceId
 	};
 };
 
@@ -235,14 +262,15 @@ export const loadedChatsOfWorkspaceFile = (() => {
 	const getCurrentScope = (): { fileId: string; workspaceId: string } | undefined => {
 		const selectedFileLocal = get(selectedFile);
 		const selectedWorkspaceLocal = get(selectedWorkspace);
+		const workspaceId = resolveWorkspaceScopeId(selectedFileLocal, selectedWorkspaceLocal);
 
-		if (!selectedFileLocal || !selectedWorkspaceLocal) {
+		if (!selectedFileLocal || !workspaceId) {
 			return undefined;
 		}
 
 		return {
 			fileId: selectedFileLocal.id,
-			workspaceId: selectedWorkspaceLocal.id
+			workspaceId
 		};
 	};
 
@@ -494,14 +522,15 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 	const getCurrentScope = (): { fileId: string; workspaceId: string } | undefined => {
 		const selectedFileLocal = get(selectedFile);
 		const selectedWorkspaceLocal = get(selectedWorkspace);
+		const workspaceId = resolveWorkspaceScopeId(selectedFileLocal, selectedWorkspaceLocal);
 
-		if (!selectedFileLocal || !selectedWorkspaceLocal) {
+		if (!selectedFileLocal || !workspaceId) {
 			return undefined;
 		}
 
 		return {
 			fileId: selectedFileLocal.id,
-			workspaceId: selectedWorkspaceLocal.id
+			workspaceId
 		};
 	};
 
@@ -701,6 +730,14 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 		};
 	})();
 
+	const restoreTabsIfReady = (): ChatTab[] => {
+		if (get(isLoadedChatsOfWorkspaceFileLoading) || !get(isChatSideStripeSelected)) {
+			return [];
+		}
+
+		return restoreTabsForCurrentScope();
+	};
+
 	const restoreTabsForCurrentScope = (persistRestoredTabs: boolean = false): ChatTab[] => {
 		const currentScope = getCurrentScope();
 		if (!currentScope) {
@@ -730,17 +767,23 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 		queueMicrotask(() => {
 			selectedFile.subscribe(() => {
 				updateScopeKey();
+				restoreTabsIfReady();
 			});
 		
 			selectedWorkspace.subscribe(() => {
 				updateScopeKey();
+				restoreTabsIfReady();
 			});
 
 			// Restore tabs only after backend loading completes.
 			isLoadedChatsOfWorkspaceFileLoading.subscribe(isLoading => {
 				if (!isLoading) {
-					restoreTabsForCurrentScope();
+					restoreTabsIfReady();
 				}
+			});
+
+			isChatSideStripeSelected.subscribe(() => {
+				restoreTabsIfReady();
 			});
 
 			// User profile may load after chats; retry so draft fallback can be created.
@@ -1780,31 +1823,17 @@ const updateChatNameInStores = (chatId: string, chatName: string) => {
 	}));
 };
 
-const findChatIdByOutputMessageId = (outputMessageId: string): string | undefined => {
-	if (!outputMessageId.trim().length) {
-		return undefined;
+const isChatPresentInStores = (chatId: string): boolean => {
+	if (!chatId.trim().length) {
+		return false;
 	}
 
-	for (const chatTab of get(chatStripeTabsOfWorkspaceFile)) {
-		if (chatTab.messages.some(message => message.messageType === "message-user-output" && message.id === outputMessageId)) {
-			return chatTab.id;
-		}
+	const isInLoadedChats = get(loadedChatsOfWorkspaceFile).some(chat => chat.id === chatId);
+	if (isInLoadedChats) {
+		return true;
 	}
 
-	return undefined;
-};
-
-const findReasoningTargetChatId = (): string | undefined => {
-	const processingChatIds = Object.keys(get(processingChatsOfWorkspaceFile));
-	if (processingChatIds.length === 1) {
-		return processingChatIds[0];
-	}
-
-	const chatsWithAnsweringOutput = get(chatStripeTabsOfWorkspaceFile)
-		.filter(chatTab => chatTab.messages.some(message => message.messageType === "message-user-output" && Boolean(message.isAnswering)))
-		.map(chatTab => chatTab.id);
-
-	return chatsWithAnsweringOutput.length === 1 ? chatsWithAnsweringOutput[0] : undefined;
+	return get(chatStripeTabsOfWorkspaceFile).some(chatTab => chatTab.id === chatId);
 };
 
 const toOutputMessageFromEvent = (outcomeMessage: unknown, outputMessageId: string): MessageOutput => {
@@ -1907,43 +1936,36 @@ if (browser) {
 			syncJoinedChatRooms();
 		});
 
-		chatServiceConnectionLocal.onNewMember((member) => {
-			if (joinedChatIds.size !== 1) {
-				return;
-			}
-
-			const [chatId] = [...joinedChatIds];
-			if (!chatId) {
+		chatServiceConnectionLocal.onNewMember((chatId, member) => {
+			if (!joinedChatIds.has(chatId) || !isChatPresentInStores(chatId)) {
 				return;
 			}
 
 			updateChatMemberPresence(chatId, member as unknown as ChatPresenceMember, true);
 		});
 
-		chatServiceConnectionLocal.onLeaveMember((member) => {
-			if (joinedChatIds.size !== 1) {
-				return;
-			}
-
-			const [chatId] = [...joinedChatIds];
-			if (!chatId) {
+		chatServiceConnectionLocal.onLeaveMember((chatId, member) => {
+			if (!isChatPresentInStores(chatId)) {
 				return;
 			}
 
 			updateChatMemberPresence(chatId, member as unknown as ChatPresenceMember, false);
 		});
 
-		chatServiceConnectionLocal.onNoModelsAbleToProcessAttachements((mediaType) => {
-			setAlert("warning", "Attachment unsupported", `No configured model can process ${String(mediaType)} attachments.`);
-		});
-
-		chatServiceConnectionLocal.onPromptProgressMessage((messageContent) => {
-			if (!messageContent) {
+		chatServiceConnectionLocal.onNoModelsAbleToProcessAttachements((chatId, mediaType) => {
+			if (!isChatPresentInStores(chatId)) {
 				return;
 			}
 
-			const chatId = findReasoningTargetChatId();
-			if (!chatId) {
+			setAlert("warning", "Attachment unsupported", `No configured model can process ${String(mediaType)} attachments.`);
+		});
+
+		chatServiceConnectionLocal.onPromptProgressMessage((chatId, messageContent) => {
+			if (!isChatPresentInStores(chatId)) {
+				return;
+			}
+
+			if (!messageContent) {
 				return;
 			}
 
@@ -1953,9 +1975,8 @@ if (browser) {
 			} as MessageOutput["reasoning"][number]);
 		});
 
-		chatServiceConnectionLocal.onPromptProgressTool((toolEvent) => {
-			const chatId = findReasoningTargetChatId();
-			if (!chatId) {
+		chatServiceConnectionLocal.onPromptProgressTool((chatId, toolEvent) => {
+			if (!isChatPresentInStores(chatId)) {
 				return;
 			}
 
@@ -1975,40 +1996,41 @@ if (browser) {
 			} as MessageOutput["reasoning"][number]);
 		});
 
-		chatServiceConnectionLocal.onPromptPlaying((promptId) => {
-			const currentProcessingChatIds = Object.keys(get(processingChatsOfWorkspaceFile));
-			if (currentProcessingChatIds.length !== 1) {
+		chatServiceConnectionLocal.onPromptPlaying((chatId, promptId) => {
+			if (!isChatPresentInStores(chatId)) {
 				return;
 			}
 
-			processingChatsOfWorkspaceFile.setPromptId(currentProcessingChatIds[0], promptId);
+			processingChatsOfWorkspaceFile.setPromptId(chatId, promptId);
 		});
 
-		chatServiceConnectionLocal.onPromptError((promptId, outputMessageId) => {
-			const chatId = findChatIdByOutputMessageId(outputMessageId)
-				?? (typeof promptId === "string" ? processingChatsOfWorkspaceFile.findChatIdByPromptId(promptId) : undefined)
-				?? findReasoningTargetChatId();
-
-			if (!chatId) {
+		chatServiceConnectionLocal.onPromptError((chatId, _promptId, outputMessageId) => {
+			if (!isChatPresentInStores(chatId)) {
 				return;
 			}
 
+			// Mark message as stopped
 			rightSideStripeChat.markOutputMessageAsError(chatId, outputMessageId);
-			rightSideStripeChat.stopProcessing(chatId);
+
+			// Stop processing the messages
+			rightSideStripeChat.stopProcessing(chatId, false);
 		});
 
-		chatServiceConnectionLocal.onStopPlaying((_member, fileId, chatId) => {
+		chatServiceConnectionLocal.onStopPlaying((chatId, _member, fileId) => {
 			const currentScope = getCurrentChatScope();
 			if (!currentScope || currentScope.fileId !== fileId) {
 				return;
 			}
 
+			if (!isChatPresentInStores(chatId)) {
+				return;
+			}
+
 			rightSideStripeChat.stopProcessing(chatId);
 		});
 
-		chatServiceConnectionLocal.onPromptSuccess((outcomeMessage, outputMessageId) => {
-			const chatId = findChatIdByOutputMessageId(outputMessageId) ?? findReasoningTargetChatId();
-			if (!chatId) {
+		chatServiceConnectionLocal.onPromptSuccess((chatId, outcomeMessage, outputMessageId) => {
+			if (!isChatPresentInStores(chatId)) {
 				return;
 			}
 

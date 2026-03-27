@@ -279,42 +279,42 @@ export class SocketIoChatService {
         );
     }
 
-    // Listeners
-    onNewMember(listener: (member: ChatMember) => void) {
+    // Listeners // TODO: Add chat ids to all listeners
+    onNewMember(listener: (chatId: string, member: ChatMember) => void) {
         this.connection?.on("new-member", listener);
     }
 
-    onLeaveMember(listener: (member: ChatMember) => void) {
+    onLeaveMember(listener: (chatId: string, member: ChatMember) => void) {
         this.connection?.on("leave-member", listener);
     }
 
-    onNoModelsAbleToProcessAttachements(listener: (mediaType: LangchainAgent.Types.MediaKeys) => void) {
+    onNoModelsAbleToProcessAttachements(listener: (chatId: string, mediaType: LangchainAgent.Types.MediaKeys) => void) {
         this.connection?.on("no-models-able-to-process-attachement", listener);
     }
     
-    onPromptProgressMessage(listener: (messageContent: string) => void) {
+    onPromptProgressMessage(listener: (chatId: string, messageContent: string) => void) {
         this.connection?.on("prompt-progress-message", listener);
     }
 
-    onPromptProgressTool(listener: (toolEvent: PromptProcessingProgess.PromptProgressToolEvent) => void) {
+    onPromptProgressTool(listener: (chatId: string, toolEvent: PromptProcessingProgess.PromptProgressToolEvent) => void) {
         this.connection?.on("prompt-progress-tool", listener);
     }
 
-    onPromptPlaying(listener: (promptId: string) => void) {
+    onPromptPlaying(listener: (chatId: string, promptId: string, baseOutputMessage: MessageOutput) => void) {
         this.connection?.on("prompt-playing", listener);
     }
     
     /** Handles either send to other room members than emitted and for emitted */
-    onPromptError(listener: (promptId: string | false, outputMessageId: string) => void) {
+    onPromptError(listener: (chatId: string, promptId: string | false, outputMessageId: string) => void) {
         this.connection?.on("prompt-error", listener);
     }
-    
+
     /** Handles either send to other room members than emitted and for emitted */
-    onPromptSuccess(listener: (outcomeMessage: AIAgentOutputMessage, outputMessageId: string) => void) {
+    onPromptSuccess(listener: (chatId: string, outcomeMessage: AIAgentOutputMessage, outputMessageId: string) => void) {
         this.connection?.on("prompt-success", listener);
     }
 
-    onStopPlaying(listener: (member: ChatMember, fileId: string, chatId: string, promptProcessId: string) => void) {
+    onStopPlaying(listener: (chatId: string, member: ChatMember, fileId: string, promptProcessId: string) => void) {
         this.connection?.on("stop-playing", listener);
     }
 }
