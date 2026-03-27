@@ -241,7 +241,8 @@
 
 	async function onCreateChatFromDropdown() {
 		const nextMode = $editorAIChat.textFieldMode;
-		await rightSideStripeChat.createChat(nextMode, `${editorAIChat.getTextFieldModeTranslation(nextMode)} chat`);
+		const defaultChatName = rightSideStripeChat.createDefaultChatName(nextMode);
+		await rightSideStripeChat.createChat(nextMode, defaultChatName);
 		isChatActionsDropdownOpen = false;
 		isSelectChatListOpen = false;
 		chatActionsDropdownPosition = null;

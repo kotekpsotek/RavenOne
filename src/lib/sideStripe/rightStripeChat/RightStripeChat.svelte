@@ -74,7 +74,8 @@
 
     async function onCreateChat() {
         const nextMode = $editorAIChat.textFieldMode;
-        const newChatId = await rightSideStripeChat.createChat(nextMode, `${editorAIChat.getTextFieldModeTranslation(nextMode)} chat`);
+        const defaultChatName = rightSideStripeChat.createDefaultChatName(nextMode);
+        const newChatId = await rightSideStripeChat.createChat(nextMode, defaultChatName);
 
         if (newChatId && isChatsListSectionOpen) {
             isChatsListSectionOpen = false;

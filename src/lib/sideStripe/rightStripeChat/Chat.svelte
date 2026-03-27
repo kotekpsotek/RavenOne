@@ -4,6 +4,7 @@
     import { avaiableModels } from "$lib/config/models";
     import ContextSelectionModal from "$lib/modals/ContextSelectionModal.svelte";
     import {
+    CHAT_MODE_TRANSLATIONS,
         ChatTabPromptAreaSaving,
         SelectedAnswerFromChatContext,
         activeChat,
@@ -421,9 +422,11 @@
         }
         isChatHistoryPinnedToBottom = true;
 
-        const sendResult = await chatServiceConnection.emitSendPrompt(chatId, promptMessage);
-        console.log('Send result', sendResult)
+        // Retrive base output message but it's not the answer -> answer is retrived in `prompt-success` / `prompt-error` message listeners
+        const isChatNameSpecified = $activeChat.chatName === rightSideStripeChat.createDefaultChatName($activeChat.selectedMode);
+        const sendResult = await chatServiceConnection.emitSendPrompt(chatId, promptMessage, isChatNameSpecified);
 
+        // Display error
         if ("error" in sendResult) {
             setAlert("error", "Prompt failed", `Chat service rejected the prompt: ${sendResult.reason}`);
             rightSideStripeChat.markOutputMessageAsError(chatId, undefined, sendResult.reason);

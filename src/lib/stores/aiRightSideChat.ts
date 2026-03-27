@@ -902,7 +902,7 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 	}
 })();
 
-const CHAT_MODE_TRANSLATIONS: Record<AIChatMode, string> = {
+export const CHAT_MODE_TRANSLATIONS: Record<AIChatMode, string> = {
 	"regular-ask": "Ask",
 	"document-manipulation": "Document Manipulation",
 	"tasks-manipulation": "Create Document Tasks"
@@ -1028,6 +1028,9 @@ export const rightSideStripeChat = (() => {
 					isLoading
 				}
 			});
+		},
+		createDefaultChatName(mode: AIChatMode) {
+			return `${editorAIChat.getTextFieldModeTranslation(mode)} chat`
 		},
 		getChatMessages(chatTab: ChatTab): ChatTab["messages"] {
 			if (!Array.isArray(chatTab.messages)) {
@@ -1247,9 +1250,10 @@ export const rightSideStripeChat = (() => {
 				return undefined;
 			}
 
+			const defaultChatName = rightSideStripeChat.createDefaultChatName(selectedMode);
 			const chatTitle = typeof titleCandidate === "string" && titleCandidate.trim().length > 0
 				? titleCandidate.trim()
-				: `${CHAT_MODE_TRANSLATIONS[selectedMode]} chat`;
+				: defaultChatName;
 			const createChatResult = await chatServiceConnectionLocal.emitCreateChat(chatTitle);
 
 			if (!createChatResult.success) {

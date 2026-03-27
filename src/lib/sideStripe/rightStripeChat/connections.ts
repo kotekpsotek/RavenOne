@@ -223,7 +223,7 @@ export class SocketIoChatService {
         );
     }
 
-    emitSendPrompt(chatId: string, message: MessageUserPrompt): Promise<SendPromptResult> {
+    emitSendPrompt(chatId: string, message: MessageUserPrompt, isChatNameSpecified: boolean): Promise<SendPromptResult> {
         this.refreshScopeFromStores();
         return this.emitWithAck<SendPromptResult>(
             ack => this.connection?.emit(
@@ -232,6 +232,7 @@ export class SocketIoChatService {
                 this.fileId,
                 chatId,
                 message,
+                isChatNameSpecified,
                 (success: boolean, idPromptProcessing?: string | undefined, outputMessage?: MessageOutput, reason?: string) => ack(success, idPromptProcessing, outputMessage, reason)
             ),
             (success, idPromptProcessing, outputMessage, reason) => {
@@ -357,8 +358,8 @@ export const chatServiceConnection = (() => {
         emitCreateChat(chatName?: string): Promise<CreateChatResult> {
             return getConnection()?.emitCreateChat(chatName) ?? Promise.resolve({ success: false, reason: "chat_service_not_connected" });
         },
-        emitSendPrompt(chatId: string, message: MessageUserPrompt): Promise<SendPromptResult> {
-            return getConnection()?.emitSendPrompt(chatId, message) ?? Promise.resolve({ error: true, reason: "chat_service_not_connected" });
+        emitSendPrompt(chatId: string, message: MessageUserPrompt, isChatNameSpecified: boolean): Promise<SendPromptResult> {
+            return getConnection()?.emitSendPrompt(chatId, message, isChatNameSpecified) ?? Promise.resolve({ error: true, reason: "chat_service_not_connected" });
         },
         emitStopPrompt(chatId: string, promptProcessId: string): Promise<StopPromptResult> {
             return getConnection()?.emitStopPrompt(chatId, promptProcessId) ?? Promise.resolve({ success: false, reason: "chat_service_not_connected" });
