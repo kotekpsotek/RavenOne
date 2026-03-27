@@ -3,7 +3,7 @@ import { selectedFile, selectedModel } from "./files";
 import { browser } from "$app/environment";
 import { chatServiceConnection, loadChatsFromFileRequest } from "$lib/sideStripe/rightStripeChat/connections";
 import { selectedWorkspace } from "./workspace";
-import { isChatSideStripeSelected } from "./selectedSideStripes";
+import { isChatSideStripeSelected, isFileListSideStripeSelected } from "./selectedSideStripes";
 import { userProfile } from "./user";
 import { setAlert } from "$lib/utils/alert";
 import type { File } from "@ravenlens/shared";
@@ -564,6 +564,24 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 		return [...new Set(normalizedIds)];
 	};
 
+	const getPersistableTabsSignature = (tabs: ChatTab[]): string => {
+		const normalizedTabs = normalizeActiveTab(tabs);
+		const persistableTabs = normalizedTabs.map(tab => {
+			const normalizedSettings = normalizeTabSettings(undefined, tab);
+
+			return {
+				id: tab.id,
+				isActive: Boolean(tab.isActive),
+				selectedMode: normalizedSettings.selectedMode,
+				selectedModel: normalizedSettings.selectedModel,
+				selectedContext: normalizedSettings.selectedContext,
+				selectedMCPServers: normalizedSettings.selectedMCPServers
+			};
+		});
+
+		return JSON.stringify(persistableTabs);
+	};
+
 	const stripActiveState = (tab: ChatTab): ChatTab => {
 		const { isActive: _isActive, ...tabWithoutActive } = tab;
 		return tabWithoutActive as ChatTab;
@@ -838,7 +856,7 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 				const normalizedTabs = normalizeActiveTab(updatedTabs);
 
 				const currentScope = getCurrentScope();
-				if (currentScope) {
+				if (currentScope && getPersistableTabsSignature(chatTabs) !== getPersistableTabsSignature(normalizedTabs)) {
 					setTabChats(currentScope.fileId, currentScope.workspaceId, normalizedTabs);
 				}
 
@@ -868,7 +886,9 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 			}
 
 			const newTab = createChatTabFromLoadedChat(chatFromLoadedChats);
+			
 			const withNewTab = normalizeActiveTab([...currentTabs, newTab], chatIdReady);
+
 			const persistedTabs = persistTabsForCurrentScope(withNewTab);
 
 			return persistedTabs.find(tab => tab.id === chatIdReady);
@@ -884,6 +904,12 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 			const removedTab = currentTabs[removedTabIndex];
 			const tabsAfterRemoval = currentTabs.filter(tab => tab.id !== chatId);
 
+			// Always some tab has to be open
+			if (tabsAfterRemoval.length === 0) {
+				return false;
+			}
+			
+			//
 			let nextActiveTabId: string | undefined;
 			if (removedTab.isActive) {
 				nextActiveTabId = tabsAfterRemoval[Math.max(0, removedTabIndex - 1)]?.id
@@ -895,9 +921,6 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 
 			ChatTabPromptAreaSaving.clearPrompt(chatId);
 
-			/** Doesn;t use since chats are processed in background and processing is performing in the background */
-			// processingChatsOfWorkspaceFile.stopProcessing(chatId);
-			
 			return true;
 		},
 		/** Use to select new chat as active when user select this chat */
@@ -1442,6 +1465,77 @@ export const rightSideStripeChat = (() => {
 		}
 	};
 })();
+
+if (browser) {
+	queueMicrotask(() => {
+		let isAutoCreatingChat = false;
+
+		const ensureActiveChatWhenFileListSelected = async () => {
+			if (!get(isFileListSideStripeSelected)) {
+				return;
+			}
+
+			if (!get(isChatSideStripeSelected)) {
+				return;
+			}
+
+			if (get(isLoadedChatsOfWorkspaceFileLoading)) {
+				return;
+			}
+
+			const tabs = get(chatStripeTabsOfWorkspaceFile);
+			if (tabs.length > 0 && getActiveTabFromState(tabs)) {
+				return;
+			}
+
+			const firstLoadedChat = get(loadedChatsOfWorkspaceFile)[0];
+			if (firstLoadedChat) {
+				chatStripeTabsOfWorkspaceFile.openChatTab(firstLoadedChat.id);
+				return;
+			}
+
+			if (isAutoCreatingChat) {
+				return;
+			}
+
+			isAutoCreatingChat = true;
+			try {
+				await rightSideStripeChat.createChat("regular-ask");
+			}
+			finally {
+				isAutoCreatingChat = false;
+			}
+		};
+
+		isFileListSideStripeSelected.subscribe(() => {
+			void ensureActiveChatWhenFileListSelected();
+		});
+
+		isChatSideStripeSelected.subscribe(() => {
+			void ensureActiveChatWhenFileListSelected();
+		});
+
+		isLoadedChatsOfWorkspaceFileLoading.subscribe((isLoading) => {
+			if (!isLoading) {
+				void ensureActiveChatWhenFileListSelected();
+			}
+		});
+
+		chatStripeTabsOfWorkspaceFile.subscribe(() => {
+			void ensureActiveChatWhenFileListSelected();
+		});
+
+		selectedFile.subscribe(() => {
+			void ensureActiveChatWhenFileListSelected();
+		});
+
+		selectedWorkspace.subscribe(() => {
+			void ensureActiveChatWhenFileListSelected();
+		});
+
+		void ensureActiveChatWhenFileListSelected();
+	});
+}
 
 interface EditorAIChatState extends SelectedTextRangeContext {
 	textFieldMode: AIChatMode;
