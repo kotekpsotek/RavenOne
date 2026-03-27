@@ -445,10 +445,13 @@
         }
         isChatHistoryPinnedToBottom = true;
 
+        // Before send file the file has to be saved to give the freshest content
+        const isFileSaved = await selectedFile.requestSave($selectedFile!);
+        
         // Retrive base output message but it's not the answer -> answer is retrived in `prompt-success` / `prompt-error` message listeners
         const isChatNameADefaultName = $activeChat.chatName === rightSideStripeChat.createDefaultChatName($activeChat.selectedMode);
-        console.log('Is chat name default', isChatNameADefaultName);
         const sendResult = await chatServiceConnection.emitSendPrompt(chatId, promptMessage, isChatNameADefaultName);
+        console.log("Send result", sendResult)
 
         // Display error
         if ("error" in sendResult) {

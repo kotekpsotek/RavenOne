@@ -676,7 +676,7 @@ export const selectedFile = (() => {
         },
         requestSave(file: NonNullable<FileType>, saveValue: SavingValues = true, options: SaveSingleFileOptions = {}): Promise<boolean> {
             return saveSingleFileRequest(file, saveValue, options);
-        },
+        }
     };
 
     return selectedFileStore;

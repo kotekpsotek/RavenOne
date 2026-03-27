@@ -1,8 +1,17 @@
 import type { MessageUserPrompt } from "@ravenlens/shared/chat-ai/backend/schema";
 
 export function getTime(time: MessageUserPrompt["time"]) {
+    if (!time?.startAt) {
+        return "0ms";
+    }
+
     const timeStart = new Date(time.startAt).getTime();
-    const timeEnd = new Date(time.endAt).getTime();
+    const rawEnd = time.endAt ?? Date.now();
+    const timeEnd = new Date(rawEnd).getTime();
+
+    if (Number.isNaN(timeStart) || Number.isNaN(timeEnd)) {
+        return "0ms";
+    }
 
     const diff = Math.abs(timeEnd - timeStart);
 

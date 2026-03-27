@@ -199,6 +199,15 @@ const getCurrentChatScope = (): ChatScope | undefined => {
 	};
 };
 
+const getCurrentChatScopeKey = (): string | undefined => {
+	const scope = getCurrentChatScope();
+	if (!scope) {
+		return undefined;
+	}
+
+	return `${scope.workspaceId}:${scope.fileId}`;
+};
+
 const areChatScopesEqual = (left?: ChatScope, right?: ChatScope): boolean => {
 	if (!left && !right) {
 		return true;
@@ -316,17 +325,30 @@ export const loadedChatsOfWorkspaceFile = (() => {
 	if (browser) {
 		// Delay subscription to avoid TDZ circular dependency issues with selectedFile
 		queueMicrotask(() => {
+			let previousScopeKey = getCurrentChatScopeKey();
+			const onScopeMaybeChanged = () => {
+				const nextScopeKey = getCurrentChatScopeKey();
+				if (nextScopeKey === previousScopeKey) {
+					return;
+				}
+
+				previousScopeKey = nextScopeKey;
+				void loadChatsForCurrentScope();
+			};
+
 			selectedFile.subscribe(() => {
-				void loadChatsForCurrentScope();
+				onScopeMaybeChanged();
 			});
-		
+
 			selectedWorkspace.subscribe(() => {
-				void loadChatsForCurrentScope();
+				onScopeMaybeChanged();
 			});
 		
 			isChatSideStripeSelected.subscribe(() => {
 				void loadChatsForCurrentScope();
 			});
+
+			void loadChatsForCurrentScope();
 		});
 	}
 	
@@ -765,14 +787,24 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 
 	if (browser) {
 		queueMicrotask(() => {
+			let previousScopeKey = getCurrentChatScopeKey();
+			const onScopeMaybeChanged = () => {
+				const nextScopeKey = getCurrentChatScopeKey();
+				if (nextScopeKey === previousScopeKey) {
+					return;
+				}
+
+				previousScopeKey = nextScopeKey;
+				updateScopeKey();
+				restoreTabsIfReady();
+			};
+
 			selectedFile.subscribe(() => {
-				updateScopeKey();
-				restoreTabsIfReady();
+				onScopeMaybeChanged();
 			});
-		
+
 			selectedWorkspace.subscribe(() => {
-				updateScopeKey();
-				restoreTabsIfReady();
+				onScopeMaybeChanged();
 			});
 
 			// Restore tabs only after backend loading completes.
@@ -792,6 +824,9 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 					restoreTabsForCurrentScope();
 				}
 			});
+
+			updateScopeKey();
+			restoreTabsIfReady();
 		});
 	}
 
@@ -1126,20 +1161,21 @@ export const rightSideStripeChat = (() => {
 		},
 		upsertOutputMessage(chatId: string, outputMessage: MessageOutput) {
 			chatStripeTabsOfWorkspaceFile.updateChatTabById(chatId, (chatTab) => {
+				const normalizedOutputMessage = normalizeOutputMessage(outputMessage);
 				const messages = this.getChatMessages(chatTab);
 				const existingIndex = messages.findIndex(message => {
-					return message.messageType === "message-user-output" && message.id === outputMessage.id;
+					return message.messageType === "message-user-output" && message.id === normalizedOutputMessage.id;
 				});
 
 				if (existingIndex < 0) {
 					return {
 						...chatTab,
-						messages: [...messages, outputMessage]
+						messages: [...messages, normalizedOutputMessage]
 					};
 				}
 
 				const nextMessages = [...messages];
-				nextMessages[existingIndex] = outputMessage;
+				nextMessages[existingIndex] = normalizedOutputMessage;
 
 				return {
 					...chatTab,
@@ -1446,8 +1482,17 @@ export const editorAIChat = (() => {
 
 		// Delay subscription to avoid circular dependency (ReferenceError: Cannot access 'selectedFile' before initialization)
 		queueMicrotask(() => {
+			let previousSelectedFileId = get(selectedFile)?.id;
+
 			// Unselect the selected text
 			selectedFile.subscribe(() => {
+				const currentSelectedFileId = get(selectedFile)?.id;
+				if (currentSelectedFileId === previousSelectedFileId) {
+					return;
+				}
+
+				previousSelectedFileId = currentSelectedFileId;
+
 				all.update(state => ({
 					...state,
 					selectedTextRanges: []
@@ -1840,18 +1885,51 @@ const isChatPresentInStores = (chatId: string): boolean => {
 	return get(chatStripeTabsOfWorkspaceFile).some(chatTab => chatTab.id === chatId);
 };
 
+const toValidDate = (value: unknown, fallback: Date = new Date()): Date => {
+	const parsedDate = value instanceof Date ? value : new Date(value as string | number);
+	return Number.isNaN(parsedDate.getTime()) ? fallback : parsedDate;
+};
+
+const toValidDateOrUndefined = (value: unknown): Date | undefined => {
+	if (value === undefined || value === null) {
+		return undefined;
+	}
+
+	const parsedDate = value instanceof Date ? value : new Date(value as string | number);
+	return Number.isNaN(parsedDate.getTime()) ? undefined : parsedDate;
+};
+
+const normalizeOutputMessage = (outputMessage: MessageOutput): MessageOutput => {
+	const startAt = toValidDate(outputMessage.time?.startAt, new Date());
+	const endAt = toValidDateOrUndefined(outputMessage.time?.endAt);
+	const hasTextOutput = typeof outputMessage.messageContentHTML === "string" && outputMessage.messageContentHTML.trim().length > 0;
+	const hasError = typeof outputMessage.isError === "string" && outputMessage.isError.trim().length > 0;
+	const isPendingPlaceholder = !hasTextOutput && !hasError && !endAt;
+
+	return {
+		...outputMessage,
+		isAnswering: isPendingPlaceholder ? true : Boolean(outputMessage.isAnswering),
+		time: {
+			startAt,
+			...(endAt ? { endAt } : {})
+		}
+	};
+};
+
 const toOutputMessageFromEvent = (outcomeMessage: unknown, outputMessageId: string): MessageOutput => {
 	const outcome = outcomeMessage as Partial<MessageOutput> | undefined;
 	const outcomeTime = outcome?.time;
+	const endAt = toValidDateOrUndefined(outcomeTime?.endAt);
 
 	return {
 		...(outcome as MessageOutput),
 		id: outputMessageId,
 		messageType: "message-user-output",
+		isAnswering: false,
 		reasoning: Array.isArray(outcome?.reasoning) ? outcome.reasoning : [],
 		time: {
-			startAt: outcomeTime?.startAt ?? new Date(),
-			...(outcomeTime?.endAt ? { endAt: outcomeTime.endAt } : {})
+			startAt: toValidDate(outcomeTime?.startAt, new Date()),
+			...(endAt ? { endAt } : {})
 		}
 	};
 };
@@ -1932,12 +2010,23 @@ if (browser) {
 			syncJoinedChatRooms();
 		});
 
-		selectedFile.subscribe(() => {
+		let previousScopeKey = getCurrentChatScopeKey();
+		const onScopeMaybeChanged = () => {
+			const nextScopeKey = getCurrentChatScopeKey();
+			if (nextScopeKey === previousScopeKey) {
+				return;
+			}
+
+			previousScopeKey = nextScopeKey;
 			syncJoinedChatRooms();
+		};
+
+		selectedFile.subscribe(() => {
+			onScopeMaybeChanged();
 		});
 
 		selectedWorkspace.subscribe(() => {
-			syncJoinedChatRooms();
+			onScopeMaybeChanged();
 		});
 
 		chatServiceConnectionLocal.onNewMember((chatId, member) => {
@@ -2040,27 +2129,64 @@ if (browser) {
 
 			// Adds updates the message
 			const chatOutcome = get(chatStripeTabsOfWorkspaceFile).find(chat => chat.id === chatId);
-			const chatOutcomeMessage = chatOutcome?.messages.find(message => message.id === outputMessageId) as MessageOutput;
 			if (!chatOutcome) {
-				alert("Cannot find outcome message to setup answer. It's not initialized");
+				console.warn("Cannot find outcome chat to setup answer.", { chatId, outputMessageId });
 				return;
 			}
+
+			const chatOutcomeMessage = chatOutcome.messages.find(message => {
+				return message.messageType === "message-user-output" && message.id === outputMessageId;
+			}) as MessageOutput | undefined;
+
+			const outcomePayload = outcomeMessage as {
+				outputMessageContentHTML?: string;
+				chatName?: string;
+				time?: {
+					startDate?: unknown;
+					endDate?: unknown;
+					startAt?: unknown;
+					endAt?: unknown;
+				};
+			};
+
+			const startAt = toValidDate(
+				outcomePayload.time?.startAt
+					?? outcomePayload.time?.startDate
+					?? chatOutcomeMessage?.time?.startAt
+					?? new Date(),
+				new Date()
+			);
+
+			const endAt = toValidDate(
+				outcomePayload.time?.endAt
+					?? outcomePayload.time?.endDate
+					?? chatOutcomeMessage?.time?.endAt
+					?? new Date(),
+				new Date()
+			);
 			
 			/// ... Prepares ready message
 			const readyMessage = {
-				...chatOutcomeMessage,
-				messageContentHTML: outcomeMessage.outputMessageContentHTML,
+				...(chatOutcomeMessage ?? {
+					id: outputMessageId,
+					messageType: "message-user-output",
+					reasoning: [],
+					model: rightSideStripeChat.createModelForMessage(chatOutcome),
+					aiChatMode: chatOutcome.selectedMode
+				}),
+				isAnswering: false,
+				messageContentHTML: outcomePayload.outputMessageContentHTML ?? chatOutcomeMessage?.messageContentHTML ?? "",
 				time: {
-					startAt: new Date(outcomeMessage.time.startDate ?? chatOutcomeMessage.time.startAt),
-					endAt: new Date(outcomeMessage.time.endDate ?? chatOutcomeMessage.time.endAt)
+					startAt,
+					endAt
 				}
 			} satisfies MessageOutput;
 
 			console.log('Success', readyMessage)
 
 			/// ... Prepares chat name
-			if (outcomeMessage.chatName) {
-				updateChatNameInStores(chatId, outcomeMessage.chatName);
+			if (outcomePayload.chatName) {
+				updateChatNameInStores(chatId, outcomePayload.chatName);
 			}
 
 			/// ... Keeps the updation to db
