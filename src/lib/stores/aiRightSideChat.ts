@@ -1979,6 +1979,29 @@ const isChatPresentInStores = (chatId: string): boolean => {
 	return get(chatStripeTabsOfWorkspaceFile).some(chatTab => chatTab.id === chatId);
 };
 
+const hasAnsweringOutputMessage = (chatId: string, outputMessageId?: string): boolean => {
+	const chatTab = get(chatStripeTabsOfWorkspaceFile).find(chat => chat.id === chatId);
+	if (!chatTab) {
+		return false;
+	}
+
+	return chatTab.messages.some(message => {
+		if (message.messageType !== "message-user-output" || !message.isAnswering) {
+			return false;
+		}
+
+		if (outputMessageId && message.id !== outputMessageId) {
+			return false;
+		}
+
+		return true;
+	});
+};
+
+const isChatActivelyProcessing = (chatId: string, outputMessageId?: string): boolean => {
+	return processingChatsOfWorkspaceFile.isChatProcessing(chatId) || hasAnsweringOutputMessage(chatId, outputMessageId);
+};
+
 const toValidDate = (value: unknown, fallback: Date = new Date()): Date => {
 	const parsedDate = value instanceof Date ? value : new Date(value as string | number);
 	return Number.isNaN(parsedDate.getTime()) ? fallback : parsedDate;
@@ -2152,6 +2175,10 @@ if (browser) {
 				return;
 			}
 
+			if (!isChatActivelyProcessing(chatId)) {
+				return;
+			}
+
 			if (!messageContent) {
 				return;
 			}
@@ -2164,6 +2191,10 @@ if (browser) {
 
 		chatServiceConnectionLocal.onPromptProgressTool((chatId, toolEvent) => {
 			if (!isChatPresentInStores(chatId)) {
+				return;
+			}
+
+			if (!isChatActivelyProcessing(chatId)) {
 				return;
 			}
 
@@ -2196,6 +2227,10 @@ if (browser) {
 				return;
 			}
 
+			if (!isChatActivelyProcessing(chatId, outputMessageId)) {
+				return;
+			}
+
 			// Mark message as stopped
 			rightSideStripeChat.markOutputMessageAsError(chatId, outputMessageId);
 
@@ -2218,6 +2253,10 @@ if (browser) {
 
 		chatServiceConnectionLocal.onPromptSuccess((chatId, outcomeMessage, outputMessageId) => {
 			if (!isChatPresentInStores(chatId)) {
+				return;
+			}
+
+			if (!isChatActivelyProcessing(chatId, outputMessageId)) {
 				return;
 			}
 
@@ -2275,8 +2314,6 @@ if (browser) {
 					endAt
 				}
 			} satisfies MessageOutput;
-
-			console.log('Success', readyMessage)
 
 			/// ... Prepares chat name
 			if (outcomePayload.chatName) {

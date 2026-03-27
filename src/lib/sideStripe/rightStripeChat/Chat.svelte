@@ -486,6 +486,7 @@
         }
 
         const promptProcessing = $processingChatsOfWorkspaceFile[$activeChat.id];
+        
         if (!promptProcessing?.promptId) {
             rightSideStripeChat.stopProcessing($activeChat.id);
             return;

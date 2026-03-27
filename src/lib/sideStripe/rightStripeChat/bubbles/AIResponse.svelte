@@ -21,7 +21,7 @@
     import { callAcceptDocumentManipulation, callAcceptTasksManipulation, callDeclineDocumentManipulation, callDeclineTasksManipulation } from "../proposals/utilFunctions";
     import { isPointsStripeOpen } from "$lib/stores/selectedSideStripes";
     import { copyTextToClipboard, htmlToPlainText } from "./copyText";
-    import { Link, normalizeLinkValue, normalizeLinkRel } from "$lib/editorComponents/LinkMark";
+    import { Link, normalizeLinkValue } from "$lib/editorComponents/LinkMark";
 
     const {
         message = $bindable()
@@ -39,7 +39,6 @@
         time,
         isAnswering
     } = $derived(message);
-    $effect(() => console.log('Message', message));
 
     let isMessageOpen = $state(true);
     let isProgressTrayOpen = $state(true);
@@ -409,6 +408,20 @@
                     <div class="flex gap-2 items-center">
                         <span class="loading loading-spinner loading-sm"></span>
                         <span>Answering...</span>
+                    </div>
+                {:else if isStopped}
+                    <div class="flex flex-col gap-2">
+                        <div class="flex items-center gap-2 text-sm text-black/60 theme-dark:text-white/60">
+                            <Icon icon="material-symbols:stop-circle-outline" width="18" height="18" />
+                            <span class="font-semibold">Stopped</span>
+                            <span class="opacity-70">Generation was stopped.</span>
+                        </div>
+
+                        <div class="mt-2" {@attach linkClickDelegation}>
+                            <EditorContent 
+                                editor={$answerEditor}
+                            />
+                        </div>
                     </div>
                 {:else}
                     <div {@attach linkClickDelegation}>
