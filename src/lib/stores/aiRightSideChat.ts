@@ -2056,6 +2056,8 @@ if (browser) {
 				}
 			} satisfies MessageOutput;
 
+			console.log('Success', readyMessage)
+
 			/// ... Prepares chat name
 			if (outcomeMessage.chatName) {
 				updateChatNameInStores(chatId, outcomeMessage.chatName);

@@ -358,8 +358,8 @@ export const chatServiceConnection = (() => {
         emitCreateChat(chatName?: string): Promise<CreateChatResult> {
             return getConnection()?.emitCreateChat(chatName) ?? Promise.resolve({ success: false, reason: "chat_service_not_connected" });
         },
-        emitSendPrompt(chatId: string, message: MessageUserPrompt, isChatNameSpecified: boolean): Promise<SendPromptResult> {
-            return getConnection()?.emitSendPrompt(chatId, message, isChatNameSpecified) ?? Promise.resolve({ error: true, reason: "chat_service_not_connected" });
+        emitSendPrompt(chatId: string, message: MessageUserPrompt, isChatNameADefaultName: boolean): Promise<SendPromptResult> {
+            return getConnection()?.emitSendPrompt(chatId, message, isChatNameADefaultName) ?? Promise.resolve({ error: true, reason: "chat_service_not_connected" });
         },
         emitStopPrompt(chatId: string, promptProcessId: string): Promise<StopPromptResult> {
             return getConnection()?.emitStopPrompt(chatId, promptProcessId) ?? Promise.resolve({ success: false, reason: "chat_service_not_connected" });

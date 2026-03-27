@@ -83,6 +83,7 @@
     let isChatHistoryPinnedToBottom = true;
     let lastAutoScrollChatId: string | null = null;
     let lastAutoScrollSignature: string | null = null;
+    let lastForcedAutoScrollOutputMessageId: string | null = null;
     let isActiveChatProcessing = $derived(Boolean($activeChat?.id && $processingChatsOfWorkspaceFile[$activeChat.id]));
         
     let chatConversations = $derived($activeChat ? getConversationEntries($activeChat) : []);
@@ -90,11 +91,7 @@
 
     // Until functions
     function updateHistoryBottomPadding() {
-        if (!chatHistoryElement || !bottomInteractions) {
-            return;
-        }
-
-        chatHistoryElement.style.setProperty('--chat-history-bottom-padding', `${bottomInteractions.clientHeight}px`);
+        return;
     }
     
     function isPromptMessage(message: ChatMessage): message is ChatPromptMessage {
@@ -233,6 +230,32 @@
 
         const distanceFromBottom = chatHistoryElement.scrollHeight - chatHistoryElement.scrollTop - chatHistoryElement.clientHeight;
         return distanceFromBottom <= 24;
+    }
+
+    async function scrollChatHistoryToLatestMessage(force: boolean = false): Promise<void> {
+        await tick();
+
+        if (!chatHistoryElement) {
+            return;
+        }
+
+        if (!force && !isChatHistoryPinnedToBottom && !isChatHistoryNearBottom()) {
+            return;
+        }
+
+        if (chatHistoryElement.scrollHeight <= chatHistoryElement.clientHeight) {
+            return;
+        }
+
+        try {
+            chatHistoryElement.scrollTo({
+                top: chatHistoryElement.scrollHeight,
+                behavior: 'smooth'
+            });
+        }
+        catch {
+            chatHistoryElement.scrollTop = chatHistoryElement.scrollHeight;
+        }
     }
 
     // Helpers
@@ -423,8 +446,9 @@
         isChatHistoryPinnedToBottom = true;
 
         // Retrive base output message but it's not the answer -> answer is retrived in `prompt-success` / `prompt-error` message listeners
-        const isChatNameSpecified = $activeChat.chatName === rightSideStripeChat.createDefaultChatName($activeChat.selectedMode);
-        const sendResult = await chatServiceConnection.emitSendPrompt(chatId, promptMessage, isChatNameSpecified);
+        const isChatNameADefaultName = $activeChat.chatName === rightSideStripeChat.createDefaultChatName($activeChat.selectedMode);
+        console.log('Is chat name default', isChatNameADefaultName);
+        const sendResult = await chatServiceConnection.emitSendPrompt(chatId, promptMessage, isChatNameADefaultName);
 
         // Display error
         if ("error" in sendResult) {
@@ -440,9 +464,11 @@
 
         if (sendResult.outputMessage) {
             rightSideStripeChat.upsertOutputMessage(chatId, sendResult.outputMessage);
+            if ($activeChat?.id === chatId) {
+                void scrollChatHistoryToLatestMessage(true);
+            }
 
             if ($selectedFile?.id && $selectedWorkspace?.id) {
-                console.log('Outcome')
                 void syncPromptOutputFromBackend(chatId, sendResult.outputMessage.id, {
                     fileId: $selectedFile.id,
                     workspaceId: $selectedWorkspace.id
@@ -696,16 +722,29 @@
         const activeChatLocal = $activeChat;
         const messageList = activeChatLocal?.messages ?? [];
         const lastMessage = messageList.length > 0 ? messageList[messageList.length - 1] : undefined;
-        const autoScrollSignature = `${activeChatLocal?.id ?? "none"}:${messageList.length}:${lastMessage?.id ?? "none"}:${$rightSideStripeChat.isLoading ? "loading" : "ready"}`;
+        const lastMessageSignature = lastMessage
+            ? `${lastMessage.id}:${lastMessage.messageType}:${lastMessage.messageType === "message-user-output"
+                ? `${lastMessage.isAnswering ? "answering" : "complete"}:${new Date(lastMessage.time.endAt ?? Date.now())?.getTime() ?? "no-end"}:${lastMessage.messageContentHTML.length}`
+                : "prompt"}`
+            : "none";
+        const autoScrollSignature = `${activeChatLocal?.id ?? "none"}:${messageList.length}:${lastMessageSignature}:${$rightSideStripeChat.isLoading ? "loading" : "ready"}`;
         const isChatSwitch = lastAutoScrollChatId !== activeChatLocal?.id;
+        const shouldForceScrollToCompletedOutput = Boolean(
+            activeChatLocal?.id
+            && lastMessage
+            && lastMessage.messageType === "message-user-output"
+            && !lastMessage.isAnswering
+            && lastForcedAutoScrollOutputMessageId !== lastMessage.id
+        );
 
         if (isChatSwitch) {
             lastAutoScrollChatId = activeChatLocal?.id ?? null;
             isChatHistoryPinnedToBottom = true;
             lastAutoScrollSignature = null;
+            lastForcedAutoScrollOutputMessageId = null;
         }
 
-        if (lastAutoScrollSignature === autoScrollSignature) {
+        if (lastAutoScrollSignature === autoScrollSignature && !shouldForceScrollToCompletedOutput) {
             return;
         }
 
@@ -718,30 +757,15 @@
             return;
         }
 
-        if (!isChatHistoryPinnedToBottom && !isChatSwitch && !isChatHistoryNearBottom()) {
+        if (!shouldForceScrollToCompletedOutput && !isChatHistoryPinnedToBottom && !isChatSwitch && !isChatHistoryNearBottom()) {
             return;
         }
+
+        if (shouldForceScrollToCompletedOutput && lastMessage) {
+            lastForcedAutoScrollOutputMessageId = lastMessage.id;
+        }
         
-        // Auto-scroll only when the user is already near the bottom, or when switching chats.
-        (async () => {
-            await tick();
-            if (!chatHistoryElement) return;
-
-            if (!isChatSwitch && !isChatHistoryNearBottom()) {
-                return;
-            }
-
-            // Only scroll when overflow present
-            if (chatHistoryElement.scrollHeight <= chatHistoryElement.clientHeight) return;
-
-            try {
-                chatHistoryElement.scrollTo({ top: chatHistoryElement.scrollHeight, behavior: 'smooth' });
-            }
-            catch (e) {
-                // Fallback for environments that don't support smooth option
-                chatHistoryElement.scrollTop = chatHistoryElement.scrollHeight;
-            }
-        })();
+        void scrollChatHistoryToLatestMessage(shouldForceScrollToCompletedOutput || isChatSwitch || isChatHistoryPinnedToBottom);
     });
 
     // Lifecycle hooks
@@ -794,187 +818,189 @@
     })
 </script>
 
-<div 
-    id="ai-chat-history"
-    class="flex-1 min-h-0 overflow-y-auto pr-1"
-    bind:this={chatHistoryElement}
-    onscroll={onChatHistoryScroll}
->
-    {#if $rightSideStripeChat.isLoading}
-        <div class="flex h-full w-full items-center justify-center text-base-content/60 gap-2">
-            <span class="loading loading-spinner loading-sm"></span>
-            <span>Loading chat history...</span>
-        </div>
-    {:else if chatConversations.length}
-        <div class="flex flex-col gap-16 pb-1 p-4 pb-10">
-            {#each $activeChat.messages as message (message)}
-                {#if message.messageType === "message-user-prompt"}
-                    <UserPrompt 
-                        {message}
-                    />
-                {:else}
-                    <AIResponse
-                        {message}
-                    />
-                {/if}
-            {/each}
-        </div>
-    {:else}
-        <div
-            class="w-full h-full flex items-center justify-center"
-        >
-            <div class="h-fit w-fit flex flex-col justify-center text-center items-center">
-                <Icon icon="mdi:chat-outline" width="28" height="28" />
-                <h3 class="font-semibold">Start a conversation</h3>
-                <p class="text-black/50 theme-dark:text-white/50">Ask a question, request a summary, or generate a diagram.</p>
+<div class="flex h-full min-h-0 flex-col">
+    <div 
+        id="ai-chat-history"
+        class="flex-1 min-h-0 overflow-y-auto pr-1"
+        bind:this={chatHistoryElement}
+        onscroll={onChatHistoryScroll}
+    >
+        {#if $rightSideStripeChat.isLoading}
+            <div class="flex h-full w-full items-center justify-center text-base-content/60 gap-2">
+                <span class="loading loading-spinner loading-sm"></span>
+                <span>Loading chat history...</span>
             </div>
-        </div>
-    {/if}
-</div>
-
-<div 
-    id="bottom-interactions"
-    class="absolute inset-x-0 bottom-0 p-3 z-10 bg-base-100"
-    bind:this={bottomInteractions}
->
-    {#if $editorAIChat.selectedTextRanges?.length}
-        <div class="rounded-lg border border-base-300 bg-base-200 p-2">
-            <button class="btn btn-ghost btn-xs px-1" onclick={onClickSelectedTextToggle}>
-                {#if isSelectedTextPreviewOpen}
-                    <Icon icon="mdi:chevron-up" width="14" height="14" />
-                {:else}
-                    <Icon icon="mdi:chevron-down" width="14" height="14" />
-                {/if}
-                <span>{isSelectedTextPreviewOpen ? "Hide" : "Show"} selected text</span>
-            </button>
-
-            {#if isSelectedTextPreviewOpen}
-                <div class="mt-2 max-h-40 overflow-y-auto space-y-1">
-                    {#each $editorAIChat.selectedTextRanges as selectedText, i (selectedText.id)}
-                        {@const isTextSelected = mouseIsOnPreviewSelectedText
-                            && mouseIsOnPreviewSelectedText.from === selectedText.from
-                            && mouseIsOnPreviewSelectedText.to === selectedText.to}
-                        <!-- svelte-ignore a11y_no_static_element_interactions -->
-                        <div
-                            class="rounded-md p-1 text-sm {isTextSelected ? 'bg-primary/20 text-primary-content' : 'bg-base-100'}"
-                            onmouseenter={() => onMouseEnterPreviewText(selectedText.from, selectedText.to)}
-                            onmouseleave={onMouseLeavePreviewText}
-                        >
-                            <div class="flex items-start gap-2">
-                                <button class="btn btn-ghost btn-xs btn-square" onclick={() => onRemoveSelectedText(selectedText.from, selectedText.to)}>
-                                    <Icon icon="mdi:close" width="12" height="12" />
-                                </button>
-                                <span class="break-all whitespace-pre-wrap">{selectedText.text}</span>
-                            </div>
-                        </div>
-                        {#if i !== $editorAIChat.selectedTextRanges.length - 1}
-                            <div class="border-b border-base-300"></div>
-                        {/if}
-                    {/each}
+        {:else if chatConversations.length}
+            <div class="flex flex-col gap-16 pb-1 p-4 pb-10">
+                {#each $activeChat.messages as message (message)}
+                    {#if message.messageType === "message-user-prompt"}
+                        <UserPrompt 
+                            {message}
+                        />
+                    {:else}
+                        <AIResponse
+                            {message}
+                        />
+                    {/if}
+                {/each}
+            </div>
+        {:else}
+            <div
+                class="w-full h-full flex items-center justify-center"
+            >
+                <div class="h-fit w-fit flex flex-col justify-center text-center items-center">
+                    <Icon icon="mdi:chat-outline" width="28" height="28" />
+                    <h3 class="font-semibold">Start a conversation</h3>
+                    <p class="text-black/50 theme-dark:text-white/50">Ask a question, request a summary, or generate a diagram.</p>
                 </div>
-            {/if}
-        </div>
-    {/if}
+            </div>
+        {/if}
+    </div>
 
-    <div class="rounded-lg border border-base-300 bg-sky-200/20 theme-dark:bg-base-300 p-2 px-0.5">
-        <div class="mb-2 flex items-center gap-2 relative">
-            <!-- Modes selection tray -->
-            {#if isModeSelectingTrayOpen}
-                {@const allModes = Object.entries($CHAT_MODES) as [AIChatMode, ChatModeValue][]}
-                <div id="chat-mode-selection-tray" class="absolute bottom-[calc(100%+6px)] left-0 z-50 rounded-lg border border-base-300 bg-base-100 shadow-xl p-2 min-w-44">
-                    <div class="text-xs text-base-content/60 mb-1">Select mode</div>
-                    <div class="flex flex-col gap-1">
-                        {#each allModes as [mode, modeValue] (mode)}
-                            {@const isDisabled = !modeValue.isEnabled}
+    <div 
+        id="bottom-interactions"
+        class="shrink-0 p-3 bg-base-100"
+        bind:this={bottomInteractions}
+    >
+        {#if $editorAIChat.selectedTextRanges?.length}
+            <div class="rounded-lg border border-base-300 bg-base-200 p-2">
+                <button class="btn btn-ghost btn-xs px-1" onclick={onClickSelectedTextToggle}>
+                    {#if isSelectedTextPreviewOpen}
+                        <Icon icon="mdi:chevron-up" width="14" height="14" />
+                    {:else}
+                        <Icon icon="mdi:chevron-down" width="14" height="14" />
+                    {/if}
+                    <span>{isSelectedTextPreviewOpen ? "Hide" : "Show"} selected text</span>
+                </button>
+
+                {#if isSelectedTextPreviewOpen}
+                    <div class="mt-2 max-h-40 overflow-y-auto space-y-1">
+                        {#each $editorAIChat.selectedTextRanges as selectedText, i (selectedText.id)}
+                            {@const isTextSelected = mouseIsOnPreviewSelectedText
+                                && mouseIsOnPreviewSelectedText.from === selectedText.from
+                                && mouseIsOnPreviewSelectedText.to === selectedText.to}
+                            <!-- svelte-ignore a11y_no_static_element_interactions -->
                             <div
-                                class="tooltip tooltip-right"
-                                data-tip={isDisabled ? `You've to be active collaborator of file to have access to this mode. You'll regain this mode once you become collaborator` : modeValue.modeDescription}
+                                class="rounded-md p-1 text-sm {isTextSelected ? 'bg-primary/20 text-primary-content' : 'bg-base-100'}"
+                                onmouseenter={() => onMouseEnterPreviewText(selectedText.from, selectedText.to)}
+                                onmouseleave={onMouseLeavePreviewText}
                             >
-                                <button
-                                    class="btn btn-ghost btn-xs justify-start {mode === $editorAIChat.textFieldMode ? 'btn-active' : ''}"
-                                    disabled={isDisabled}
-                                    onclick={() => onSelectNewMode(mode)}
-                                >
-                                    {modeValue.modeName}
-                                </button>
+                                <div class="flex items-start gap-2">
+                                    <button class="btn btn-ghost btn-xs btn-square" onclick={() => onRemoveSelectedText(selectedText.from, selectedText.to)}>
+                                        <Icon icon="mdi:close" width="12" height="12" />
+                                    </button>
+                                    <span class="break-all whitespace-pre-wrap">{selectedText.text}</span>
+                                </div>
                             </div>
+                            {#if i !== $editorAIChat.selectedTextRanges.length - 1}
+                                <div class="border-b border-base-300"></div>
+                            {/if}
                         {/each}
                     </div>
-                </div>
-            {/if}
+                {/if}
+            </div>
+        {/if}
 
-            <!-- Mode ignite btn -->
-            <button class="btn btn-ghost btn-xs" disabled={!isMessagingActive} onclick={onClickSelectMode}>
-                <Icon icon="mdi:at" width="14" height="14" />
-                <span>{getTextFieldModeName($editorAIChat.textFieldMode)}</span>
-            </button>
+        <div class="rounded-lg border border-base-300 bg-sky-200/20 theme-dark:bg-base-300 p-2 px-0.5">
+            <div class="mb-2 flex items-center gap-2 relative">
+                <!-- Modes selection tray -->
+                {#if isModeSelectingTrayOpen}
+                    {@const allModes = Object.entries($CHAT_MODES) as [AIChatMode, ChatModeValue][]}
+                    <div id="chat-mode-selection-tray" class="absolute bottom-[calc(100%+6px)] left-0 z-50 rounded-lg border border-base-300 bg-base-100 shadow-xl p-2 min-w-44">
+                        <div class="text-xs text-base-content/60 mb-1">Select mode</div>
+                        <div class="flex flex-col gap-1">
+                            {#each allModes as [mode, modeValue] (mode)}
+                                {@const isDisabled = !modeValue.isEnabled}
+                                <div
+                                    class="tooltip tooltip-right"
+                                    data-tip={isDisabled ? `You've to be active collaborator of file to have access to this mode. You'll regain this mode once you become collaborator` : modeValue.modeDescription}
+                                >
+                                    <button
+                                        class="btn btn-ghost btn-xs justify-start {mode === $editorAIChat.textFieldMode ? 'btn-active' : ''}"
+                                        disabled={isDisabled}
+                                        onclick={() => onSelectNewMode(mode)}
+                                    >
+                                        {modeValue.modeName}
+                                    </button>
+                                </div>
+                            {/each}
+                        </div>
+                    </div>
+                {/if}
 
-            <!-- Context selection btn -->
-            <button
-                class="btn btn-ghost btn-xs"
-                title="Context specification" 
-                disabled={!isMessagingActive}
-                onclick={onContextSelection}
-            >
-                <Icon icon="material-symbols:note-stack-outline-rounded" width="14" height="14"/>
-            </button>
+                <!-- Mode ignite btn -->
+                <button class="btn btn-ghost btn-xs" disabled={!isMessagingActive} onclick={onClickSelectMode}>
+                    <Icon icon="mdi:at" width="14" height="14" />
+                    <span>{getTextFieldModeName($editorAIChat.textFieldMode)}</span>
+                </button>
 
-            <!-- MCP Servers Selection -->
-             <!-- FIXME: This is commented in MVP -->
-            <!-- <div
-                class="tooltip tooltip-top"
-                data-tip={!isMCPSpecificationAvailableForWorkspace ? "Workspace hasn't got specified MCP Servers. Specify MCP Servers for workspace first" : ""}
-            >
+                <!-- Context selection btn -->
                 <button
                     class="btn btn-ghost btn-xs"
-                    title="MCP Servers Selection for Action"
-                    onclick={onToggleMCPServersSelectionModal}
+                    title="Context specification" 
+                    disabled={!isMessagingActive}
+                    onclick={onContextSelection}
                 >
-                    <Icon icon="carbon:logo-model-context-protocol"/>
+                    <Icon icon="material-symbols:note-stack-outline-rounded" width="14" height="14"/>
                 </button>
-            </div> -->
 
-            <!-- Model spec -->
-            <div class="w-fit">
-                <ModelsListSelection/>
+                <!-- MCP Servers Selection -->
+                 <!-- FIXME: This is commented in MVP -->
+                <!-- <div
+                    class="tooltip tooltip-top"
+                    data-tip={!isMCPSpecificationAvailableForWorkspace ? "Workspace hasn't got specified MCP Servers. Specify MCP Servers for workspace first" : ""}
+                >
+                    <button
+                        class="btn btn-ghost btn-xs"
+                        title="MCP Servers Selection for Action"
+                        onclick={onToggleMCPServersSelectionModal}
+                    >
+                        <Icon icon="carbon:logo-model-context-protocol"/>
+                    </button>
+                </div> -->
+
+                <!-- Model spec -->
+                <div class="w-fit">
+                    <ModelsListSelection/>
+                </div>
             </div>
-        </div>
 
-        <div class="relative">
-            {#key composerResetKey}
-                {@const isDisabled = !isMessagingActive || isActiveChatProcessing ? true : false}
-                <textarea
-                    id="writable-for-chat"
-                    class="w-full min-h-24 max-h-52 outline-none overflow-y-auto rounded-md border border-base-300 bg-base-100 p-2 text-sm"
-                    class:opacity-50={isDisabled}
-                    class:cursor-not-allowed={isDisabled}
-                    disabled={isDisabled}
-                    placeholder={$editorAIChat.selectedTextRanges?.length ? "Type order to context..." : "Type subject..."}
-                    bind:value={textContent}
-                    oninput={onInputPrompt}
-                    onkeydown={onComposerKeydown}
-                    bind:this={composerTextareaElement}
-                ></textarea>
-            {/key}
+            <div class="relative">
+                {#key composerResetKey}
+                    {@const isDisabled = !isMessagingActive || isActiveChatProcessing ? true : false}
+                    <textarea
+                        id="writable-for-chat"
+                        class="w-full min-h-24 max-h-52 outline-none overflow-y-auto rounded-md border border-base-300 bg-base-100 p-2 text-sm"
+                        class:opacity-50={isDisabled}
+                        class:cursor-not-allowed={isDisabled}
+                        disabled={isDisabled}
+                        placeholder={$editorAIChat.selectedTextRanges?.length ? "Type order to context..." : "Type subject..."}
+                        bind:value={textContent}
+                        oninput={onInputPrompt}
+                        onkeydown={onComposerKeydown}
+                        bind:this={composerTextareaElement}
+                    ></textarea>
+                {/key}
 
-            {#if isActiveChatProcessing}
-                <button
-                    class="btn btn-neutral btn-sm btn-square rounded-full absolute bottom-2 right-2"
-                    title="Stop Chat Processing"
-                    onclick={onStopMessage}
-                >
-                    <Icon icon="material-symbols:stop-rounded" width="14" height="14" />
-                </button>
-            {:else}
-                <button
-                    class="btn btn-primary btn-sm btn-square rounded-full absolute bottom-2 right-2"
-                    disabled={!textContent.trim() && !$editorAIChat.selectedTextRanges?.length}
-                    title="Send Message"
-                    onclick={onSendMessage}
-                >
-                    <Icon icon="material-symbols:send-rounded" width="14" height="14" />
-                </button>
-            {/if}
+                {#if isActiveChatProcessing}
+                    <button
+                        class="btn btn-neutral btn-sm btn-square rounded-full absolute bottom-2 right-2"
+                        title="Stop Chat Processing"
+                        onclick={onStopMessage}
+                    >
+                        <Icon icon="material-symbols:stop-rounded" width="14" height="14" />
+                    </button>
+                {:else}
+                    <button
+                        class="btn btn-primary btn-sm btn-square rounded-full absolute bottom-2 right-2"
+                        disabled={!textContent.trim() && !$editorAIChat.selectedTextRanges?.length}
+                        title="Send Message"
+                        onclick={onSendMessage}
+                    >
+                        <Icon icon="material-symbols:send-rounded" width="14" height="14" />
+                    </button>
+                {/if}
+            </div>
         </div>
     </div>
 </div>
@@ -1064,7 +1090,6 @@
     #ai-chat-history {
         max-height: 100%;
         scrollbar-gutter: stable;
-        padding-bottom: var(--chat-history-bottom-padding, 0px);
     }
 
     #bottom-interactions {

@@ -1,9 +1,11 @@
 <script lang="ts">
+    import { onDestroy } from "svelte";
     import Icon from "@iconify/svelte";
     import { createEditor, EditorContent } from "svelte-tiptap";
     import StarterKit from "@tiptap/starter-kit";
     import type { MessageUserPrompt } from "@ravenlens/shared/chat-ai/backend/schema";
     import ModelModelAndTime from "./ModelModelAndTime.svelte";
+    import { copyTextToClipboard, htmlToPlainText } from "./copyText";
 
     const {
         message = $bindable()
@@ -19,16 +21,94 @@
         isAnswering
     } = $derived(message);
 
+    let contextMenu = $state<{ x: number; y: number } | null>(null);
+
     /** Answer Editor */
-    const answerEditor = $derived(createEditor({
-        content: messageContentHTML,
+    const answerEditor = createEditor({
+        content: "<p></p>",
         editable: false,
         extensions: [StarterKit]
-    }));
+    });
+    let lastAppliedContent = "";
+
+    $effect(() => {
+        const editor = $answerEditor;
+        if (!editor) {
+            return;
+        }
+
+        const nextContent = messageContentHTML;
+        if (lastAppliedContent === nextContent) {
+            return;
+        }
+
+        lastAppliedContent = nextContent;
+        editor.commands.setContent(nextContent, { emitUpdate: false });
+    });
+
+    onDestroy(() => {
+        const editor = $answerEditor;
+        editor?.destroy();
+    });
+
+    function closeContextMenu() {
+        contextMenu = null;
+    }
+
+    function onBubbleContextMenu(event: MouseEvent) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        contextMenu = {
+            x: event.clientX,
+            y: event.clientY
+        };
+    }
+
+    function onWindowClick(event: MouseEvent) {
+        if (!contextMenu) {
+            return;
+        }
+
+        const target = event.target as HTMLElement | null;
+        if (target?.closest('.bubble-copy-context-menu')) {
+            return;
+        }
+
+        closeContextMenu();
+    }
+
+    function onWindowKeydown(event: KeyboardEvent) {
+        if (event.key === "Escape") {
+            closeContextMenu();
+        }
+    }
+
+    function getContextMenuStyle() {
+        if (!contextMenu) {
+            return "";
+        }
+
+        const preferredLeft = Math.min(contextMenu.x, Math.max(8, window.innerWidth - 180));
+        const preferredTop = Math.min(contextMenu.y, Math.max(8, window.innerHeight - 64));
+
+        return `left: ${preferredLeft}px; top: ${preferredTop}px;`;
+    }
+
+    async function onCopyText() {
+        const textToCopy = htmlToPlainText(messageContentHTML);
+        await copyTextToClipboard(textToCopy);
+        closeContextMenu();
+    }
 </script>
+
+<svelte:window onclick={onWindowClick} onkeydown={onWindowKeydown} />
 
 <div
     class="bubble-wrapper flex justify-end items-center"
+    role="group"
+    aria-label="User message"
+    oncontextmenu={onBubbleContextMenu}
 >
     <div
         class="bubble flex flex-col gap-3 min-w-[300px] max-w-3/4 bg-base-300 p-2 rounded-lg"
@@ -60,12 +140,25 @@
     {#if context}
         <div class="context-info"></div>
     {/if}
+
+    {#if contextMenu}
+        <div
+            class="bubble-copy-context-menu fixed z-50 min-w-44 rounded-lg border border-base-300 bg-base-100 p-1 shadow-xl"
+            style={getContextMenuStyle()}
+        >
+            <button
+                class="btn btn-ghost btn-sm w-full justify-start gap-2"
+                onclick={onCopyText}
+            >
+                <Icon icon="mdi:content-copy" width="16" height="16" />
+                <span>Copy Text</span>
+            </button>
+        </div>
+    {/if}
 </div>
 
 <style>
-    @reference "../../../../app.css";
-
     .bubble.stoped {
-        @apply border border-dashed border-error;
+        border: 1px dashed var(--color-error);
     }
 </style>

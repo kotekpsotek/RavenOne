@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { onDestroy } from "svelte";
     import Icon from "@iconify/svelte";
     import { createEditor, EditorContent } from "svelte-tiptap";
     import StarterKit from "@tiptap/starter-kit";
@@ -18,6 +19,7 @@
     import { activeChat, fileChatEditionPreviewShowing } from "$lib/stores/aiRightSideChat";
     import { callAcceptDocumentManipulation, callAcceptTasksManipulation, callDeclineDocumentManipulation, callDeclineTasksManipulation } from "../proposals/utilFunctions";
     import { isPointsStripeOpen } from "$lib/stores/selectedSideStripes";
+    import { copyTextToClipboard, htmlToPlainText } from "./copyText";
 
     const {
         message = $bindable()
@@ -42,13 +44,85 @@
     // Defined whetther the preview of changes is showing for the selected element
     let isDocumentManipulationShowing = $state(false);
     let isTasksManipulationShowing = $state(false);
+    let contextMenu = $state<{ x: number; y: number } | null>(null);
 
     /** Answer Editor */
-    const answerEditor = $derived(createEditor({
-        content: messageContentHTML,
+    const answerEditor = createEditor({
+        content: "<p></p>",
         editable: false,
         extensions: [StarterKit]
-    }));
+    });
+    let lastAppliedContent = "";
+
+    $effect(() => {
+        const editor = $answerEditor;
+        if (!editor) {
+            return;
+        }
+
+        const nextContent = messageContentHTML;
+        if (lastAppliedContent === nextContent) {
+            return;
+        }
+
+        lastAppliedContent = nextContent;
+        editor.commands.setContent(nextContent, { emitUpdate: false });
+    });
+
+    onDestroy(() => {
+        const editor = $answerEditor;
+        editor?.destroy();
+    });
+
+    function closeContextMenu() {
+        contextMenu = null;
+    }
+
+    function onBubbleContextMenu(event: MouseEvent) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        contextMenu = {
+            x: event.clientX,
+            y: event.clientY
+        };
+    }
+
+    function onWindowClick(event: MouseEvent) {
+        if (!contextMenu) {
+            return;
+        }
+
+        const target = event.target as HTMLElement | null;
+        if (target?.closest('.bubble-copy-context-menu')) {
+            return;
+        }
+
+        closeContextMenu();
+    }
+
+    function onWindowKeydown(event: KeyboardEvent) {
+        if (event.key === "Escape") {
+            closeContextMenu();
+        }
+    }
+
+    function getContextMenuStyle() {
+        if (!contextMenu) {
+            return "";
+        }
+
+        const preferredLeft = Math.min(contextMenu.x, Math.max(8, window.innerWidth - 180));
+        const preferredTop = Math.min(contextMenu.y, Math.max(8, window.innerHeight - 64));
+
+        return `left: ${preferredLeft}px; top: ${preferredTop}px;`;
+    }
+
+    async function onCopyText() {
+        const textToCopy = htmlToPlainText(messageContentHTML);
+        await copyTextToClipboard(textToCopy);
+        closeContextMenu();
+    }
 
     const getReasoningPresentation = (reason: ReasoningPhases) => {
         if (reason.phase === "thinking") {
@@ -56,11 +130,7 @@
             return {
                 icon: "material-symbols:psychology-outline",
                 name: "Thinking",
-                description: `
-                    <ol style="list-style-type: decimal !important; list-style-position: inside !important; padding-left: 0.5rem !important; margin-top: 0.5rem !important; display: block !important;">
-                        ${thoughts.map(thought => `<li style="display: list-item !important; margin-bottom: 0.25rem !important; opacity: 0.8;">${thought}</li>`).join("")}
-                    </ol>
-                `
+                thoughts: thoughts.filter((thought): thought is string => typeof thought === "string" && thought.trim().length > 0)
             };
         }
 
@@ -75,7 +145,7 @@
         return {
             icon: "material-symbols:checklist-rtl",
             name: "Todo",
-            description: reason.todo.map(todoPoint => `${todoPoint.event}: ${todoPoint.content}`).join("<br/>")
+            description: reason.todo.map(todoPoint => `${todoPoint.event}: ${todoPoint.content}`).join("\n")
         };
     };
 
@@ -114,6 +184,8 @@
         isTasksManipulationShowing = isThisMessage && preview?.type === "tasks-manipulation";
     });
 </script>
+
+<svelte:window onclick={onWindowClick} onkeydown={onWindowKeydown} />
 
 {#snippet ManipulationTray(version: "document" | "tasks")}
     {@const targetElement = version === "document" ? documentManipulation : tasksListManipulation}
@@ -183,6 +255,9 @@
 
 <div
     class="bubble-wrapper flex justify-end items-center"
+    role="group"
+    aria-label="Assistant message"
+    oncontextmenu={onBubbleContextMenu}
 >
     <div
         class="bubble border-t pt-2 rounded-t-none border-base-300 flex flex-col gap-3 w-full p-2 rounded-lg"
@@ -252,7 +327,15 @@
                                         <TimelineContent>
                                             <h5 class="font-semibold">{meta.name}</h5>
                                             <div class="timeline-content-details prose-xs">
-                                                {@html meta.description}
+                                                {#if meta.thoughts}
+                                                    <ol class="list-decimal pl-4 space-y-1">
+                                                        {#each meta.thoughts as thought (thought)}
+                                                            <li class="opacity-80">{thought}</li>
+                                                        {/each}
+                                                    </ol>
+                                                {:else}
+                                                    <p class="whitespace-pre-wrap">{meta.description}</p>
+                                                {/if}
                                             </div>
                                         </TimelineContent>
                                     </TimelineItem>
@@ -306,16 +389,30 @@
             />
         {/if}
     </div>
+
+    {#if contextMenu}
+        <div
+            class="bubble-copy-context-menu fixed z-50 min-w-44 rounded-lg border border-base-300 bg-base-100 p-1 shadow-xl"
+            style={getContextMenuStyle()}
+        >
+            <button
+                class="btn btn-ghost btn-sm w-full justify-start gap-2"
+                onclick={onCopyText}
+            >
+                <Icon icon="mdi:content-copy" width="16" height="16" />
+                <span>Copy Text</span>
+            </button>
+        </div>
+    {/if}
 </div>
 
 <style>
-    @reference "../../../../app.css";
-
     .bubble.stoped {
-        @apply border border-dashed border-error;
+        border: 1px dashed var(--color-error);
     }
 
     .bubble.error {
-        @apply border border-error rounded-lg;
+        border: 1px solid var(--color-error);
+        border-radius: 0.5rem;
     }
 </style>

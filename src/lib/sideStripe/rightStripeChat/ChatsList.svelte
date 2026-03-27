@@ -30,7 +30,7 @@
 
 	let sortedChats = $derived(
 		[...$loadedChatsOfWorkspaceFile].sort((chatA, chatB) => {
-			return (chatA.createdAt instanceof Date ? chatA.createdAt : getDateFromInput(chatA.createdAt)).getTime() - (chatB.createdAt instanceof Date ? chatB.createdAt : getDateFromInput(chatB.createdAt)).getTime();
+			return (chatB.createdAt instanceof Date ? chatB.createdAt : getDateFromInput(chatB.createdAt)).getTime() - (chatA.createdAt instanceof Date ? chatA.createdAt : getDateFromInput(chatA.createdAt)).getTime();
 		})
 	);
 
