@@ -105,7 +105,7 @@
 <svelte:window onclick={onWindowClick} onkeydown={onWindowKeydown} />
 
 <div
-    class="bubble-wrapper flex justify-end items-center"
+    class="bubble-wrapper flex flex-col items-end gap-1 w-full"
     role="group"
     aria-label="User message"
     oncontextmenu={onBubbleContextMenu}
@@ -122,7 +122,7 @@
                     <span>Stopped</span>
                 </div>
             {/if}
-            
+
             <EditorContent
                 editor={$answerEditor}
             />
@@ -137,8 +137,50 @@
         />
     </div>
 
-    {#if context}
-        <div class="context-info"></div>
+    {#if context && (context.desktopFiles?.length || context.editorFiles?.length || context.networkUrls?.length || context.selectedTextRanges?.length || context.aiAnswers?.length)}
+        <div class="context-info flex flex-wrap justify-end gap-1 max-w-3/4">
+            {#if context.desktopFiles?.length}
+                {#each context.desktopFiles as file, index (index)}
+                    <div class="badge badge-neutral badge-xs py-2 gap-1">
+                        <Icon icon="mdi:file-document-outline" />
+                        {file.name}
+                    </div>
+                {/each}
+            {/if}
+            {#if context.editorFiles?.length}
+                {#each context.editorFiles as file, index (index)}
+                    <div class="badge badge-neutral badge-xs py-2 gap-1">
+                        <Icon icon="mdi:code-braces" />
+                        {file.name}
+                    </div>
+                {/each}
+            {/if}
+            {#if context.networkUrls?.length}
+                {#each context.networkUrls as url, index (index)}
+                    <div class="badge badge-neutral badge-xs py-2 gap-1">
+                        <Icon icon="mdi:web" />
+                        {url.url}
+                    </div>
+                {/each}
+            {/if}
+            {#if context.selectedTextRanges?.length}
+                {#each context.selectedTextRanges as range, index (index)}
+                    <div class="badge badge-neutral badge-xs py-2 gap-1">
+                        <Icon icon="mdi:format-text" />
+                        Text snippet
+                    </div>
+                {/each}
+            {/if}
+            {#if context.aiAnswers?.length}
+                {#each context.aiAnswers as answer, index (index)}
+                    <div class="badge badge-neutral badge-xs py-2 gap-1">
+                        <Icon icon="material-symbols:smart-toy-outline" />
+                        AI Answer
+                    </div>
+                {/each}
+            {/if}
+        </div>
+
     {/if}
 
     {#if contextMenu}

@@ -15,11 +15,13 @@
 	} from 'svelte-vertical-timeline';
     import "./AIResponse.css";
     import ModelModelAndTime from "./ModelModelAndTime.svelte";
+    import { alertState } from "$lib/utils/alert";
     import { isCurrentUserSelectedFileEditor } from "$lib/stores/collaboration";
     import { activeChat, fileChatEditionPreviewShowing } from "$lib/stores/aiRightSideChat";
     import { callAcceptDocumentManipulation, callAcceptTasksManipulation, callDeclineDocumentManipulation, callDeclineTasksManipulation } from "../proposals/utilFunctions";
     import { isPointsStripeOpen } from "$lib/stores/selectedSideStripes";
     import { copyTextToClipboard, htmlToPlainText } from "./copyText";
+    import { Link, normalizeLinkValue, normalizeLinkRel } from "$lib/editorComponents/LinkMark";
 
     const {
         message = $bindable()
@@ -37,22 +39,80 @@
         time,
         isAnswering
     } = $derived(message);
+    $effect(() => console.log('Message', message));
 
     let isMessageOpen = $state(true);
     let isProgressTrayOpen = $state(true);
 
     // Defined whetther the preview of changes is showing for the selected element
-    let isDocumentManipulationShowing = $state(false);
-    let isTasksManipulationShowing = $state(false);
     let contextMenu = $state<{ x: number; y: number } | null>(null);
+    const previewShowing = $derived($fileChatEditionPreviewShowing);
+    const isThisMessagePreview = $derived(previewShowing?.chatId === $activeChat.id && previewShowing?.outputMessage.id === message.id);
+    const isDocumentManipulationShowing = $derived(isThisMessagePreview && previewShowing?.type === "document-manipulation");
+    const isTasksManipulationShowing = $derived(isThisMessagePreview && previewShowing?.type === "tasks-manipulation");
 
     /** Answer Editor */
     const answerEditor = createEditor({
         content: "<p></p>",
         editable: false,
-        extensions: [StarterKit]
+        extensions: [StarterKit, Link]
     });
     let lastAppliedContent = "";
+
+    function openLink(href: string, target: string | null) {
+        if (target === "_self") {
+            window.location.assign(href);
+            return;
+        }
+
+        window.open(href, target ?? "_blank", "noopener,noreferrer");
+    }
+
+    function onEditorClick(event: MouseEvent) {
+        const target = event.target as HTMLElement | null;
+        const anchor = target?.closest("a[href]");
+
+        if (!anchor) {
+            return;
+        }
+
+        const href = normalizeLinkValue(anchor.getAttribute("href"));
+        if (!href) {
+            return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        const linkTarget = normalizeLinkValue(anchor.getAttribute("target"));
+        const targetLabel = linkTarget === "_self" ? "this page" : "a new tab";
+
+        alertState.set({
+            alert: {
+                type: "info",
+                name: "External link",
+                description: `You will be redirected to ${href} in ${targetLabel}.`,
+                btns: [
+                    {
+                        name: "Open link",
+                        classStyle: "btn-primary",
+                        onClick: () => openLink(href, linkTarget)
+                    }
+                ]
+            },
+            timeoutMs: 0
+        });
+    }
+
+    function linkClickDelegation(node: HTMLElement) {
+        const handleClick = (event: MouseEvent) => onEditorClick(event);
+
+        node.addEventListener("click", handleClick);
+
+        return () => {
+            node.removeEventListener("click", handleClick);
+        };
+    }
 
     $effect(() => {
         const editor = $answerEditor;
@@ -175,14 +235,6 @@
         else fileChatEditionPreviewShowing.unsetPreviewing();
     }
 
-    // Manege the previewing of changes
-    $effect(() => {
-        const preview = $fileChatEditionPreviewShowing;
-        const isThisMessage = preview?.chatId === $activeChat.id && preview?.outputMessage.id === message.id;
-
-        isDocumentManipulationShowing = isThisMessage && preview?.type === "document-manipulation";
-        isTasksManipulationShowing = isThisMessage && preview?.type === "tasks-manipulation";
-    });
 </script>
 
 <svelte:window onclick={onWindowClick} onkeydown={onWindowKeydown} />
@@ -359,9 +411,11 @@
                         <span>Answering...</span>
                     </div>
                 {:else}
-                    <EditorContent 
-                        editor={$answerEditor}
-                    />
+                    <div {@attach linkClickDelegation}>
+                        <EditorContent 
+                            editor={$answerEditor}
+                        />
+                    </div>
                 {/if}
             </div>
 
