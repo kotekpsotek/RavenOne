@@ -999,7 +999,8 @@ export const rightSideStripeChat = (() => {
 
 			if (selectedModelForTab) {
 				return {
-					model: selectedModelForTab.model,
+					id: selectedModelForTab.model,
+					name: selectedModelForTab.model,
 					provider: selectedModelForTab.provider,
 					weight: 1
 				};
@@ -1007,14 +1008,16 @@ export const rightSideStripeChat = (() => {
 
 			if (selectedModelFromStore) {
 				return {
-					model: selectedModelFromStore.model,
+					id: selectedModelFromStore.model,
+					name: selectedModelFromStore.model,
 					provider: selectedModelFromStore.provider,
 					weight: 1
 				};
 			}
 
 			return {
-				model: "gpt-4o",
+				id: "gpt-5-mini",
+				name: "gpt-5-mini",
 				provider: "OpenAI",
 				weight: 1
 			};
@@ -1205,6 +1208,7 @@ export const rightSideStripeChat = (() => {
 				? titleCandidate.trim()
 				: `${CHAT_MODE_TRANSLATIONS[selectedMode]} chat`;
 			const createChatResult = await chatServiceConnectionLocal.emitCreateChat(chatTitle);
+
 			if (!createChatResult.success) {
 				setAlert("error", "Chat creation failed", createChatResult.reason ?? "Cannot create chat right now.");
 				return undefined;
@@ -1233,7 +1237,8 @@ export const rightSideStripeChat = (() => {
 
 			// Add chat tab
 			chatStripeTabsOfWorkspaceFile.update(tabs => {
-				return [...tabs, newChatTab];
+				const tabsWithoutActive = tabs.map(tab => ({ ...tab, isActive: false }));
+				return [...tabsWithoutActive, newChatTab];
 			});
 
 			// Keep list-view source in sync (loadedChatsOfWorkspaceFile).
@@ -1257,23 +1262,88 @@ export const rightSideStripeChat = (() => {
 		},
 		stopProcessing(chatId: string): boolean {
 			let wasUpdated = false;
+			const markMessageAsStopped = <T extends { isAnswering?: boolean; isStopped?: boolean; time: { startAt: Date; endAt?: Date } }>(message: T): T => {
+				return {
+					...message,
+					isAnswering: false,
+					isStopped: true,
+					time: {
+						...message.time,
+						endAt: new Date()
+					}
+				};
+			};
 
 			chatStripeTabsOfWorkspaceFile.updateChatTabById(chatId, (chatTab) => {
 				const nextMessages = [...chatTab.messages];
-				const userPrompt = nextMessages[nextMessages.length - 2];
-				const answer = nextMessages[nextMessages.length - 1];
+				let outputMessageIndex = -1;
+				let promptMessageIndex = -1;
 
-				if (userPrompt && userPrompt.messageType === "message-user-prompt") {
-					delete userPrompt.isAnswering;
-					userPrompt.time.endAt = new Date();
+				for (let messageIndex = nextMessages.length - 1; messageIndex >= 0; messageIndex -= 1) {
+					const message = nextMessages[messageIndex];
+					if (message.messageType === "message-user-output" && message.isAnswering) {
+						outputMessageIndex = messageIndex;
+						break;
+					}
 				}
 
-				if (answer && answer.messageType === "message-user-output") {
-					delete answer.isAnswering;
-					answer.time.endAt = new Date();
+				for (let messageIndex = nextMessages.length - 1; messageIndex >= 0; messageIndex -= 1) {
+					const message = nextMessages[messageIndex];
+					if (message.messageType === "message-user-prompt" && message.isAnswering) {
+						promptMessageIndex = messageIndex;
+						break;
+					}
+				}
+
+				if (outputMessageIndex >= 0) {
+					nextMessages[outputMessageIndex] = markMessageAsStopped(nextMessages[outputMessageIndex]);
+				}
+
+				if (promptMessageIndex >= 0) {
+					nextMessages[promptMessageIndex] = markMessageAsStopped(nextMessages[promptMessageIndex]);
+				}
+
+				if (outputMessageIndex < 0 && promptMessageIndex < 0) {
+					for (let messageIndex = nextMessages.length - 1; messageIndex >= 0; messageIndex -= 1) {
+						const message = nextMessages[messageIndex];
+						if (message.messageType !== "message-user-prompt") {
+							continue;
+						}
+
+						nextMessages[messageIndex] = markMessageAsStopped(message);
+						break;
+					}
 				}
 
 				wasUpdated = true;
+				return {
+					...chatTab,
+					messages: nextMessages
+				};
+			});
+
+			loadedChatsOfWorkspaceFile.updateChatById(chatId, (chatTab) => {
+				const nextMessages = [...chatTab.messages];
+				let wasChatUpdated = false;
+
+				for (let messageIndex = nextMessages.length - 1; messageIndex >= 0; messageIndex -= 1) {
+					const message = nextMessages[messageIndex];
+					if (message.messageType !== "message-user-prompt" && message.messageType !== "message-user-output") {
+						continue;
+					}
+
+					if (!message.isAnswering && !message.isStopped) {
+						continue;
+					}
+
+					nextMessages[messageIndex] = markMessageAsStopped(message as typeof message);
+					wasChatUpdated = true;
+				}
+
+				if (!wasChatUpdated) {
+					return chatTab;
+				}
+
 				return {
 					...chatTab,
 					messages: nextMessages
@@ -1742,7 +1812,8 @@ if (browser) {
 		let previousScope = getCurrentChatScope();
 		const chatServiceConnectionLocal = get(chatServiceConnection);
 		if (!chatServiceConnectionLocal) {
-			throw("Cannot establish chat connection")
+			console.warn("Cannot establish chat connection");
+			return;
 		}
 
 		const leaveJoinedChats = (scope: ChatScope) => {

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import Icon from "@iconify/svelte";
-	import { activeChat, chatStripeTabsOfWorkspaceFile, editorAIChat, processingChatsOfWorkspaceFile, rightSideStripeChat } from "$lib/stores/aiRightSideChat"
+	import { activeChat, chatStripeTabsOfWorkspaceFile, editorAIChat, loadedChatsOfWorkspaceFile, processingChatsOfWorkspaceFile, rightSideStripeChat } from "$lib/stores/aiRightSideChat"
 
 	type TabDropPosition = "before" | "after";
 
@@ -255,7 +255,7 @@
 	}
 
 	function onSelectChatFromDropdown(chatId: string) {
-		onSelectChat(chatId);
+		chatStripeTabsOfWorkspaceFile.openChatTab(chatId);
 		isChatActionsDropdownOpen = false;
 		isSelectChatListOpen = false;
 		chatActionsDropdownPosition = null;
@@ -342,11 +342,11 @@
 
 					{#if isSelectChatListOpen}
 						<div class="mt-1 max-h-48 overflow-y-auto border-t border-base-300 pt-1">
-							{#if $chatStripeTabsOfWorkspaceFile.length}
-								{#each $chatStripeTabsOfWorkspaceFile as chat (chat.id)}
+							{#if $loadedChatsOfWorkspaceFile.length}
+								{#each $loadedChatsOfWorkspaceFile as chat (chat.id)}
 									<button
 										type="button"
-										class="btn btn-ghost btn-sm w-full justify-start {chat.isActive ? 'btn-active' : ''}"
+										class="btn btn-ghost btn-sm w-full justify-start {$activeChat?.id === chat.id ? 'btn-active' : ''}"
 										onclick={() => onSelectChatFromDropdown(chat.id)}
 									>
 										<span class="truncate">{chat.chatName}</span>

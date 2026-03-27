@@ -48,10 +48,56 @@ export class SocketIoChatService {
     connection: Socket | undefined;
     workspaceId: string = "";
     fileId: string = "";
+    private static readonly ACK_TIMEOUT_MS = 10000;
 
     private refreshScopeFromStores(): void {
         this.fileId = get(selectedFile)?.id ?? "";
         this.workspaceId = get(selectedWorkspace)?.id ?? "";
+    }
+
+    private emitWithAck<TResult>(
+        emit: (ack: (...ackArgs: unknown[]) => void) => void,
+        mapAckToResult: (...ackArgs: unknown[]) => TResult,
+        fallbackResult: TResult,
+        timeoutMs: number = SocketIoChatService.ACK_TIMEOUT_MS
+    ): Promise<TResult> {
+        return new Promise<TResult>(resolve => {
+            if (!this.connection) {
+                resolve(fallbackResult);
+                return;
+            }
+
+            let isResolved = false;
+            const timeoutId = setTimeout(() => {
+                if (isResolved) {
+                    return;
+                }
+
+                isResolved = true;
+                resolve(fallbackResult);
+            }, timeoutMs);
+
+            const ack = (...ackArgs: unknown[]) => {
+                if (isResolved) {
+                    return;
+                }
+
+                isResolved = true;
+                clearTimeout(timeoutId);
+                resolve(mapAckToResult(...ackArgs));
+            };
+
+            try {
+                emit(ack);
+            }
+            catch {
+                if (!isResolved) {
+                    isResolved = true;
+                    clearTimeout(timeoutId);
+                    resolve(fallbackResult);
+                }
+            }
+        });
     }
     
     constructor() {
@@ -60,9 +106,9 @@ export class SocketIoChatService {
             return
         }
 
-        const connectionUrl = env.PUBLIC_CHAT_SERVICE_URL?.trim();
+        const connectionUrl = env.PUBLIC_CHAT_SERVICE_URL?.trim() || PUBLIC_CHAT_SERVICE_URL?.trim();
         if (!connectionUrl) {
-            console.warn("PUBLIC_CHAT_SERVICE_URL is not configured; play-service connection may fail.");
+            console.warn("PUBLIC_CHAT_SERVICE_URL is not configured; chat-service connection may fail.");
         }
 
         this.connection = io(connectionUrl, {
@@ -85,139 +131,150 @@ export class SocketIoChatService {
     // Emitters
     emitJoinChat(chatId: string): Promise<boolean> {
         this.refreshScopeFromStores();
-        return new Promise<boolean>(res => {
-            this.connection?.emit(
+        return this.emitWithAck<boolean>(
+            ack => this.connection?.emit(
                 "joinChat",
                 this.workspaceId,
                 this.fileId,
                 chatId,
-                (status: boolean) => {
-                    res(status)      
-                }
-            );
-        });
+                (status: boolean) => ack(status)
+            ),
+            status => Boolean(status),
+            false
+        );
     }
 
     emitLeaveChat(chatId: string): Promise<boolean> {
         this.refreshScopeFromStores();
-        return new Promise<boolean>(res => {
-            this.connection?.emit(
+        return this.emitWithAck<boolean>(
+            ack => this.connection?.emit(
                 "leaveChat",
                 this.workspaceId,
                 this.fileId,
                 chatId,
-                (status: boolean) => {
-                    res(status)      
-                }
-            );
-        });
+                (status: boolean) => ack(status)
+            ),
+            status => Boolean(status),
+            false
+        );
     }
 
     emitAcceptProposal(chatId: string, messageOutputId: string, proposalType: keyof Pick<MessageOutput, "tasksListManipulation" | "documentManipulation">): Promise<boolean> {
         this.refreshScopeFromStores();
-        return new Promise<boolean>(res => {
-            this.connection?.emit(
+        return this.emitWithAck<boolean>(
+            ack => this.connection?.emit(
                 "accept-proposal",
                 this.workspaceId,
                 this.fileId,
                 chatId,
                 messageOutputId,
                 proposalType,
-                (status: boolean) => {
-                    res(status)      
-                }
-            );
-        });
+                (status: boolean) => ack(status)
+            ),
+            status => Boolean(status),
+            false
+        );
     }
 
     emitDeclineProposal(chatId: string, messageOutputId: string, proposalType: keyof Pick<MessageOutput, "tasksListManipulation" | "documentManipulation">): Promise<boolean> {
         this.refreshScopeFromStores();
-        return new Promise<boolean>(res => {
-            this.connection?.emit(
+        return this.emitWithAck<boolean>(
+            ack => this.connection?.emit(
                 "decline-proposal",
                 this.workspaceId,
                 this.fileId,
                 chatId,
                 messageOutputId,
                 proposalType,
-                (status: boolean) => {
-                    res(status)      
-                }
-            );
-        });
+                (status: boolean) => ack(status)
+            ),
+            status => Boolean(status),
+            false
+        );
     }
 
     emitCreateChat(chatName?: string): Promise<CreateChatResult> {
         this.refreshScopeFromStores();
-        return new Promise<CreateChatResult>(res => {
-            this.connection?.emit(
+        return this.emitWithAck<CreateChatResult>(
+            ack => this.connection?.emit(
                 "createChat",
                 this.workspaceId,
                 this.fileId,
                 chatName,
-                (success: boolean, chatId?: string, reason?: string) => {
-                    if (success && chatId) {
-                        res({
-                            success: true,
-                            chatId
-                        });
-                        return;
-                    }
-
-                    res({
-                        success: false,
-                        ...(reason ? { reason } : {})
-                    });
+                (success: boolean, chatId?: string, reason?: string) => ack(success, chatId, reason)
+            ),
+            (success, chatId, reason) => {
+                if (success && typeof chatId === "string" && chatId.trim().length > 0) {
+                    return {
+                        success: true,
+                        chatId
+                    };
                 }
-            );
-        });
+
+                return {
+                    success: false,
+                    ...(typeof reason === "string" && reason.trim().length > 0 ? { reason } : {})
+                };
+            },
+            {
+                success: false,
+                reason: "ack_timeout"
+            }
+        );
     }
 
     emitSendPrompt(chatId: string, message: MessageUserPrompt): Promise<SendPromptResult> {
         this.refreshScopeFromStores();
-        return new Promise(res => {
-            this.connection?.emit(
+        return this.emitWithAck<SendPromptResult>(
+            ack => this.connection?.emit(
                 "prompt",
                 this.workspaceId,
                 this.fileId,
                 chatId,
                 message,
-                (success: boolean, idPromptProcessing?: string | undefined, outputMessage?: MessageOutput, reason?: string) => {
-                    if (!success) {
-                        res({
-                            error: true,
-                            reason: reason ?? "not_specified"
-                        });
-                    }
-                    else {
-                        res({
-                            success: true,
-                            idPromptProcessing,
-                            outputMessage: outputMessage
-                        });
-                    }
+                (success: boolean, idPromptProcessing?: string | undefined, outputMessage?: MessageOutput, reason?: string) => ack(success, idPromptProcessing, outputMessage, reason)
+            ),
+            (success, idPromptProcessing, outputMessage, reason) => {
+                if (!success) {
+                    return {
+                        error: true,
+                        reason: (typeof reason === "string" && reason.trim().length > 0) ? reason : "not_specified"
+                    };
                 }
-            );
-        });
+
+                return {
+                    success: true,
+                    ...(typeof idPromptProcessing === "string" ? { idPromptProcessing } : {}),
+                    ...(outputMessage ? { outputMessage: outputMessage as MessageOutput } : {})
+                };
+            },
+            {
+                error: true,
+                reason: "ack_timeout"
+            }
+        );
     }
 
     emitStopPrompt(chatId: string, promptProcessId: string): Promise<StopPromptResult> {
         this.refreshScopeFromStores();
-        return new Promise(res => {
-            this.connection?.emit(
+        return this.emitWithAck<StopPromptResult>(
+            ack => this.connection?.emit(
                 "stopPrompt",
                 this.workspaceId,
                 this.fileId,
                 chatId,
                 promptProcessId,
-                (success: boolean, reason?: string) => {
-                    res({
-                        success,
-                        reason
-                    });
-                }
-            );
-        });
+                (success: boolean, reason?: string) => ack(success, reason)
+            ),
+            (success, reason) => ({
+                success: Boolean(success),
+                ...(typeof reason === "string" ? { reason } : {})
+            }),
+            {
+                success: false,
+                reason: "ack_timeout"
+            }
+        );
     }
 
     // Listeners

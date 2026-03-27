@@ -46,6 +46,8 @@
         const modelNameFromTarget = target?.value;
         const modelNameFromDetail = (ev as CustomEvent<string | undefined>).detail;
         const nextModelKey = modelNameFromTarget ?? modelNameFromDetail ?? get(selectedModelKey);
+        
+        selectedModelKey.set(nextModelKey);
         ensureModelWeight(nextModelKey);
     }
 </script>

@@ -32,6 +32,7 @@
     import { onMount, tick } from "svelte";
     import UserPrompt from "./bubbles/UserPrompt.svelte";
     import AIResponse from "./bubbles/AIResponse.svelte";
+    import { waitMs } from "@ravenlens/shared/utils";
 
     let {
         isModeSelectingTrayOpen = $bindable(false),
@@ -62,6 +63,7 @@
     const selectedMCPServerNames = writable<string[]>([]);
     
     let textContent = $state("");
+    let lastPromptRestoredChatId = $state<string | null>(null);
     let isSelectedTextPreviewOpen = $state(true);
     let mouseIsOnPreviewSelectedText = $state<{ from: number; to: number } | null>(null);
     let composerResetKey = $state(0);
@@ -76,6 +78,10 @@
     let isMCPSpecificationAvailableForWorkspace = $derived(getMCPServersList(downloadMCPServersSpecification).length > 0)
     let selectedFileContextPayload = $state<ContextSpecificationPayload>(createEmptyContextPayload());
     let contextModalSelectedChatId = $state<string | null>(null);
+    let lastSyncedActiveChatIdForModel = $state<string | null>(null);
+    let isChatHistoryPinnedToBottom = true;
+    let lastAutoScrollChatId: string | null = null;
+    let lastAutoScrollSignature: string | null = null;
     let isActiveChatProcessing = $derived(Boolean($activeChat?.id && $processingChatsOfWorkspaceFile[$activeChat.id]));
         
     let chatConversations = $derived($activeChat ? getConversationEntries($activeChat) : []);
@@ -87,7 +93,7 @@
             return;
         }
 
-        chatHistoryElement.style.paddingBottom = `${bottomInteractions.clientHeight}px`;
+        chatHistoryElement.style.setProperty('--chat-history-bottom-padding', `${bottomInteractions.clientHeight}px`);
     }
     
     function isPromptMessage(message: ChatMessage): message is ChatPromptMessage {
@@ -217,6 +223,15 @@
 
     function areStringArraysEqual(left: string[], right: string[]): boolean {
         return left.length === right.length && left.every((item, itemIndex) => item === right[itemIndex]);
+    }
+
+    function isChatHistoryNearBottom(): boolean {
+        if (!chatHistoryElement) {
+            return true;
+        }
+
+        const distanceFromBottom = chatHistoryElement.scrollHeight - chatHistoryElement.scrollTop - chatHistoryElement.clientHeight;
+        return distanceFromBottom <= 24;
     }
 
     // Helpers
@@ -351,6 +366,17 @@
         }
     }
 
+    function onComposerKeydown(e: KeyboardEvent) {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+            e.preventDefault();
+            const hasText = textContent.trim().length > 0;
+            const hasSelectedRanges = ($editorAIChat.selectedTextRanges?.length ?? 0) > 0;
+            if (hasText || hasSelectedRanges) {
+                void onSendMessage();
+            }
+        }
+    }
+
     async function onSendMessage() {
         if (!isMessagingActive) {
             return;
@@ -388,6 +414,12 @@
         editorAIChat.clearSelectedText();
         displayContextForMessages.set([]);
         isSelectedTextPreviewOpen = true;
+
+        await waitMs(50);
+        if (chatHistoryElement) {
+            chatHistoryElement.scrollTo({ top: chatHistoryElement.scrollHeight + 500, behavior: 'smooth' });
+        }
+        isChatHistoryPinnedToBottom = true;
 
         const sendResult = await chatServiceConnection.emitSendPrompt(chatId, promptMessage);
         if ("error" in sendResult) {
@@ -496,19 +528,31 @@
         }
     }
 
+    function onChatHistoryScroll() {
+        isChatHistoryPinnedToBottom = isChatHistoryNearBottom();
+    }
+
     // Effects
     $effect(() => {
         rightSideStripeChat.setLoading($isLoadedChatsOfWorkspaceFileLoading);
     });
 
     $effect(() => {
-        const activeChatLocal = $activeChat;
-        if (!activeChatLocal) {
+        const activeChatId = $activeChat?.id;
+        if (!activeChatId) {
+            lastPromptRestoredChatId = null;
             textContent = "";
             return;
         }
 
-        const savedPrompt = ChatTabPromptAreaSaving.getPrompt(activeChatLocal.id);
+        // Restore draft only when switching chat tabs, not on every tab object update.
+        if (lastPromptRestoredChatId === activeChatId) {
+            return;
+        }
+
+        lastPromptRestoredChatId = activeChatId;
+
+        const savedPrompt = ChatTabPromptAreaSaving.getPrompt(activeChatId);
         textContent = savedPrompt ?? "";
     });
 
@@ -521,6 +565,7 @@
         }
 
         if (!activeChatLocal) {
+            lastSyncedActiveChatIdForModel = null;
             selectedFileContextPayload = createEmptyContextPayload();
             selectedMCPServerNames.set([]);
             editorAIChat.setTextFieldMode("regular-ask");
@@ -544,21 +589,31 @@
             selectedMCPServerNames.set(activeMCPServerNames);
         }
 
-        if (activeChatLocal.selectedModel) {
-            const modelFromSelection = avaiableModels.find((model) => {
-                return model.model === activeChatLocal.selectedModel?.model
-                    && model.provider === activeChatLocal.selectedModel?.provider;
-            }) ?? avaiableModels.find((model) => model.model === activeChatLocal.selectedModel?.model);
+        if (lastSyncedActiveChatIdForModel === activeChatLocal.id) {
+            return;
+        }
 
-            if (modelFromSelection) {
-                if (!isSameTabModel(cloneModelForTab($selectedModel), cloneModelForTab(modelFromSelection))) {
-                    selectedModel.set(modelFromSelection);
-                }
+        lastSyncedActiveChatIdForModel = activeChatLocal.id;
 
-                if ($selectedModelKey !== modelFromSelection.model) {
-                    selectedModelKey.set(modelFromSelection.model);
-                }
-            }
+        if (!activeChatLocal.selectedModel) {
+            return;
+        }
+
+        const modelFromSelection = avaiableModels.find((model) => {
+            return model.model === activeChatLocal.selectedModel?.model
+                && model.provider === activeChatLocal.selectedModel?.provider;
+        }) ?? avaiableModels.find((model) => model.model === activeChatLocal.selectedModel?.model);
+
+        if (!modelFromSelection) {
+            return;
+        }
+
+        if (!isSameTabModel(cloneModelForTab($selectedModel), cloneModelForTab(modelFromSelection))) {
+            selectedModel.set(modelFromSelection);
+        }
+
+        if ($selectedModelKey !== modelFromSelection.model) {
+            selectedModelKey.set(modelFromSelection.model);
         }
     });
 
@@ -632,13 +687,43 @@
     });
 
     $effect(() => {
-        // Has to be to detect loading finish to scroll once chat stop loading
-        $rightSideStripeChat.isLoading;
+        const activeChatLocal = $activeChat;
+        const messageList = activeChatLocal?.messages ?? [];
+        const lastMessage = messageList.length > 0 ? messageList[messageList.length - 1] : undefined;
+        const autoScrollSignature = `${activeChatLocal?.id ?? "none"}:${messageList.length}:${lastMessage?.id ?? "none"}:${$rightSideStripeChat.isLoading ? "loading" : "ready"}`;
+        const isChatSwitch = lastAutoScrollChatId !== activeChatLocal?.id;
+
+        if (isChatSwitch) {
+            lastAutoScrollChatId = activeChatLocal?.id ?? null;
+            isChatHistoryPinnedToBottom = true;
+            lastAutoScrollSignature = null;
+        }
+
+        if (lastAutoScrollSignature === autoScrollSignature) {
+            return;
+        }
+
+        lastAutoScrollSignature = autoScrollSignature;
+
+        if (!activeChatLocal?.id) {
+            isChatHistoryPinnedToBottom = true;
+            lastAutoScrollChatId = null;
+            lastAutoScrollSignature = null;
+            return;
+        }
+
+        if (!isChatHistoryPinnedToBottom && !isChatSwitch && !isChatHistoryNearBottom()) {
+            return;
+        }
         
-        // Auto-scroll chat history to bottom when active chat or messages change
+        // Auto-scroll only when the user is already near the bottom, or when switching chats.
         (async () => {
             await tick();
             if (!chatHistoryElement) return;
+
+            if (!isChatSwitch && !isChatHistoryNearBottom()) {
+                return;
+            }
 
             // Only scroll when overflow present
             if (chatHistoryElement.scrollHeight <= chatHistoryElement.clientHeight) return;
@@ -707,6 +792,7 @@
     id="ai-chat-history"
     class="flex-1 min-h-0 overflow-y-auto pr-1"
     bind:this={chatHistoryElement}
+    onscroll={onChatHistoryScroll}
 >
     {#if $rightSideStripeChat.isLoading}
         <div class="flex h-full w-full items-center justify-center text-base-content/60 gap-2">
@@ -860,6 +946,7 @@
                     placeholder={$editorAIChat.selectedTextRanges?.length ? "Type order to context..." : "Type subject..."}
                     bind:value={textContent}
                     oninput={onInputPrompt}
+                    onkeydown={onComposerKeydown}
                     bind:this={composerTextareaElement}
                 ></textarea>
             {/key}
@@ -971,6 +1058,7 @@
     #ai-chat-history {
         max-height: 100%;
         scrollbar-gutter: stable;
+        padding-bottom: var(--chat-history-bottom-padding, 0px);
     }
 
     #bottom-interactions {

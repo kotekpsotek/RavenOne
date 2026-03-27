@@ -77,7 +77,6 @@
         const newChatId = await rightSideStripeChat.createChat(nextMode, `${editorAIChat.getTextFieldModeTranslation(nextMode)} chat`);
 
         if (newChatId && isChatsListSectionOpen) {
-            chatStripeTabsOfWorkspaceFile.setActive(newChatId);
             isChatsListSectionOpen = false;
         }
     }

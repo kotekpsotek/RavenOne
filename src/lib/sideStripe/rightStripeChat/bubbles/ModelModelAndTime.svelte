@@ -5,6 +5,7 @@
     import type { AI } from "@ravenlens/shared"
     import type { AIChatModel, MessageUserPrompt } from "@ravenlens/shared/chat-ai/backend/schema";
     import { getTime } from "./utils";
+    import type { ProviderID } from "../../../../../../../packages/shared/dist/ai";
 
     const {
         aiChatMode,
@@ -18,6 +19,7 @@
         isAnswering?: boolean;
     } = $props();
 
+    let provider = $derived(typeof model.provider === "object" ? model.provider.provider as ProviderID : model.provider);
     let currentTime = $state(Date.now());
 
     $effect(() => {
@@ -76,14 +78,14 @@
 
         <button 
             class="flex gap-1 items-center justify-center"
-            title="{model.provider} {model.model}"
+            title="{provider} {model.name}"
         >
             <Icon
-                icon={getProviderIcon(model.provider)}
+                icon={getProviderIcon(provider)}
             />
             
             <span>
-                {model.model}
+                {model.name}
             </span>
         </button>
     </div>
