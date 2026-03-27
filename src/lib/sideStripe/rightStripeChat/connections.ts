@@ -235,6 +235,8 @@ export class SocketIoChatService {
                 (success: boolean, idPromptProcessing?: string | undefined, outputMessage?: MessageOutput, reason?: string) => ack(success, idPromptProcessing, outputMessage, reason)
             ),
             (success, idPromptProcessing, outputMessage, reason) => {
+                console.log('Retrived', success, idPromptProcessing, outputMessage, reason);
+                
                 if (!success) {
                     return {
                         error: true,
@@ -302,16 +304,18 @@ export class SocketIoChatService {
         this.connection?.on("prompt-playing", listener);
     }
     
+    /** Handles either send to other room members than emitted and for emitted */
     onPromptError(listener: (promptId: string | false, outputMessageId: string) => void) {
         this.connection?.on("prompt-error", listener);
+    }
+    
+    /** Handles either send to other room members than emitted and for emitted */
+    onPromptSuccess(listener: (outcomeMessage: AIAgentOutputMessage, outputMessageId: string) => void) {
+        this.connection?.on("prompt-success", listener);
     }
 
     onStopPlaying(listener: (member: ChatMember, fileId: string, chatId: string, promptProcessId: string) => void) {
         this.connection?.on("stop-playing", listener);
-    }
-    
-    onPromptSuccess(listener: (outcomeMessage: AIAgentOutputMessage, outputMessageId: string) => void) {
-        this.connection?.on("prompt-success", listener);
     }
 }
 

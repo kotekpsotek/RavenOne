@@ -1260,13 +1260,13 @@ export const rightSideStripeChat = (() => {
 		removeChat(chatId: string): boolean {
 			return chatStripeTabsOfWorkspaceFile.removeTab(chatId);
 		},
-		stopProcessing(chatId: string): boolean {
+		stopProcessing(chatId: string, markAsStopped: boolean = true): boolean {
 			let wasUpdated = false;
 			const markMessageAsStopped = <T extends { isAnswering?: boolean; isStopped?: boolean; time: { startAt: Date; endAt?: Date } }>(message: T): T => {
 				return {
 					...message,
 					isAnswering: false,
-					isStopped: true,
+					isStopped: markAsStopped,
 					time: {
 						...message.time,
 						endAt: new Date()
@@ -1763,6 +1763,23 @@ const updateCurrentUserPresence = (chatId: string, isActive: boolean) => {
 	}, isActive);
 };
 
+const updateChatNameInStores = (chatId: string, chatName: string) => {
+	const normalizedChatName = chatName.trim();
+	if (!normalizedChatName.length) {
+		return;
+	}
+
+	loadedChatsOfWorkspaceFile.updateChatById(chatId, chat => ({
+		...chat,
+		chatName: normalizedChatName
+	}));
+
+	chatStripeTabsOfWorkspaceFile.updateChatTabById(chatId, chatTab => ({
+		...chatTab,
+		chatName: normalizedChatName
+	}));
+};
+
 const findChatIdByOutputMessageId = (outputMessageId: string): string | undefined => {
 	if (!outputMessageId.trim().length) {
 		return undefined;
@@ -1995,8 +2012,34 @@ if (browser) {
 				return;
 			}
 
-			rightSideStripeChat.upsertOutputMessage(chatId, toOutputMessageFromEvent(outcomeMessage, outputMessageId));
-			rightSideStripeChat.stopProcessing(chatId);
+			// Adds updates the message
+			const chatOutcome = get(chatStripeTabsOfWorkspaceFile).find(chat => chat.id === chatId);
+			const chatOutcomeMessage = chatOutcome?.messages.find(message => message.id === outputMessageId) as MessageOutput;
+			if (!chatOutcome) {
+				alert("Cannot find outcome message to setup answer. It's not initialized");
+				return;
+			}
+			
+			/// ... Prepares ready message
+			const readyMessage = {
+				...chatOutcomeMessage,
+				messageContentHTML: outcomeMessage.outputMessageContentHTML,
+				time: {
+					startAt: new Date(outcomeMessage.time.startDate ?? chatOutcomeMessage.time.startAt),
+					endAt: new Date(outcomeMessage.time.endDate ?? chatOutcomeMessage.time.endAt)
+				}
+			} satisfies MessageOutput;
+
+			/// ... Prepares chat name
+			if (outcomeMessage.chatName) {
+				updateChatNameInStores(chatId, outcomeMessage.chatName);
+			}
+
+			/// ... Keeps the updation to db
+			rightSideStripeChat.upsertOutputMessage(chatId, toOutputMessageFromEvent(readyMessage, outputMessageId));
+
+			// Stops prompt processing
+			rightSideStripeChat.stopProcessing(chatId, false);
 		});
 
 		syncJoinedChatRooms();

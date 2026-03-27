@@ -358,7 +358,7 @@
 
             const isStillProcessing = Boolean((backendChat as { promptIdProcessing?: unknown }).promptIdProcessing);
             if (!outputMessage.isAnswering || outputMessage.time.endAt || !isStillProcessing) {
-                rightSideStripeChat.stopProcessing(chatId);
+                rightSideStripeChat.stopProcessing(chatId, false);
                 return;
             }
 
@@ -422,6 +422,8 @@
         isChatHistoryPinnedToBottom = true;
 
         const sendResult = await chatServiceConnection.emitSendPrompt(chatId, promptMessage);
+        console.log('Send result', sendResult)
+
         if ("error" in sendResult) {
             setAlert("error", "Prompt failed", `Chat service rejected the prompt: ${sendResult.reason}`);
             rightSideStripeChat.markOutputMessageAsError(chatId, undefined, sendResult.reason);
@@ -437,6 +439,7 @@
             rightSideStripeChat.upsertOutputMessage(chatId, sendResult.outputMessage);
 
             if ($selectedFile?.id && $selectedWorkspace?.id) {
+                console.log('Outcome')
                 void syncPromptOutputFromBackend(chatId, sendResult.outputMessage.id, {
                     fileId: $selectedFile.id,
                     workspaceId: $selectedWorkspace.id

@@ -270,6 +270,11 @@
                         <span class="font-semibold">Error:</span>
                         Cannot show message because of error while processing
                     </p>
+                {:else if isAnswering}
+                    <div class="flex gap-2 items-center">
+                        <span class="loading loading-spinner loading-sm"></span>
+                        <span>Answering...</span>
+                    </div>
                 {:else}
                     <EditorContent 
                         editor={$answerEditor}
