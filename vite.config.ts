@@ -27,7 +27,7 @@ export default defineConfig(({ mode }) => {
 				'@codemirror/search'
 			],
 			alias: {
-				'svelte-tiptap': path.resolve(process.cwd(), 'node_modules/svelte-tiptap'),
+				'svelte-tiptap': path.resolve(process.cwd(), '../../node_modules/svelte-tiptap/dist/index.js'),
 				'@buddhima_a/tiptap-diff-suggestions': path.resolve(
 					process.cwd(),
 					'../../node_modules/@buddhima_a/tiptap-diff-suggestions/dist/index.esm.js'

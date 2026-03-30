@@ -21,7 +21,7 @@
     import { callAcceptDocumentManipulation, callAcceptTasksManipulation, callDeclineDocumentManipulation, callDeclineTasksManipulation } from "../proposals/utilFunctions";
     import { isPointsStripeOpen } from "$lib/stores/selectedSideStripes";
     import { copyTextToClipboard, htmlToPlainText } from "./copyText";
-    import { Link, normalizeLinkValue } from "$lib/editorComponents/LinkMark";
+    import { normalizeLinkValue } from "$lib/editorComponents/LinkMark";
 
     const {
         message = $bindable()
@@ -42,6 +42,15 @@
 
     let isMessageOpen = $state(true);
     let isProgressTrayOpen = $state(true);
+    const liveReasoningLimit = 8;
+    const visibleReasoning = $derived.by(() => {
+        if (!isAnswering) {
+            return reasoning;
+        }
+
+        return reasoning.slice(-liveReasoningLimit);
+    });
+    const hiddenReasoningCount = $derived(Math.max(0, reasoning.length - visibleReasoning.length));
 
     // Defined whetther the preview of changes is showing for the selected element
     let contextMenu = $state<{ x: number; y: number } | null>(null);
@@ -54,7 +63,7 @@
     const answerEditor = createEditor({
         content: "<p></p>",
         editable: false,
-        extensions: [StarterKit, Link]
+        extensions: [StarterKit]
     });
     let lastAppliedContent = "";
 
@@ -342,7 +351,7 @@
 
         {#if isMessageOpen}
             <!-- Show once reason steps are defined for the action -->
-            {#if reasoning.length && !isError}
+            {#if visibleReasoning.length && !isError}
                 <div 
                     class="progress-outcome border border-base-300 rounded-md bg-base-200 p-2"
                 >
@@ -362,36 +371,66 @@
 
                     {#if isProgressTrayOpen}
                         <div class="content max-h-[200px] overflow-y-auto">
-                            <Timeline style="padding: 0;">
-                                {#each reasoning as reason, index (index)}
-                                    {@const meta = getReasoningPresentation(reason)}
-                                    <TimelineItem position="right">
-                                        <TimelineOppositeContent slot="opposite-content" style="display: none !important; width: 0; flex: 0; margin: 0; padding: 0;" />
-                                        <TimelineSeparator>
-                                            <TimelineDot style="background: none; width: 35px; height: 35px; border-color: var(--color-base-200);">
-                                                <div class="flex items-center justify-center w-[25px] h-[25px] rounded-full bg-base-100 text-base-content shadow-sm">
-                                                    <Icon icon={meta.icon} class="text-[15px]" />
-                                                </div>
-                                            </TimelineDot>
-                                            <TimelineConnector />
-                                        </TimelineSeparator>
-                                        <TimelineContent>
-                                            <h5 class="font-semibold">{meta.name}</h5>
-                                            <div class="timeline-content-details prose-xs">
+                            {#if isAnswering}
+                                <div class="flex flex-col gap-3 py-2">
+                                    {#if hiddenReasoningCount > 0}
+                                        <p class="text-xs opacity-60">Showing the latest {visibleReasoning.length} updates while the model is responding.</p>
+                                    {/if}
+
+                                    {#each visibleReasoning as reason, index (index)}
+                                        {@const meta = getReasoningPresentation(reason)}
+                                        <div class="live-progress-item rounded-md border border-base-300 bg-base-100 px-3 py-2">
+                                            <div class="flex items-center gap-2">
+                                                <Icon icon={meta.icon} class="text-[15px] shrink-0" />
+                                                <h5 class="font-semibold">{meta.name}</h5>
+                                            </div>
+
+                                            <div class="mt-1 text-sm opacity-80">
                                                 {#if meta.thoughts}
                                                     <ol class="list-decimal pl-4 space-y-1">
                                                         {#each meta.thoughts as thought (thought)}
-                                                            <li class="opacity-80">{thought}</li>
+                                                            <li>{thought}</li>
                                                         {/each}
                                                     </ol>
                                                 {:else}
                                                     <p class="whitespace-pre-wrap">{meta.description}</p>
                                                 {/if}
                                             </div>
-                                        </TimelineContent>
-                                    </TimelineItem>
-                                {/each}
-                            </Timeline>
+                                        </div>
+                                    {/each}
+                                </div>
+                            {:else}
+                                <Timeline style="padding: 0;">
+                                    {#each visibleReasoning as reason, index (index)}
+                                        {@const meta = getReasoningPresentation(reason)}
+                                        <TimelineItem position="right">
+                                            <TimelineOppositeContent slot="opposite-content" style="display: none !important; width: 0; flex: 0; margin: 0; padding: 0;" />
+                                            <TimelineSeparator>
+                                                <TimelineDot style="background: none; width: 35px; height: 35px; border-color: var(--color-base-200);">
+                                                    <div class="flex items-center justify-center w-[25px] h-[25px] rounded-full bg-base-100 text-base-content shadow-sm">
+                                                        <Icon icon={meta.icon} class="text-[15px]" />
+                                                    </div>
+                                                </TimelineDot>
+                                                <TimelineConnector />
+                                            </TimelineSeparator>
+                                            <TimelineContent>
+                                                <h5 class="font-semibold">{meta.name}</h5>
+                                                <div class="timeline-content-details prose-xs">
+                                                    {#if meta.thoughts}
+                                                        <ol class="list-decimal pl-4 space-y-1">
+                                                            {#each meta.thoughts as thought (thought)}
+                                                                <li class="opacity-80">{thought}</li>
+                                                            {/each}
+                                                        </ol>
+                                                    {:else}
+                                                        <p class="whitespace-pre-wrap">{meta.description}</p>
+                                                    {/if}
+                                                </div>
+                                            </TimelineContent>
+                                        </TimelineItem>
+                                    {/each}
+                                </Timeline>
+                            {/if}
                         </div>
                     {/if}
                 </div>

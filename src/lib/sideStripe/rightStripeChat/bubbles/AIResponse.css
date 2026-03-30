@@ -30,3 +30,14 @@
     flex: 1 !important;
 }
 
+.message-output .tiptap a {
+    color: rgb(14 165 233) !important;
+    text-decoration-line: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+}
+
+.message-output .ProseMirror a:hover {
+    color: rgb(56 189 248);
+}
+

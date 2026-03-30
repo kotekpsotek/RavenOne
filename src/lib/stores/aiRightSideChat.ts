@@ -83,6 +83,7 @@ export const processingChatsOfWorkspaceFile = (() => {
 				...state,
 				[chatId]: {
 					promptId: promptMessageId,
+					promptMessageId,
 					initializedByMember: {
 						userId,
 						socketId: userSocketId
@@ -1049,6 +1050,69 @@ interface AppendedPromptMessageResult {
 	promptMessage: MessageUserPrompt;
 };
 
+const REASONING_FLUSH_INTERVAL_MS = 80;
+const queuedReasoningByChatId = new Map<string, MessageOutput["reasoning"]>();
+let queuedReasoningFlushTimeout: ReturnType<typeof setTimeout> | undefined;
+
+const flushQueuedReasoningUpdates = (chatId?: string) => {
+	const updatesToApply = chatId
+		? (queuedReasoningByChatId.has(chatId) ? new Map([[chatId, queuedReasoningByChatId.get(chatId)!]]) : new Map<string, MessageOutput["reasoning"]>())
+		: new Map(queuedReasoningByChatId);
+
+	if (!updatesToApply.size) {
+		return;
+	}
+
+	for (const queuedChatId of updatesToApply.keys()) {
+		queuedReasoningByChatId.delete(queuedChatId);
+	}
+
+	if (queuedReasoningFlushTimeout && (chatId === undefined || queuedReasoningByChatId.size === 0)) {
+		clearTimeout(queuedReasoningFlushTimeout);
+		queuedReasoningFlushTimeout = undefined;
+	}
+
+	chatStripeTabsOfWorkspaceFile.update(chatTabs => {
+		return chatTabs.map(chatTab => {
+			const queuedReasoning = updatesToApply.get(chatTab.id);
+			if (!queuedReasoning?.length) {
+				return chatTab;
+			}
+
+			const nextMessages = [...chatTab.messages];
+			for (let messageIndex = nextMessages.length - 1; messageIndex >= 0; messageIndex -= 1) {
+				const message = nextMessages[messageIndex];
+				if (message.messageType !== "message-user-output" || !message.isAnswering) {
+					continue;
+				}
+
+				nextMessages[messageIndex] = {
+					...message,
+					reasoning: [...message.reasoning, ...queuedReasoning]
+				};
+
+				return {
+					...chatTab,
+					messages: nextMessages
+				};
+			}
+
+			return chatTab;
+		});
+	});
+};
+
+const scheduleQueuedReasoningFlush = () => {
+	if (queuedReasoningFlushTimeout) {
+		return;
+	}
+
+	queuedReasoningFlushTimeout = setTimeout(() => {
+		queuedReasoningFlushTimeout = undefined;
+		flushQueuedReasoningUpdates();
+	}, REASONING_FLUSH_INTERVAL_MS);
+};
+
 const toRightSideStripeState = (tabs: ChatTab[], isLoading: boolean): RightSideStripeChatState => {
 	const activeTab = getActiveTabFromState(tabs);
 
@@ -1207,31 +1271,15 @@ export const rightSideStripeChat = (() => {
 			});
 		},
 		appendReasoningToLastAnsweringOutput(chatId: string, reasoningPhase: MessageOutput["reasoning"][number]) {
-			chatStripeTabsOfWorkspaceFile.updateChatTabById(chatId, (chatTab) => {
-				const messages = this.getChatMessages(chatTab);
-				const nextMessages = [...messages];
-
-				for (let messageIndex = nextMessages.length - 1; messageIndex >= 0; messageIndex -= 1) {
-					const message = nextMessages[messageIndex];
-					if (message.messageType !== "message-user-output" || !message.isAnswering) {
-						continue;
-					}
-
-					nextMessages[messageIndex] = {
-						...message,
-						reasoning: [...message.reasoning, reasoningPhase]
-					};
-
-					return {
-						...chatTab,
-						messages: nextMessages
-					};
-				}
-
-				return chatTab;
-			});
+			const queuedReasoning = queuedReasoningByChatId.get(chatId) ?? [];
+			queuedReasoningByChatId.set(chatId, [...queuedReasoning, reasoningPhase]);
+			scheduleQueuedReasoningFlush();
+		},
+		flushQueuedReasoning(chatId?: string) {
+			flushQueuedReasoningUpdates(chatId);
 		},
 		markOutputMessageAsError(chatId: string, outputMessageId?: string, errorMessage: string = "Cannot show message because of error while processing") {
+			flushQueuedReasoningUpdates(chatId);
 			chatStripeTabsOfWorkspaceFile.updateChatTabById(chatId, (chatTab) => {
 				const messages = this.getChatMessages(chatTab);
 				let wasUpdated = false;
@@ -1367,6 +1415,7 @@ export const rightSideStripeChat = (() => {
 			return chatStripeTabsOfWorkspaceFile.removeTab(chatId);
 		},
 		stopProcessing(chatId: string, markAsStopped: boolean = true): boolean {
+			flushQueuedReasoningUpdates(chatId);
 			let wasUpdated = false;
 			const markMessageAsStopped = <T extends { isAnswering?: boolean; isStopped?: boolean; time: { startAt: Date; endAt?: Date } }>(message: T): T => {
 				return {
@@ -2170,7 +2219,7 @@ if (browser) {
 			setAlert("warning", "Attachment unsupported", `No configured model can process ${String(mediaType)} attachments.`);
 		});
 
-		chatServiceConnectionLocal.onPromptProgressMessage((chatId, messageContent) => {
+		chatServiceConnectionLocal.onPromptProgressMessage((chatId, messageContent) => {			
 			if (!isChatPresentInStores(chatId)) {
 				return;
 			}
@@ -2189,7 +2238,7 @@ if (browser) {
 			} as MessageOutput["reasoning"][number]);
 		});
 
-		chatServiceConnectionLocal.onPromptProgressTool((chatId, toolEvent) => {
+		chatServiceConnectionLocal.onPromptProgressTool((chatId, toolEvent) => {			
 			if (!isChatPresentInStores(chatId)) {
 				return;
 			}
@@ -2201,6 +2250,7 @@ if (browser) {
 			const normalizedToolEvent = toolEvent as {
 				toolName?: string;
 				params?: Record<string, unknown>;
+				input?: Record<string, unknown>;
 				isMCP?: boolean;
 			};
 
@@ -2208,17 +2258,18 @@ if (browser) {
 				phase: "tools-usage",
 				tools: [{
 					toolName: normalizedToolEvent.toolName ?? "tool",
-					params: normalizedToolEvent.params ?? {},
+					params: normalizedToolEvent.params ?? normalizedToolEvent.input ?? {},
 					...(typeof normalizedToolEvent.isMCP === "boolean" ? { isMCP: normalizedToolEvent.isMCP } : {})
 				}]
 			} as MessageOutput["reasoning"][number]);
 		});
 
-		chatServiceConnectionLocal.onPromptPlaying((chatId, promptId) => {
+		chatServiceConnectionLocal.onPromptPlaying((chatId, promptId, baseOutputMessage) => {
 			if (!isChatPresentInStores(chatId)) {
 				return;
 			}
 
+			rightSideStripeChat.upsertOutputMessage(chatId, baseOutputMessage);
 			processingChatsOfWorkspaceFile.setPromptId(chatId, promptId);
 		});
 
@@ -2230,6 +2281,8 @@ if (browser) {
 			if (!isChatActivelyProcessing(chatId, outputMessageId)) {
 				return;
 			}
+
+			rightSideStripeChat.flushQueuedReasoning(chatId);
 
 			// Mark message as stopped
 			rightSideStripeChat.markOutputMessageAsError(chatId, outputMessageId);
@@ -2248,10 +2301,14 @@ if (browser) {
 				return;
 			}
 
+			rightSideStripeChat.flushQueuedReasoning(chatId);
+
 			rightSideStripeChat.stopProcessing(chatId);
 		});
 
 		chatServiceConnectionLocal.onPromptSuccess((chatId, outcomeMessage, outputMessageId) => {
+			console.log('Prompt success', outcomeMessage);
+			
 			if (!isChatPresentInStores(chatId)) {
 				return;
 			}
@@ -2259,6 +2316,8 @@ if (browser) {
 			if (!isChatActivelyProcessing(chatId, outputMessageId)) {
 				return;
 			}
+
+			rightSideStripeChat.flushQueuedReasoning(chatId);
 
 			// Adds updates the message
 			const chatOutcome = get(chatStripeTabsOfWorkspaceFile).find(chat => chat.id === chatId);

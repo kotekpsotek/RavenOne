@@ -378,10 +378,29 @@
                 continue;
             }
 
-            rightSideStripeChat.upsertOutputMessage(chatId, outputMessage);
+            const localChat = get(chatStripeTabsOfWorkspaceFile).find(chat => chat.id === chatId);
+            const localOutputMessage = localChat?.messages.find(message => {
+                return message.messageType === "message-user-output" && message.id === outputMessageId;
+            }) as MessageOutput | undefined;
+
+            const isBackendMessageFinal = !outputMessage.isAnswering || Boolean(outputMessage.time.endAt) || Boolean(outputMessage.isError);
+
+            // If backend has more reasoning items than local copy, we must upsert
+            // so clients don't miss progress that was persisted before `prompt-playing` arrived.
+            const backendReasoningLen = Array.isArray(outputMessage.reasoning) ? outputMessage.reasoning.length : 0;
+            const localReasoningLen = localOutputMessage && Array.isArray(localOutputMessage.reasoning) ? localOutputMessage.reasoning.length : 0;
+            const backendHasMoreReasoning = backendReasoningLen > localReasoningLen;
+
+            if (!localOutputMessage || isBackendMessageFinal || backendHasMoreReasoning) {
+                rightSideStripeChat.upsertOutputMessage(chatId, outputMessage);
+            }
 
             const isStillProcessing = Boolean((backendChat as { promptIdProcessing?: unknown }).promptIdProcessing);
-            if (!outputMessage.isAnswering || outputMessage.time.endAt || !isStillProcessing) {
+            if (isBackendMessageFinal || !isStillProcessing) {
+                if (!localOutputMessage || isBackendMessageFinal) {
+                    rightSideStripeChat.upsertOutputMessage(chatId, outputMessage);
+                }
+
                 rightSideStripeChat.stopProcessing(chatId, false);
                 return;
             }
