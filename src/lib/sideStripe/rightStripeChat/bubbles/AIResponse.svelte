@@ -16,7 +16,7 @@
     import "./AIResponse.css";
     import ModelModelAndTime from "./ModelModelAndTime.svelte";
     import { alertState } from "$lib/utils/alert";
-    import { isCurrentUserSelectedFileEditor } from "$lib/stores/collaboration";
+    import { isUserDecisionPermitted } from "../proposals/permission";
     import { activeChat, fileChatEditionPreviewShowing } from "$lib/stores/aiRightSideChat";
     import { callAcceptDocumentManipulation, callAcceptTasksManipulation, callDeclineDocumentManipulation, callDeclineTasksManipulation } from "../proposals/utilFunctions";
     import { getList } from "../proposals/SpawnedListProposal.util";
@@ -291,7 +291,7 @@
                         >
                             <button
                                 class="btn btn-sm btn-outline btn-success"
-                                disabled={!$isCurrentUserSelectedFileEditor}
+                                disabled={!$isUserDecisionPermitted}
                                 onclick={version === "tasks"
                                     ? acceptTasksAnswerHandler
                                     : acceptDocumentAnswerHandler}
@@ -302,7 +302,7 @@
 
                             <button
                                 class="btn btn-sm btn-outline btn-error"
-                                disabled={!$isCurrentUserSelectedFileEditor}
+                                disabled={!$isUserDecisionPermitted}
                                 onclick={declineAnswerHandler(message)}
                             >
                                 <Icon icon=""/>

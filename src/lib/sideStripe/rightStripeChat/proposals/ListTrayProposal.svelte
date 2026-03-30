@@ -7,7 +7,7 @@
     import type { Readable } from "svelte/store";
     import ListTray from "$lib/ListTray.svelte";
     import Icon from "@iconify/svelte";
-    import { isCurrentUserSelectedFileEditor } from "$lib/stores/collaboration";
+    import { isUserDecisionPermitted } from "./permission";
 
     let {
         canEditWorkspaceContent
@@ -39,7 +39,7 @@
                     <button
                         class="btn btn-sm btn-outline btn-success"
                         title="Accept new document proposition"
-                        disabled={!$isCurrentUserSelectedFileEditor}
+                        disabled={!$isUserDecisionPermitted}
                         onclick={callAcceptTasksManipulation($fileChatEditionPreviewShowing?.outputMessage!, previewProposedLists)}
                     >
                         Accept
@@ -47,7 +47,7 @@
                     <button
                         class="btn btn-sm btn-outline btn-error"
                         title="Decline new document proposition"
-                        disabled={!$isCurrentUserSelectedFileEditor}
+                        disabled={!$isUserDecisionPermitted}
                         onclick={callDeclineTasksManipulation($fileChatEditionPreviewShowing?.outputMessage!)}
                     >
                         Decline
