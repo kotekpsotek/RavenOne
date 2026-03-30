@@ -855,6 +855,7 @@
             </div>
         {:else if chatConversations.length}
             <div class="flex flex-col gap-16 pb-1 p-4 pb-10">
+                {@debug $activeChat}
                 {#each $activeChat.messages as message (message)}
                     {#if message.messageType === "message-user-prompt"}
                         <UserPrompt 

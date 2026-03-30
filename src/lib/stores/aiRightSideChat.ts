@@ -2105,15 +2105,33 @@ if (browser) {
 	queueMicrotask(() => {
 		const joinedChatIds = new Set<string>();
 		let previousScope = getCurrentChatScope();
+		let previousDesiredRoomsSignature = "";
 		const chatServiceConnectionLocal = get(chatServiceConnection);
 		if (!chatServiceConnectionLocal) {
 			console.warn("Cannot establish chat connection");
 			return;
 		}
 
+		const getOpenChatIdsForScope = (scope: ChatScope): string[] => {
+			return get(chatStripeTabsOfWorkspaceFile)
+				.filter(chatTab => chatTab.fileId === scope.fileId && chatTab.workspaceId === scope.workspaceId)
+				.map(chatTab => chatTab.id)
+				.filter(chatId => chatId.trim().length > 0);
+		};
+
+		const getRoomsSignature = (scope?: ChatScope): string => {
+			if (!scope) {
+				return "";
+			}
+
+			const openChatIds = [...new Set(getOpenChatIdsForScope(scope))].sort();
+			return `${scope.workspaceId}:${scope.fileId}:${openChatIds.join(",")}`;
+		};
+
 		const leaveJoinedChats = (scope: ChatScope) => {
 			const chatIdsToLeave = [...joinedChatIds];
 			joinedChatIds.clear();
+			previousDesiredRoomsSignature = "";
 
 			for (const chatId of chatIdsToLeave) {
 				updateCurrentUserPresence(chatId, false);
@@ -2129,6 +2147,7 @@ if (browser) {
 					leaveJoinedChats(previousScope);
 				}
 
+				previousDesiredRoomsSignature = "";
 				previousScope = undefined;
 				return;
 			}
@@ -2139,10 +2158,15 @@ if (browser) {
 
 			previousScope = currentScope;
 
+			const nextDesiredRoomsSignature = getRoomsSignature(currentScope);
+			if (nextDesiredRoomsSignature === previousDesiredRoomsSignature) {
+				return;
+			}
+
+			previousDesiredRoomsSignature = nextDesiredRoomsSignature;
+
 			const openChatIds = new Set(
-				get(chatStripeTabsOfWorkspaceFile)
-					.filter(chatTab => chatTab.fileId === currentScope.fileId && chatTab.workspaceId === currentScope.workspaceId)
-					.map(chatTab => chatTab.id)
+				getOpenChatIdsForScope(currentScope)
 			);
 
 			for (const joinedChatId of [...joinedChatIds]) {

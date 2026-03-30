@@ -12,6 +12,9 @@ import { setAlert } from "$lib/utils/alert";
 import { get } from "svelte/store";
 import type { DocumentManipulation, MessageOutput } from "@ravenlens/shared/chat-ai/backend/schema";
 import { chatServiceConnection } from "../connections";
+import type { SpawnedList } from "../../../../../../../packages/shared/dist/types/file/file";
+import { selectedFile } from "$lib/stores/files";
+import { editor } from "$lib/stores/editor";
 
 function setupDocumentManipulationStatus(chatId: string, outputMessage: MessageOutput, status: DocumentManipulation["status"]) {
     chatStripeTabsOfWorkspaceFile.update(chats => {
@@ -55,12 +58,31 @@ export function callAcceptDocumentManipulation(outputMessage: MessageOutput) {
         // Set loading state
         loadingState.setLoadingState(true);
         
-        const success = await chatServiceConnection.emitAcceptProposal(activeChatState.id, outputMessage.id, "documentManipulation");
+        const success = await chatServiceConnection.emitAcceptProposal(activeChatState.id, outputMessage.id, "documentManipulation", outputMessage.documentManipulation);
         if (!success) {
             loadingState.setLoadingState(false);
             setAlert("error", "Proposal accept failed", "Cannot accept the document proposal right now.");
             return;
         }
+
+        // 1. Updates the selected file content
+        selectedFile.update(sf => {
+            // Setups next file content
+            const nextFileContent = outputMessage.documentManipulation?.newDocumentContentHTML ?? sf?.content ?? "<p></p>";
+
+            // Setups the file content to editor
+            editor.update(ed => {
+                ed?.commands.setContent(nextFileContent);
+                
+                return ed;
+            })
+            
+            // Returns updated $selectedFileContent
+            return {
+                ...sf!,
+                content: nextFileContent
+            }
+        });
     
         // 2. If backend returned success
         setupDocumentManipulationStatus(activeChatState.id, outputMessage, "accepted");
@@ -133,8 +155,13 @@ function setupTaskListManipulationState(chatId: string, outputMessage: MessageOu
     });
 }
 
-//
-export function callAcceptTasksManipulation(outputMessage: MessageOutput) {
+/**
+ * 
+ * @param outputMessage 
+ * @param allLists - is the set with added new lists/modified and old lists composed
+ * @returns 
+ */
+export function callAcceptTasksManipulation(outputMessage: MessageOutput, allLists: SpawnedList[]) {
     return async () => {
         const activeChatState = get(activeChat);
         if (!activeChatState?.id) {
@@ -144,12 +171,20 @@ export function callAcceptTasksManipulation(outputMessage: MessageOutput) {
         // Set loading state
         loadingState.setLoadingState(true);
 
-        const success = await chatServiceConnection.emitAcceptProposal(activeChatState.id, outputMessage.id, "tasksListManipulation");
+        const success = await chatServiceConnection.emitAcceptProposal(activeChatState.id, outputMessage.id, "tasksListManipulation", allLists);
         if (!success) {
             loadingState.setLoadingState(false);
             setAlert("error", "Proposal accept failed", "Cannot accept the task proposal right now.");
             return;
         }
+
+        // 1. Updates the selected file tasks list
+        selectedFile.update(sf => {
+            return {
+                ...sf!,
+                lists: allLists
+            }
+        });
 
         // 2. Update local state
         setupTaskListManipulationState(activeChatState.id, outputMessage, "accepted");

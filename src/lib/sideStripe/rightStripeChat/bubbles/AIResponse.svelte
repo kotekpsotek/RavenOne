@@ -19,6 +19,7 @@
     import { isCurrentUserSelectedFileEditor } from "$lib/stores/collaboration";
     import { activeChat, fileChatEditionPreviewShowing } from "$lib/stores/aiRightSideChat";
     import { callAcceptDocumentManipulation, callAcceptTasksManipulation, callDeclineDocumentManipulation, callDeclineTasksManipulation } from "../proposals/utilFunctions";
+    import { getList } from "../proposals/SpawnedListProposal.util";
     import { isPointsStripeOpen } from "$lib/stores/selectedSideStripes";
     import { copyTextToClipboard, htmlToPlainText } from "./copyText";
     import { normalizeLinkValue } from "$lib/editorComponents/LinkMark";
@@ -244,6 +245,12 @@
         else fileChatEditionPreviewShowing.unsetPreviewing();
     }
 
+        const taskProposalLists = $derived(
+            isTasksManipulationShowing && tasksListManipulation?.type === "task-manipulation"
+                ? getList(tasksListManipulation)
+                : []
+        );
+
 </script>
 
 <svelte:window onclick={onWindowClick} onkeydown={onWindowKeydown} />
@@ -255,8 +262,9 @@
     {@const handler = version === "document" ? onToggleDocumentManipulation : onToggleTasksManipulation}
 
     <!-- HANDLERS of manipluation -->
-    {@const acceptAnswerHandler = version === "document" ? callAcceptDocumentManipulation : callAcceptTasksManipulation}
     {@const declineAnswerHandler = version === "document" ? callDeclineDocumentManipulation : callDeclineTasksManipulation}
+    {@const acceptDocumentAnswerHandler = callAcceptDocumentManipulation(message)}
+    {@const acceptTasksAnswerHandler = callAcceptTasksManipulation(message, taskProposalLists)}
 
     <!-- LAYOUT -->
     <div class="p-2 bg-base-200 border border-base-300 rounded-lg">
@@ -284,7 +292,9 @@
                             <button
                                 class="btn btn-sm btn-outline btn-success"
                                 disabled={!$isCurrentUserSelectedFileEditor}
-                                onclick={acceptAnswerHandler(message)}
+                                onclick={version === "tasks"
+                                    ? acceptTasksAnswerHandler
+                                    : acceptDocumentAnswerHandler}
                             >
                                 <Icon icon=""/>
                                 <span>Accept</span>

@@ -5,16 +5,26 @@ import { selectedFile } from "$lib/stores/files";
 import { selectedWorkspace } from "$lib/stores/workspace";
 import { JWTAuth } from "$lib/utils/auth";
 import { fetchAuthenticated } from "$lib/utils/fetch";
-import type { BackendChatPopulated, MessageOutput, MessageUserPrompt } from "@ravenlens/shared/chat-ai/backend/schema";
+import type { BackendChatPopulated, DocumentManipulation, MessageOutput, MessageUserPrompt } from "@ravenlens/shared/chat-ai/backend/schema";
 import { io, type Socket } from "socket.io-client";
 import { get, writable } from "svelte/store";
 import type { LangchainAgent } from "@ravenlens/ai";
 import type { AIAgentOutputMessage, ChatMember } from "../../../../../../packages/shared/dist/types/chat-ai/universal";
 import type { PromptProcessingProgess } from "@ravenlens/shared/chat-ai";
+import type { SpawnedList } from "../../../../../../packages/shared/dist/types/file/file";
 
 type CreateChatResult = { success: true; chatId: string } | { success: false; reason?: string };
 type SendPromptResult = { error: true; reason: string } | { success: true; idPromptProcessing?: string | undefined; outputMessage?: MessageOutput };
 type StopPromptResult = { success: true } | { success: false; reason?: string };
+type ProposalType = keyof Pick<MessageOutput, "tasksListManipulation" | "documentManipulation">;
+type ProposalEventPayload = {
+    workspaceId: string;
+    fileId: string;
+    chatId: string;
+    messageOutputId: string;
+    proposalType: ProposalType;
+    acceptanceContent?: SpawnedList[] | DocumentManipulation;
+};
 
 export async function loadChatsFromFileRequest(
     fileId: string,
@@ -99,6 +109,28 @@ export class SocketIoChatService {
             }
         });
     }
+
+    private buildProposalPayload(
+        chatId: string,
+        messageOutputId: string,
+        proposalType: ProposalType,
+        acceptanceContent?: SpawnedList[] | DocumentManipulation
+    ): ProposalEventPayload {
+        const basePayload: ProposalEventPayload = {
+            workspaceId: this.workspaceId,
+            fileId: this.fileId,
+            chatId,
+            messageOutputId,
+            proposalType
+        };
+
+        return acceptanceContent !== undefined
+            ? {
+                ...basePayload,
+                acceptanceContent
+            }
+            : basePayload;
+    }
     
     constructor() {
         if (!browser){
@@ -159,35 +191,19 @@ export class SocketIoChatService {
         );
     }
 
-    emitAcceptProposal(chatId: string, messageOutputId: string, proposalType: keyof Pick<MessageOutput, "tasksListManipulation" | "documentManipulation">): Promise<boolean> {
+    emitAcceptProposal(chatId: string, messageOutputId: string, proposalType: ProposalType, acceptanceContent: SpawnedList[] | DocumentManipulation | undefined): Promise<boolean> {
         this.refreshScopeFromStores();
         return this.emitWithAck<boolean>(
-            ack => this.connection?.emit(
-                "accept-proposal",
-                this.workspaceId,
-                this.fileId,
-                chatId,
-                messageOutputId,
-                proposalType,
-                (status: boolean) => ack(status)
-            ),
+            ack => this.connection?.emit("accept-proposal", this.buildProposalPayload(chatId, messageOutputId, proposalType, acceptanceContent), (status: boolean) => ack(status)),
             status => Boolean(status),
             false
         );
     }
 
-    emitDeclineProposal(chatId: string, messageOutputId: string, proposalType: keyof Pick<MessageOutput, "tasksListManipulation" | "documentManipulation">): Promise<boolean> {
+    emitDeclineProposal(chatId: string, messageOutputId: string, proposalType: ProposalType): Promise<boolean> {
         this.refreshScopeFromStores();
         return this.emitWithAck<boolean>(
-            ack => this.connection?.emit(
-                "decline-proposal",
-                this.workspaceId,
-                this.fileId,
-                chatId,
-                messageOutputId,
-                proposalType,
-                (status: boolean) => ack(status)
-            ),
+            ack => this.connection?.emit("decline-proposal", this.buildProposalPayload(chatId, messageOutputId, proposalType), (status: boolean) => ack(status)),
             status => Boolean(status),
             false
         );
@@ -349,10 +365,10 @@ export const chatServiceConnection = (() => {
         emitLeaveChat(chatId: string): Promise<boolean> {
             return getConnection()?.emitLeaveChat(chatId) ?? Promise.resolve(false);
         },
-        emitAcceptProposal(chatId: string, messageOutputId: string, proposalType: keyof Pick<MessageOutput, "tasksListManipulation" | "documentManipulation">): Promise<boolean> {
-            return getConnection()?.emitAcceptProposal(chatId, messageOutputId, proposalType) ?? Promise.resolve(false);
+        emitAcceptProposal(chatId: string, messageOutputId: string, proposalType: ProposalType, acceptanceContent: SpawnedList[] | DocumentManipulation | undefined): Promise<boolean> {
+            return getConnection()?.emitAcceptProposal(chatId, messageOutputId, proposalType, acceptanceContent) ?? Promise.resolve(false);
         },
-        emitDeclineProposal(chatId: string, messageOutputId: string, proposalType: keyof Pick<MessageOutput, "tasksListManipulation" | "documentManipulation">): Promise<boolean> {
+        emitDeclineProposal(chatId: string, messageOutputId: string, proposalType: ProposalType): Promise<boolean> {
             return getConnection()?.emitDeclineProposal(chatId, messageOutputId, proposalType) ?? Promise.resolve(false);
         },
         emitCreateChat(chatName?: string): Promise<CreateChatResult> {

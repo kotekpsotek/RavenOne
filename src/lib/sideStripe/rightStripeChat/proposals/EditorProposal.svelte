@@ -75,7 +75,7 @@
         </span>
     </button>
 
-    <div class="flex gap-2 h-full">
+    <div class="flex gap-2 h-full overflow-y-auto">
         {@render ShowEditorContent("old", $oldContentEditor)}
         <span class="border-r h-full w-2 border-gray-500 mx-2"></span>
         {@render ShowEditorContent("new", $newContentEditor)}
