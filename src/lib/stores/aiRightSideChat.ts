@@ -9,6 +9,7 @@ import { setAlert } from "$lib/utils/alert";
 import type { File } from "@ravenlens/shared";
 import type { AIChatMode, ChatTab } from "@ravenlens/shared/chat-ai/frontend";
 import type { AIChatModel, BackendChatPopulated, DownloadChat, MessageOutput, MessageUserPrompt, PromptProcessing, SelectedTextRangeContext } from "@ravenlens/shared/chat-ai/backend/schema";
+import type { AIAgentOutputMessage } from "../../../../../packages/shared/dist/types/chat-ai/universal";
 
 export const isLoadedChatsOfWorkspaceFileLoading = writable<boolean>(false);
 
@@ -2330,28 +2331,22 @@ if (browser) {
 				return message.messageType === "message-user-output" && message.id === outputMessageId;
 			}) as MessageOutput | undefined;
 
-			const outcomePayload = outcomeMessage as {
-				outputMessageContentHTML?: string;
-				chatName?: string;
+			const outcomePayload = outcomeMessage as Exclude<AIAgentOutputMessage, "time"> & {
 				time?: {
-					startDate?: unknown;
-					endDate?: unknown;
-					startAt?: unknown;
-					endAt?: unknown;
+					startDate?: string;
+					endDate?: string;
 				};
 			};
 
 			const startAt = toValidDate(
-				outcomePayload.time?.startAt
-					?? outcomePayload.time?.startDate
+				outcomePayload.time?.startDate
 					?? chatOutcomeMessage?.time?.startAt
 					?? new Date(),
 				new Date()
 			);
 
 			const endAt = toValidDate(
-				outcomePayload.time?.endAt
-					?? outcomePayload.time?.endDate
+				outcomePayload.time?.endDate
 					?? chatOutcomeMessage?.time?.endAt
 					?? new Date(),
 				new Date()
@@ -2368,6 +2363,8 @@ if (browser) {
 				}),
 				isAnswering: false,
 				messageContentHTML: outcomePayload.outputMessageContentHTML ?? chatOutcomeMessage?.messageContentHTML ?? "",
+				tasksListManipulation: outcomePayload.tasksListManipulation,
+				documentManipulation: outcomePayload.documentManipulation,
 				time: {
 					startAt,
 					endAt

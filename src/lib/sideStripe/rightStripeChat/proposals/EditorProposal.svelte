@@ -13,7 +13,7 @@
     */
 
     const oldContentEditor = createEditor({
-        content: $fileChatEditionPreviewShowing?.outputMessage.documentManipulation?.newDocumentContentHTML ?? "Content isn't available",
+        content: $fileChatEditionPreviewShowing?.outputMessage.documentManipulation?.oldDocumentContentHTML ?? "Content isn't available",
         editable: false,
         extensions: createEditorExtensions()
     });

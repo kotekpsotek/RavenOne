@@ -219,6 +219,7 @@
 
     function onToggleDocumentManipulation() {
         if (!isDocumentManipulationShowing) {
+            console.log('Preview message', message)
             fileChatEditionPreviewShowing.setFileAsPreviewing($activeChat.id, message, "document-manipulation")
 
         }
