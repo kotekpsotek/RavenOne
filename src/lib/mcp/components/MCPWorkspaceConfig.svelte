@@ -3,25 +3,20 @@
 	import Icon from "@iconify/svelte";
 	import { UI } from "@ravenlens/frontend";
 	import McpSelectionModal from "$lib/mcp/components/McpSelectionModal.svelte";
+    import type { Editor as TiptapEditor } from "@tiptap/core";
     import { fetchAuthenticated } from "$lib/utils/fetch";
     import { selectedWorkspace } from "$lib/stores/workspace";
     import { alertState } from "$lib/utils/alert";
+	import { EditorContent } from "./svelte-tiptap";
+	import { onMount } from "svelte";
+    import { createSetupGuideEditor } from "./setupGuide";
 	import "./MCPWorkspaceConfig.css";
-
+	import "../../Editor.css";
+	
     const { 
         mcpCredentials = undefined 
     }: { mcpCredentials: MCPCredentials | undefined  } = $props();
     
-	const configurationSteps: string[] = [
-		"Download and setup on your publicly available machine RavenOne MCP Middleware Server. Download server from Github or Docker.",
-		"Establish Secret Password on side of MCP Middleware Server",
-		`Specify your server publicly available link at input url field in 'RavenOne > AI Models Settings'`,
-		`Specify at 'RavenOne > AI Models Settings' same password as you've specified for RavenOne MCP Server Middleware`,
-		`Specify the whitelist of available MCP servers with its configuration and required credentials in modal open with usage of 'Configure MCP Servers' button. Then click on "Save" button to save changes`,
-		`Accept all setup by flick on "Accept" button below all so far specified fields`,
-		`Verify connection state with specified RavenOne MCP Middleware Server by look on "MCP RavenOne Server-Middleware URL" input right-side status-box`
-	];
-	
 	// Values of state
 	let draftSecretPassword = $derived(mcpCredentials?.secretPassword ?? "");
 	let revealSecretPassword = $state(false);
@@ -41,6 +36,20 @@
 	let saving = $state(false);
 	let downloading = $state(false);
 	let initialServersSpecification = $state("");
+	let setupGuideEditor = $state<TiptapEditor | undefined>(undefined);
+
+	onMount(() => {
+		const setupGuideEditorStore = createSetupGuideEditor();
+		const unsubscribe = setupGuideEditorStore.subscribe((editor: TiptapEditor | undefined) => {
+			setupGuideEditor = editor;
+		});
+
+		return () => {
+			unsubscribe();
+			setupGuideEditor?.destroy();
+			setupGuideEditor = undefined;
+		};
+	});
 
 	// Helpers
 	function isServerURLValid(serverURL: string | undefined) {
@@ -333,7 +342,7 @@
 				onclick={() => (setupModalOpen = true)}
 			>
 				<Icon icon="material-symbols:code-rounded" class="h-3.5 w-3.5" />
-				Check how to setup
+				Setup Guide
 			</button>
 		</div>
 	</div>
@@ -416,22 +425,19 @@
 <!-- Instructions modal -->
 <UI.Modals.ModalWrapper
 	name="MCP setup"
-	size="2xl"
+	modalClassExtension="w-[80vw]"
 	bind:open={setupModalOpen}
 >
 	<UI.Modals.ModalWrapperHeading
-		headingName="MCP server setup ideas"
-		description="Use these steps to streamline your MCP server setup in this workspace."
+		headingName="MCP server Setup-Guide"
+		description="Use these steps to setup MCP server for this workspace."
 		on:close={() => (setupModalOpen = false)}
 	/>
 
-	<div class="mt-3 space-y-3 text-sm text-base-content/80">
-		<p>Step-by-step flow for this card:</p>
-		<ol class="help-list list-decimal space-y-1 pl-5">
-			{#each configurationSteps as step (step)}
-				<li>{step}</li>
-			{/each}
-		</ol>
+	<div class="setup-guide-editor my-5 rounded-xl border border-base-300 bg-base-100 p-4">
+		{#if setupGuideEditor}
+			<EditorContent editor={setupGuideEditor} />
+		{/if}
 	</div>
 
 	<div class="modal-action">
@@ -486,5 +492,59 @@
 
 	.status-mcp-box.connected-state {
 		@apply bg-emerald-500/30 border-emerald-500;
+	}
+
+	/* TipTap setup guide: style markdown-like content rendered by ProseMirror */
+	.setup-guide-editor :global(.ProseMirror) {
+		min-height: 10rem;
+		color: hsl(var(--bc));
+		line-height: 1.75;
+	}
+
+	.setup-guide-editor :global(.ProseMirror p) {
+		margin: 0 0 0.75rem;
+	}
+
+	.setup-guide-editor :global(.ProseMirror p:last-child) {
+		margin-bottom: 0;
+	}
+
+	.setup-guide-editor :global(.ProseMirror a) {
+		@apply text-sky-400;
+		text-decoration: underline;
+		text-underline-offset: 0.15em;
+	}
+
+	.setup-guide-editor :global(.ProseMirror a:hover) {
+		text-decoration-thickness: 2px;
+	}
+
+	.setup-guide-editor :global(.ProseMirror ol),
+	.setup-guide-editor :global(.ProseMirror ul) {
+		margin: 0.75rem 0;
+		padding-left: 1.5rem;
+	}
+
+	.setup-guide-editor :global(.ProseMirror ol) {
+		list-style: decimal;
+	}
+
+	.setup-guide-editor :global(.ProseMirror ul) {
+		list-style: disc;
+	}
+
+	.setup-guide-editor :global(.ProseMirror li) {
+		margin: 0.25rem 0;
+	}
+
+	.setup-guide-editor :global(.ProseMirror li > p) {
+		margin: 0;
+	}
+
+	.setup-guide-editor :global(.ProseMirror code) {
+		padding: 0.15rem 0.35rem;
+		border-radius: 0.35rem;
+		background: hsl(var(--b2));
+		font-size: 0.92em;
 	}
 </style>
