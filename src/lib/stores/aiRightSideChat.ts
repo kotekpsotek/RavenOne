@@ -6,6 +6,7 @@ import { selectedWorkspace } from "./workspace";
 import { isChatSideStripeSelected, isFileListSideStripeSelected } from "./selectedSideStripes";
 import { userProfile } from "./user";
 import { setAlert } from "$lib/utils/alert";
+import { matchesAttachmentKind } from "$lib/utils/attachments";
 import type { File } from "@ravenlens/shared";
 import type { AIChatMode, ChatTab } from "@ravenlens/shared/chat-ai/frontend";
 import type { AIChatModel, BackendChatPopulated, DownloadChat, MessageOutput, MessageUserPrompt, PromptProcessing, SelectedTextRangeContext } from "@ravenlens/shared/chat-ai/backend/schema";
@@ -66,6 +67,21 @@ const collectProcessingChats = (chats: unknown[]): ProcessingChatsState => {
 	}
 
 	return nextState;
+};
+
+const normalizeContextAnswerIds = (answerIdsCandidate: unknown, fallbackAnswerIds: string[] = []): string[] => {
+	if (!Array.isArray(answerIdsCandidate)) {
+		return [...fallbackAnswerIds];
+	}
+
+	return answerIdsCandidate
+		.filter((answerId): answerId is string => typeof answerId === "string")
+		.map(answerId => answerId.trim())
+		.filter(answerId => answerId.length > 0);
+};
+
+const areAnswerIdListsEqual = (left: string[], right: string[]): boolean => {
+	return left.length === right.length && left.every((answerId, index) => answerId === right[index]);
 };
 
 export const processingChatsOfWorkspaceFile = (() => {
@@ -2241,7 +2257,24 @@ if (browser) {
 				return;
 			}
 
-			setAlert("warning", "Attachment unsupported", `No configured model can process ${String(mediaType)} attachments.`);
+			const tabs = get(loadedChatsOfWorkspaceFile);
+			const thisChatTab = tabs.find(chat => chat.id === chatId);
+			const thisChatTabLastUserPrompt = thisChatTab?.messages.findLast(message => message.messageType === "message-user-prompt");
+			const desktopFiles = Array.isArray(thisChatTabLastUserPrompt?.context?.desktopFiles)
+				? thisChatTabLastUserPrompt.context.desktopFiles
+				: [];
+			const matchingDesktopFiles = desktopFiles.filter((file) => matchesAttachmentKind(file.type, mediaType));
+
+			if (!matchingDesktopFiles.length) {
+				return;
+			}
+
+			const matchingFileNames = matchingDesktopFiles.map((file) => file.name).join(", ");
+			setAlert(
+				"warning",
+				"Attachment unsupported",
+				`No configured model can process ${String(mediaType)} attachments. Affected files: ${matchingFileNames}.`
+			);
 		});
 
 		chatServiceConnectionLocal.onPromptProgressMessage((chatId, messageContent) => {			

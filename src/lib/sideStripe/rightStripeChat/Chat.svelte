@@ -147,6 +147,16 @@
         };
     }
 
+    function createEmptyChatTabContext(): ChatTab["selectedContext"] {
+        return {
+            desktopFiles: [],
+            editorFiles: [],
+            networkUrls: [],
+            aiAnswers: [],
+            selectedTextRanges: []
+        };
+    }
+
     function cloneModelForTab(model: AI.RavenLensAvaiableAIModel | undefined): ChatTab["selectedModel"] {
         if (!model) {
             return undefined;
@@ -470,7 +480,6 @@
         // Retrive base output message but it's not the answer -> answer is retrived in `prompt-success` / `prompt-error` message listeners
         const isChatNameADefaultName = $activeChat.chatName === rightSideStripeChat.createDefaultChatName($activeChat.selectedMode);
         const sendResult = await chatServiceConnection.emitSendPrompt(chatId, promptMessage, isChatNameADefaultName);
-        console.log("Send result", sendResult)
 
         // Display error
         if ("error" in sendResult) {
@@ -478,6 +487,19 @@
             rightSideStripeChat.markOutputMessageAsError(chatId, undefined, sendResult.reason);
             rightSideStripeChat.stopProcessing(chatId);
             return;
+        }
+        else {
+            const clearedContextPayload = createEmptyContextPayload();
+            const clearedChatTabContext = createEmptyChatTabContext();
+
+            chatStripeTabsOfWorkspaceFile.updateChatTabById(chatId, (chatTab) => ({
+                ...chatTab,
+                selectedContext: clearedChatTabContext
+            }));
+
+            if ($activeChat?.id === chatId) {
+                selectedFileContextPayload = clearedContextPayload;
+            }
         }
 
         if (sendResult.idPromptProcessing) {
@@ -1049,7 +1071,7 @@
 
 <ContextSelectionModal
     bind:open={isContextSelectionModalOpen}
-    contextPayload={selectedFileContextPayload}
+    bind:contextPayload={selectedFileContextPayload}
     onSave={onSaveSelectedFileContext}
     infoMessage="Context is saved for the currently active chat tab."
 >

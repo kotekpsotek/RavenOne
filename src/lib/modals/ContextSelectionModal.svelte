@@ -10,11 +10,11 @@
         open = $bindable(false),
         mcpConfigurationDraft = $bindable(""),
         mcpConfigurationError = $bindable(""),
-        contextPayload = {
+        contextPayload = $bindable({
             desktopFiles: [],
             editorFiles: [],
             networkUrls: []
-        },
+        }),
         onSave,
         infoMessage = "",
         children
@@ -36,6 +36,15 @@
     let isSelectFileModalOpen = $state(false);
     let selectedFiles: File.File.File[] = $state([]);
     let initialContextSignature = $state("");
+
+    $effect(() => {
+        contextPayload;
+
+        desktopContextFiles = [];
+        editorContextFiles = [];
+        networkContextUrls = [];
+    });
+    
     $effect(() => {
         if (!open) {
             return;
@@ -131,6 +140,11 @@
             reader.readAsDataURL(file);
         });
     }
+
+    function toBase64Content(dataUrl: string) {
+        const separatorIndex = dataUrl.indexOf(",");
+        return separatorIndex >= 0 ? dataUrl.slice(separatorIndex + 1) : dataUrl;
+    }
     
     async function onDesktopFilesChange(event: Event) {
         const target = event.currentTarget as HTMLInputElement;
@@ -144,6 +158,8 @@
         const filesToAdd = await Promise.all(
             fileList.map(async (file) => {
                 const previewDataUrl = await fileToDataUrl(file);
+                const content = toBase64Content(previewDataUrl);
+                console.log('Attachement content', content)
 
                 return {
                     id: `${file.name}-${file.lastModified}-${file.size}`,
@@ -151,6 +167,7 @@
                     type: file.type || "application/octet-stream",
                     size: file.size,
                     locationHint,
+                    content,
                     previewDataUrl
                 } satisfies File.FileAI.ContextDeviceFile;
             })
