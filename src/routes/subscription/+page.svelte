@@ -5,6 +5,7 @@
 	import { onMount } from "svelte";
 	import { setThemeMode, syncThemeMode, theme, type Themes } from "$lib/stores/theme";
 	import { type SubscriptionPlan, plans } from "@ravenlens/shared";
+	import { refreshUserSubscriptionState, userHasActiveSubscription, userSubscriptionKind } from "$lib/stores/subscription";
 
 	const themeOptions: Themes[] = ["light", "dark"];
 
@@ -22,6 +23,20 @@
 	let livePlanPrices = $state<Partial<PlanPricesResponse>>({});
 	let checkoutPlanInProgress = $state<StripeCheckoutPlan | null>(null);
 	let checkoutError = $state<string | null>(null);
+	let plansPrepared = $derived.by(() => {
+		const hasActiveSubscription = $userHasActiveSubscription;
+		const currentSubscriptionKind = $userSubscriptionKind;
+
+		return plans.map((plan) => {
+			const isCurrentPlan = hasActiveSubscription && currentSubscriptionKind === plan.kind;
+
+			return {
+				...plan,
+				current: isCurrentPlan,
+				callToAction: isCurrentPlan ? "Current Plan" : (plan.callToAction === "Current Plan" ? "Start With" : plan.callToAction)
+			};
+		});
+	});
 
 	const currentTheme = $derived(hasMounted ? $theme : "light");
 	const isDarkMode = $derived(currentTheme === "dark");
@@ -134,11 +149,17 @@
 			const responseBody = (await response.json()) as {
 				status?: boolean;
 				error?: string;
+				message?: string;
 				url?: string;
 			};
 
-			if (!response.ok || !responseBody.url) {
+			if (!response.ok || responseBody.status === false) {
 				throw new Error(responseBody.error ?? "Unable to start Stripe checkout");
+			}
+
+			if (!responseBody.url) {
+				await refreshUserSubscriptionState();
+				return;
 			}
 
 			window.location.assign(responseBody.url);
@@ -149,6 +170,10 @@
 		}
 	}
 
+	onMount(async () => {
+		// Important: Loads current Subscription Kind
+		await refreshUserSubscriptionState();
+	})
 </script>
 
 <svelte:head>
@@ -242,7 +267,7 @@
 		{/if}
 
 		<div class="grid grid-cols-3 gap-[1.35rem] max-[960px]:grid-cols-1">
-			{#each plans as plan (plan.name)}
+			{#each plansPrepared as plan (plan.name)}
 				<article
 					class={`relative flex min-h-full flex-col gap-[1.45rem] overflow-hidden rounded-[28px] border p-[1.6rem] transition duration-200 before:pointer-events-none before:absolute before:inset-3 before:content-[''] after:pointer-events-none after:absolute after:bottom-[75%] after:left-[-12%] after:w-48 after:aspect-square after:rounded-full after:blur-[36px] after:content-[''] max-[640px]:p-5 ${
 						plan.current ? "opacity-95" : "hover:scale-[1.03]"

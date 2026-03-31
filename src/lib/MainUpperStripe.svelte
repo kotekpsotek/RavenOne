@@ -501,7 +501,8 @@
                         </div>
                     {/await}
 
-                    {#if $canManageWorkspaceFiles}
+                    <!-- Weight Config: FIXME: Currently weight config isn't supported -->
+                    <!-- {#if $canManageWorkspaceFiles}
                         <details
                             class="dropdown dropdown-end join-item"
                             open={openDropdown === "model-settings"}
@@ -534,7 +535,7 @@
                                 />
                             </div>
                         </details>
-                    {/if}
+                    {/if} -->
                 </div>
 
                 {#if $canManageWorkspaceFiles}
