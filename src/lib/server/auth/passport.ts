@@ -11,6 +11,8 @@ import { autoJoinUserToInvitedWorkspaces } from '$lib/server/workspace-invitemen
 import { appName } from '$lib/config/app';
 
 export type OAuthProvider = 'google' | 'github' | 'linkedin';
+const EMAIL_ALREADY_IN_USE_MESSAGE =
+	'This email is already assigned to an existing account. Please sign in using the original authentication method.';
 
 type StrategyRequest = {
 	jwtUser?: JWTPayload;
@@ -51,6 +53,34 @@ function normalizeEmailAddress(value: unknown): string | undefined {
 	}
 
 	return normalized;
+}
+
+function escapeRegExp(value: string): string {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+async function findUserByEmail(email: string) {
+	const escapedEmail = escapeRegExp(email);
+	return DB_Models.UserAccount.profileModel.findOne({
+		email: { $regex: `^${escapedEmail}$`, $options: 'i' }
+	});
+}
+
+async function isEmailTakenByAnotherUser(email: string | undefined, currentUserId?: string): Promise<boolean> {
+	if (!email) {
+		return false;
+	}
+
+	const existingUserWithEmail = await findUserByEmail(email);
+	if (!existingUserWithEmail) {
+		return false;
+	}
+
+	if (!currentUserId) {
+		return true;
+	}
+
+	return String((existingUserWithEmail as any).id) !== currentUserId;
 }
 
 function pickGithubEmail(candidates: GitHubEmailCandidate[]): string | undefined {
@@ -136,6 +166,8 @@ function registerGoogleStrategy() {
 			},
 			async (req: StrategyRequest, accessToken: string, _refreshToken: string, profile: any, done: any) => {
 				try {
+					const googleEmail = normalizeEmailAddress(profile.emails?.[0]?.value);
+
 					if (req.jwtUser) {
 						const existingOtherUser = await DB_Models.UserAccount.profileModel.findOne({
 							'googleAccountProperties.googleId': profile.id
@@ -144,6 +176,10 @@ function registerGoogleStrategy() {
 							return done(null, false, {
 								message: 'This Google account is already linked to another user'
 							});
+						}
+
+						if (await isEmailTakenByAnotherUser(googleEmail, req.jwtUser.userId)) {
+							return done(null, false, { message: EMAIL_ALREADY_IN_USE_MESSAGE });
 						}
 
 						const user = await DB_Models.UserAccount.profileModel.findOne({ id: req.jwtUser.userId });
@@ -178,15 +214,19 @@ function registerGoogleStrategy() {
 					});
 
 					if (!user) {
+						if (await isEmailTakenByAnotherUser(googleEmail)) {
+							return done(null, false, { message: EMAIL_ALREADY_IN_USE_MESSAGE });
+						}
+
 						const newProfile: Profile = {
 							id: randomUUID(),
 							name: profile.displayName || 'Google User',
-							email: profile.emails?.[0]?.value,
+							email: googleEmail,
 							profileImgURL: profile.photos?.[0]?.value || '',
 							mainAccountType: 'Google' as AccountType,
 							googleAccountProperties: {
 								googleId: profile.id,
-								email: profile.emails?.[0]?.value || '',
+								email: googleEmail || '',
 								accessToken
 							},
 							linkedAccounts: ['Google' as AccountType],
@@ -249,6 +289,10 @@ function registerGithubStrategy() {
 
 						const user = await DB_Models.UserAccount.profileModel.findOne({ id: req.jwtUser.userId });
 						if (user) {
+							if (shouldSyncGithubEmail(user, githubEmail) && (await isEmailTakenByAnotherUser(githubEmail, req.jwtUser.userId))) {
+								return done(null, false, { message: EMAIL_ALREADY_IN_USE_MESSAGE });
+							}
+
 							const linkedAccounts = ((user as any).toObject().linkedAccounts ?? []) as string[];
 							const isAlreadyLinked = linkedAccounts.some((account) => account.toLowerCase() === 'github');
 							const setPayload: Record<string, unknown> = {
@@ -292,6 +336,10 @@ function registerGithubStrategy() {
 					});
 
 					if (!user) {
+						if (await isEmailTakenByAnotherUser(githubEmail)) {
+							return done(null, false, { message: EMAIL_ALREADY_IN_USE_MESSAGE });
+						}
+
 						const newProfile: Profile = {
 							id: randomUUID(),
 							name: profile.displayName || githubUserName,
@@ -319,6 +367,10 @@ function registerGithubStrategy() {
 							console.error('[auth] Failed to auto-join invited workspaces after GitHub signup', invitationReconciliationError);
 						}
 					} else {
+						if (shouldSyncGithubEmail(user, githubEmail) && (await isEmailTakenByAnotherUser(githubEmail, String((user as any).id)))) {
+							return done(null, false, { message: EMAIL_ALREADY_IN_USE_MESSAGE });
+						}
+
 						const setPayload: Record<string, unknown> = {
 							githubAccountProperties: {
 								githubUserId,
@@ -369,6 +421,8 @@ function registerLinkedInStrategy() {
 			},
 			async (req: StrategyRequest, accessToken: string, _refreshToken: string, profile: any, done: any) => {
 				try {
+					const linkedInEmail = normalizeEmailAddress(profile.emails?.[0]?.value);
+
 					if (req.jwtUser) {
 						const existingOtherUser = await DB_Models.UserAccount.profileModel.findOne({
 							'linkedinId.linkedinId': profile.id
@@ -379,6 +433,10 @@ function registerLinkedInStrategy() {
 
 						const user = await DB_Models.UserAccount.profileModel.findOne({ id: req.jwtUser.userId });
 						if (user) {
+							if (await isEmailTakenByAnotherUser(linkedInEmail, req.jwtUser.userId)) {
+								return done(null, false, { message: EMAIL_ALREADY_IN_USE_MESSAGE });
+							}
+
 							const linkedAccounts = ((user as any).toObject().linkedAccounts ?? []) as string[];
 							const isAlreadyLinked = linkedAccounts.some((account) => account.toLowerCase() === 'linkedin');
 
@@ -409,15 +467,19 @@ function registerLinkedInStrategy() {
 					});
 
 					if (!user) {
+						if (await isEmailTakenByAnotherUser(linkedInEmail)) {
+							return done(null, false, { message: EMAIL_ALREADY_IN_USE_MESSAGE });
+						}
+
 						const newProfile: Profile = {
 							id: randomUUID(),
 							name: profile.displayName || 'LinkedIn User',
-							email: profile.emails?.[0]?.value,
+							email: linkedInEmail,
 							profileImgURL: profile.photos?.[0]?.value || '',
 							mainAccountType: 'LinkedIn' as AccountType,
 							linkedinId: {
 								linkedinId: profile.id,
-								email: profile.emails?.[0]?.value || '',
+								email: linkedInEmail || '',
 								accessToken
 							},
 							linkedAccounts: ['LinkedIn' as AccountType],

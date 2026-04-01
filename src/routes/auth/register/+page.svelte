@@ -3,6 +3,7 @@
   import { enhance } from '$app/forms';
   import { goto } from '$app/navigation';
   import { onAuthenticateWith } from '$lib/utils/auth';
+  import { setAlert } from '$lib/utils/alert';
   import type { SubmitFunction } from '@sveltejs/kit';
   import { onMount } from 'svelte';
     import { appName } from '$lib/config/app.js';
@@ -12,6 +13,7 @@
   let agreeToTerms = $state(false);
   let isLoading = $state(false);
   let daisyTheme = $state<'light' | 'black'>('light');
+  let lastErrorAlert = $state<string | null>(null);
 
   const AUTH_MODE = 'signup';
 
@@ -36,6 +38,16 @@
   onMount(() => {
     const storedTheme = localStorage.getItem('theme');
     daisyTheme = storedTheme === 'dark' ? 'black' : 'light';
+  });
+
+  $effect(() => {
+    const errorMessage = form?.error;
+    if (!errorMessage || errorMessage === lastErrorAlert) {
+      return;
+    }
+
+    lastErrorAlert = errorMessage;
+    setAlert('error', 'Registration failed', errorMessage);
   });
 
   const enhanceSignUp: SubmitFunction = () => {
