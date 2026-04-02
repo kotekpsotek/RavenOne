@@ -579,7 +579,7 @@
 				onRemove={removeHeadingIcon}
 			/>
 
-			{#if icon}
+			{#if icon || (!icon && $selectedFile?.subkind === "ravencode")}
 				<button
 					type="button"
 					class="mb-2 mt-2 rounded-xl px-3 py-2 leading-none transition-colors duration-150 hover:bg-base-300/50"
@@ -589,13 +589,22 @@
 					disabled={!canEditHeadingAssets}
 					title={!canEditHeadingAssets ? "Active workspace subscription required" : "Change icon"}
 				>
-					<IconValue
-						iconValue={icon}
-						iconClass="text-6xl"
-						emojiClass="text-6xl leading-none"
-						imageClass="h-14 w-14"
-						alt="Heading icon"
-					/>
+					{#if !icon && $selectedFile?.subkind === "ravencode"}
+						<!-- Show RavenCode default icon -->
+						<img 
+							src="/ravencode-icon.svg"
+							class="h-14 w-14"
+							alt="RavenCode Icon"
+						/>
+					{:else}
+						<IconValue
+							iconValue={icon}
+							iconClass="text-6xl"
+							emojiClass="text-6xl leading-none"
+							imageClass="h-14 w-14"
+							alt="Heading icon"
+						/>
+					{/if}
 				</button>
 			{/if}
 

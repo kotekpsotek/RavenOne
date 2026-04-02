@@ -407,6 +407,15 @@
         walperPickerInitialValue = "";
     }
 
+    function determineIcon() {
+        if (entry.subkind === "ravencode") {
+            if (entry.icon) return entry.icon;
+
+            return ""
+        }
+        else return entry.icon;
+    }
+
     async function applyWalperToFile(walperValue: string) {
         if (!ensureActiveWorkspaceSubscription("change file wallpaper")) {
             return;
@@ -529,13 +538,22 @@
             {/if}
 
             <div class="text-base-content/60">
-                <IconValue
-                    iconValue={entry.icon}
-                    iconClass="text-xl"
-                    emojiClass="text-xl leading-none"
-                    imageClass="h-5 w-5"
-                    alt={entry.name}
-                />
+                {#if entry.subkind === "ravencode" && !entry.icon}
+                    <!-- Show RavenCode default icon -->
+                    <img 
+                        src="/ravencode-icon.svg"
+                        class="w-5 h-5"
+                        alt="RavenCode Icon"
+                    />
+                {:else}
+                    <IconValue
+                        iconValue={entry.icon}
+                        iconClass="text-xl"
+                        emojiClass="text-xl leading-none"
+                        imageClass="h-5 w-5"
+                        alt={entry.name}
+                    />
+                {/if}
             </div>
 
             {#if renamingId === entry.id}
