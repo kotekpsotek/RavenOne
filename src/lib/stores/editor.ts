@@ -2,6 +2,7 @@ import { createEditor } from "svelte-tiptap";
 import type { Editor as SvelteEditor } from "svelte-tiptap";
 import { Document } from "@tiptap/extension-document";
 import { Placeholder } from "@tiptap/extension-placeholder";
+// import Youtube from "@tiptap/extension-youtube";
 import { get, writable } from "svelte/store";
 import { StarterKit } from "@tiptap/starter-kit"
 import { patchFileById, selectedFile } from "./files";
@@ -53,6 +54,16 @@ export function createEditorExtensions() {
         StandardTaskList,
         StandardTaskItem,
         SlashCommand,
+        /* Youtube.configure({
+            addPasteHandler: true,
+            width: 640,
+            height: 360,
+            nocookie: true,
+            modestBranding: true,
+            HTMLAttributes: {
+                class: "tiptap-youtube-embed"
+            }
+        }), */
         // Custom Components
         CodeSnippet
     ]

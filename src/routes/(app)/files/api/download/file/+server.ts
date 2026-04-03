@@ -8,6 +8,7 @@ import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "../$types";
 import { DB_Models } from "@ravenlens/backend";
 import { File } from "@ravenlens/shared";
+import { fileMap } from "$lib/utils/files";
 
 interface DownloadFileRequestBody {
     workspaceId: string;
@@ -34,13 +35,6 @@ export const POST: RequestHandler = async ({ request, cookies, fetch }) => {
 
     if (access instanceof Response) {
         return access;
-    }
-
-    function fileMap(value: File.File.File): File.File.File[] {
-        return [
-            value,
-            ...(value.subentries ? value.subentries.flatMap(fileMap) : [])
-        ]
     }
     
     const files = await loadWorkspaceEntries(workspaceId);

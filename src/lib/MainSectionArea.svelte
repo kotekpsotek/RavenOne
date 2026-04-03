@@ -1,5 +1,5 @@
 <script lang=ts>
-    import { onDestroy } from "svelte";
+    import { onDestroy, onMount } from "svelte";
     import { derived } from "svelte/store";
     import { EditorContent } from "svelte-tiptap";
     import { editor } from "./stores/editor";
@@ -12,11 +12,12 @@
     import ListTray from "./ListTray.svelte";
     import { isSharedRoute } from "./stores/share";
     import { isPointsStripeOpen } from "./stores/selectedSideStripes";
-    import "./Editor.css";
     import { fileChatEditionPreviewShowing } from "./stores/aiRightSideChat";
     import EditorProposal from "./sideStripe/rightStripeChat/proposals/EditorProposal.svelte";
     import LoadingScreen from "./components/LoadingScreen.svelte";
     import ListTrayProposal from "./sideStripe/rightStripeChat/proposals/ListTrayProposal.svelte";
+    import { setAlert } from "./utils/alert";
+    import "./Editor.css";
 
     const canEditWorkspaceContent = derived(
         [workspaceSubscriptionCheckInProgress, workspaceHasActiveSubscription],
@@ -46,6 +47,21 @@
         activeEditor.setEditable(canEdit);
     });
 
+    onMount(() => {
+        window.addEventListener("keydown", async (ev) => {
+            
+            if (ev.ctrlKey && ev.key === "s" && $selectedFile) {
+                ev.preventDefault();
+
+                const result = await selectedFile.requestSave($selectedFile);
+
+                if (!result) {
+                    setAlert("error", "Cannot Save File", "Cannot save file content");
+                }
+            }
+        })
+    })
+    
     onDestroy(() => {
         unsubscribeEditabilitySync();
     });

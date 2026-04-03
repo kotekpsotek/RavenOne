@@ -18,6 +18,7 @@
     import { canManageWorkspaceFiles, workspaceSubscriptionCheckInProgress } from "$lib/stores/subscription";
     import { setAlert } from "$lib/utils/alert";
     import { findFileById, getCurrentWorkspaceId, removeFileById, updateFileById } from "./utils";
+    import { page } from "$app/stores";
 
     interface Props {
         entry: File.File.File;
@@ -60,6 +61,8 @@
     let contextMenu = $state<{ entryId: string; x: number; y: number } | null>(null);
     let entryExpanded = $state(true);
 
+    let isCtrlKeyDown = $state(false);
+    
     const contextMenuEntry = $derived(contextMenu ? findFileById($entriesList, contextMenu.entryId) : null);
     const isTarget = $derived(dropTargetId === entry.id);
     const entryHasSubentries = $derived((entry.subentries?.length ?? 0) > 0);
@@ -98,6 +101,15 @@
     }
 
     async function onEntryClick(clickedEntry: File.File.File) {
+        // Open file with rightclick without be in this file
+        if (isCtrlKeyDown) {
+            const url = new URL($page.url);
+            url.searchParams.set("openFileId", clickedEntry.id);
+            
+            window.open(url, "_blank")
+            return;
+        }
+        
         if (!isSelectable) {
             return;
         }
@@ -474,6 +486,8 @@
     }
 
     function onWindowKeydown(e: KeyboardEvent) {
+        if (e.ctrlKey) isCtrlKeyDown = true;
+        
         if (e.key === "Escape") {
             closeContextMenu();
             cancelRename();
@@ -488,9 +502,15 @@
             openRename(entry);
         }
     }
+
+    function onWindowKeyUp(e: KeyboardEvent) {
+        if (e.ctrlKey) {
+            isCtrlKeyDown = false;
+        }
+    }
 </script>
 
-<svelte:window onclick={onWindowClick} onkeydown={onWindowKeydown} />
+<svelte:window onclick={onWindowClick} onkeydown={onWindowKeydown} onkeyup={onWindowKeyUp}/>
 
 <div class="w-full {isTarget && dropPosition === 'before' ? 'border-t-2 border-primary' : ''} {isTarget && dropPosition === 'after' ? 'border-b-2 border-primary' : ''}">
     <div

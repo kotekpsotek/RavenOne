@@ -63,6 +63,21 @@
     @apply text-sky-500;
 }
 
+.tiptap .tiptap-youtube-embed,
+.tiptap [data-youtube-video] {
+    width: min(100%, 720px);
+    aspect-ratio: 16 / 9;
+    margin: 0.5rem 0 !important;
+}
+
+.tiptap .tiptap-youtube-embed iframe,
+.tiptap [data-youtube-video] iframe {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    border-radius: 0.75rem;
+}
+
 .slash-command-menu {
     @apply z-[120] min-w-52 rounded-xl border border-base-300 bg-base-100 p-1 shadow-xl;
 }

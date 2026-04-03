@@ -99,7 +99,7 @@ export const selectedFile = (() => {
         update(updater: (file: FileType) => FileType): void;
         selectFile(file: FileType): void;
         updateFileListItems(spawnedListId: string, items: File.File.EditableListItem[]): Promise<boolean>;
-        requestSave(file: NonNullable<FileType>, saveValue?: SavingValues, options?: SaveSingleFileOptions): Promise<boolean>;
+    requestSave(file: NonNullable<FileType>, saveValue?: SavingValues, options?: SaveSingleFileOptions): Promise<boolean>;
     };
 
     const normalizeWorkspaceId = (workspaceId?: string): string | undefined => {

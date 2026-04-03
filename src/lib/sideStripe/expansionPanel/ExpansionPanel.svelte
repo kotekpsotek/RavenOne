@@ -15,6 +15,8 @@
     import { get } from "svelte/store";
     import FileEntry from "./FileEntry.svelte";
     import { findFileById, getCurrentWorkspaceId } from "./utils";
+    import { page } from "$app/stores";
+    import { fileMap } from "$lib/utils/files";
 
     let { isExpanded = false }: { isExpanded?: boolean } = $props();
 
@@ -39,6 +41,19 @@
 
         const downloadedFiles = Array.isArray(responseBody.files) ? responseBody.files : [];
         entriesList.set(downloadedFiles);
+
+        // Selects file has to be selected
+        const pageLocal = $page.url;
+        if (pageLocal.searchParams.has("openFileId")) {
+            const fileIdToOpen = pageLocal.searchParams.get("openFileId");
+            const fileFromListAll = downloadedFiles.flatMap(fileMap);
+
+            const fileFound = fileFromListAll.find(file => file.id === fileIdToOpen);
+            if (fileFound) {
+                selectedFile.selectFile(fileFound);
+                return;
+            }
+        }
 
         const selectedFileCurrent = get(selectedFile);
         if (!selectedFileCurrent) {
