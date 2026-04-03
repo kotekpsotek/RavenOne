@@ -28,11 +28,18 @@
     } from './resize';
     import RoutinesSpikesExecutionResults from './Routines&SpikesExecutionResults.svelte';
     import ExecutionResultDocumentPreview from './ExecutionResultDocumentPreview.svelte';
-    import { get } from 'svelte/store';
+    import { derived, get } from 'svelte/store';
+    import ModalScreen from './ModalScreen.svelte';
+    import SpikesConfigModal from './SpikesConfigModal.svelte';
+    import RoutinesConfigModal from './RoutinesConfigModal.svelte';
+    import { selectedWorkspace } from '$lib/stores/workspace';
 
     let { isReadOnly = false }: { isReadOnly?: boolean } = $props();
 
     let isListTrayModalOpen = $state(false);
+    let isRoutinesConfigModalOpen = $state(false);
+    let isSpikesConfigModalOpen = $state(false);
+    let isRoutinesAndSpikesConfigurableByUserPermissions = $derived($selectedWorkspace?.userPermissions.includes("manage_files") || $selectedWorkspace?.isOwner ? true : false)
 
     // Types
     const listTypes: ElementInsertionItem[] = [
@@ -174,14 +181,12 @@
         isListTrayModalOpen = false;
     }
 
-    // TODO: Show config
     function onSetupRoutinesExecutionTime() {
-        
+        isRoutinesConfigModalOpen = !isRoutinesConfigModalOpen;
     }
 
-    // TODO: Show config
     function onSetupSpikesConfig() {
-
+        isSpikesConfigModalOpen = !isSpikesConfigModalOpen;
     }
 
     function onShowExecutionResults() {
@@ -325,7 +330,8 @@
                     <button
                         type="button"
                         class="btn btn-ghost btn-xs"
-                        title="Setup execution timer for this routines"
+                        title={isRoutinesAndSpikesConfigurableByUserPermissions ? "Cannot configure routines since you've not required permission" : "Setup execution timer for this routines"}
+                        disabled={!isRoutinesAndSpikesConfigurableByUserPermissions}
                         onclick={onSetupRoutinesExecutionTime}
                     >
                         <Icon
@@ -336,7 +342,8 @@
                     <button
                         type="button"
                         class="btn btn-ghost btn-xs"
-                        title="Setup spikes config"
+                        title={isRoutinesAndSpikesConfigurableByUserPermissions ? "Cannot configure spikes since you've not required permission" : "Setup spikes config"}
+                        disabled={!isRoutinesAndSpikesConfigurableByUserPermissions}
                         onclick={onSetupSpikesConfig}
                     >
                         <Icon
@@ -415,29 +422,31 @@
     </div>
 </div>
 
-{#if isListTrayModalOpen}
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="w-full fixed inset-0 z-[80] bg-black/40" onclick={closeListTrayModal}>
-        <!-- svelte-ignore a11y_click_events_have_key_events -->
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div class="w-full flex min-h-full items-center justify-center p-4" onclick={(event) => event.stopPropagation()}>
-            <UI.Modals.ModalWrapper
-                name="List tray"
-                open={true}
-                closeOnBackdrop={true}
-                size={{ custom: "max-w-3/4" }}
-                on:close={closeListTrayModal}
-            >
-                <UI.Modals.ModalWrapperHeading
-                    headingName="List tray"
-                    on:close={closeListTrayModal}
-                />
+<SpikesConfigModal
+    bind:open={isSpikesConfigModalOpen}
+/>
 
-                <div class="max-h-[80vh] p-4 overflow-y-auto pr-1">
-                    {@render listItemsContent()}
-                </div>
-            </UI.Modals.ModalWrapper>
-        </div>
-    </div>
+<RoutinesConfigModal
+    bind:open={isRoutinesConfigModalOpen}
+/>
+
+{#if isListTrayModalOpen}
+    <ModalScreen bind:open={isListTrayModalOpen}>
+        <UI.Modals.ModalWrapper
+            name="List tray"
+            open={true}
+            closeOnBackdrop={true}
+            size={{ custom: "max-w-3/4" }}
+            on:close={closeListTrayModal}
+        >
+            <UI.Modals.ModalWrapperHeading
+                headingName="List tray"
+                on:close={closeListTrayModal}
+            />
+
+            <div class="max-h-[80vh] p-4 overflow-y-auto pr-1">
+                {@render listItemsContent()}
+            </div>
+        </UI.Modals.ModalWrapper>
+    </ModalScreen>
 {/if}
