@@ -137,6 +137,8 @@
             type: "file",
             id: crypto.randomUUID(),
             name,
+            routines: [],
+            spikes: [],
             lists: [],
             createdAt: new Date(),
             content: '',
@@ -377,7 +379,7 @@
             return;
         }
 
-        entriesList.update((list) => updateFileById(list, fileId, (entry) => renameResult.file ?? ({
+        entriesList.update((list) => updateFileById(list, fileId, (entry) => ({
             ...entry,
             name: nextName
         })));

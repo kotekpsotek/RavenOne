@@ -57,7 +57,21 @@
                     {
                         id: 'document-id-1',
                         documentName: "Document Name",
-                        documentHTML: `<h1>Hello</h1><p></p>`,
+                        documentHTML: `Tommy Hilfiger is an American fashion brand known for its classic, preppy style with a modern twist. Founded by designer Tommy Hilfiger, the brand became widely recognized for combining casual American fashion with premium quality and bold red, white, and blue branding. It offers clothing, footwear, accessories, and fragrances for men, women, and children, and is associated with a youthful, polished lifestyle.
+
+
+
+
+
+What is Lamborghini?
+
+Automobili Lamborghini S.p.A. is an Italian manufacturer of high‑performance luxury sports cars and SUVs. Founded in 1963 and based in Sant'Agata Bolognese, Italy, Lamborghini is famous for bold, angular styling, powerful V10/V12 engines, and iconic models such as the Miura, Countach, Aventador, and Huracán.
+
+Why was Lamborghini established?
+
+Ferruccio Lamborghini, a successful industrialist (notably of Lamborghinis tractors), founded the company to build refined, reliable grand‑touring and high‑performance cars. Key reasons were: (1) his personal passion for automobiles; (2) a desire to create cars that could rival Ferrari in comfort and performance; and (3) frustration with mechanical issues and customer service he experienced with existing sports cars, which motivated him to build better alternatives. Early models like the 350 GT and the groundbreaking mid‑engine Miura (1966) helped establish Lamborghini as a leader in exotic sports‑car design.
+
+For official information, see Lamborghini official site.>`,
                         generatedForPointIds: ['point1', 'point10']
                     },
                     {
@@ -148,6 +162,7 @@
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div 
         class="document w-full flex items-center justify-between gap-5 p-2 rounded-lg hover:bg-base-200 cursor-pointer"
+        class:bg-base-300={document.id === $selectedSpikeRoutineDocument?.id}
         data-document-id={document.id}
         onclick={(e) => {
             if ((e.target as HTMLElement).closest('button, input')) return;
@@ -226,42 +241,44 @@
     </div>
 {/snippet}
 
-<section class="execution-results h-full overflow-y-auto bg-base-100 p-4">
-    <div class="mb-4 flex items-center gap-2 border-b border-base-300 pb-3">
-        <Icon icon="material-symbols:checklist-rtl-rounded" class="text-lg text-base-content" />
-        <h3 class="text-sm font-semibold uppercase tracking-wide text-base-content">Execution Results</h3>
-    </div>
+{#key $selectedTab}
+    <section class="execution-results h-full overflow-y-auto bg-base-100 p-4">
+        <div class="mb-4 flex items-center gap-2 border-b border-base-300 pb-3">
+            <Icon icon="material-symbols:checklist-rtl-rounded" class="text-lg text-base-content" />
+            <h3 class="text-sm font-semibold uppercase tracking-wide text-base-content">Execution Results</h3>
+        </div>
 
-    {#await donwloadResults()}
-        <div class="flex items-center justify-center w-full h-full">
-            <span class="loading-spinner loading-sm"></span>
-            <span>Loading Results...</span>
-        </div>
-    {:then results}
-        <div class="space-y-2 h-full">
-            {#if results.length}
-                {#each results as result, resultIndex (`${result.title}-${result.date.getTime()}-${resultIndex}`)}
-                    <details class="collapse collapse-arrow bg-base-100 border-base-300 border">
-                        <summary class="collapse-title font-semibold cursor-pointer">
-                            {getTitle(result)}
-                        </summary>
+        {#await donwloadResults()}
+            <div class="flex items-center justify-center w-full h-full">
+                <span class="loading-spinner loading-sm"></span>
+                <span>Loading Results...</span>
+            </div>
+        {:then results}
+            <div class="space-y-2 h-full">
+                {#if results.length}
+                    {#each results as result, resultIndex (`${result.title}-${result.date.getTime()}-${resultIndex}`)}
+                        <details class="collapse collapse-arrow bg-base-100 border-base-300 border">
+                            <summary class="collapse-title font-semibold cursor-pointer">
+                                {getTitle(result)}
+                            </summary>
 
-                        <div class="collapse-content text-sm">
-                            {#each result.resultDocumentsHTML as document (document.id)}
-                                {@render Document(document)}
-                            {/each}
-                        </div>
-                    </details>
-                {/each}
-            {:else}
-                <div class="flex items-center text-sm justify-center w-full h-full">
-                    <span>There isn't any execution result</span>
-                </div>
-            {/if}
-        </div>
-    {:catch err}
-        <div class="flex items-center justify-center w-full h-full">
-            <p class="text-error">Cannot load results</p>
-        </div>
-    {/await}
-</section>
+                            <div class="collapse-content text-sm">
+                                {#each result.resultDocumentsHTML as document (document.id)}
+                                    {@render Document(document)}
+                                {/each}
+                            </div>
+                        </details>
+                    {/each}
+                {:else}
+                    <div class="flex items-center text-sm justify-center w-full h-full">
+                        <span>There isn't any execution result</span>
+                    </div>
+                {/if}
+            </div>
+        {:catch err}
+            <div class="flex items-center justify-center w-full h-full">
+                <p class="text-error">Cannot load results</p>
+            </div>
+        {/await}
+    </section>
+{/key}

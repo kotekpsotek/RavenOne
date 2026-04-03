@@ -1,5 +1,5 @@
 import { stopExecutionResultsResize } from "$lib/list&tray/resize";
-import { writable } from "svelte/store";
+import { get, writable } from "svelte/store";
 import { File } from "@ravenlens/shared";
 
 export type TabsAvailable = "Tasks" | "Routines" | "Spikes";
@@ -25,8 +25,16 @@ export const selectedSpikeRoutineDocument = (() => {
         ...selectedDocument,
         onSelectDocument(document: File.RoutinesSpikes.FrontendDownloadResultObject["resultDocumentsHTML"][number]) {
             return () => {
-                selectedDocument.set(document);
+                const currentDocument = get(selectedDocument);
+
+                if (currentDocument?.id === document.id) {
+                    selectedDocument.set(undefined);
+                }
+                else selectedDocument.set(document);
             }
+        },
+        unselect() {
+            selectedDocument.set(undefined);
         }
     }
 })();

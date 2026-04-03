@@ -28,6 +28,7 @@
     } from './resize';
     import RoutinesSpikesExecutionResults from './Routines&SpikesExecutionResults.svelte';
     import ExecutionResultDocumentPreview from './ExecutionResultDocumentPreview.svelte';
+    import { get } from 'svelte/store';
 
     let { isReadOnly = false }: { isReadOnly?: boolean } = $props();
 
@@ -152,6 +153,19 @@
         });
     }
 
+    /** Ensures proper list will be displaying for particular kind */
+    function getListForTabKind() {
+        const tab = get(selectedTab);
+
+        if (tab === "Routines") {
+            return $selectedFile?.routines ?? [];
+        }
+        else if (tab === "Spikes") {
+            return $selectedFile?.spikes ?? [];
+        }
+        else return $selectedFile?.lists ?? [];
+    }
+
     function openListTrayModal() {
         isListTrayModalOpen = true;
     }
@@ -203,29 +217,34 @@
 <svelte:window onresize={onWindowResize} />
 
 {#snippet listItemsContent()}
-    <div class="list-items space-y-2">
-        {#each $selectedFile!.lists as spawnedList (spawnedList.id)}
-            {#if spawnedList.kind === 'ordered'}
-                <OrderedListItem
-                    onEmptyList={() => removeSpawnedList(spawnedList.id)}
-                    {isReadOnly}
-                    {spawnedList}
-                />
-            {:else if spawnedList.kind === 'unordered'}
-                <UnorderedListItem
-                    onEmptyList={() => removeSpawnedList(spawnedList.id)}
-                    {isReadOnly}
-                    {spawnedList}
-                />
-            {:else}
-                <TaskListItem
-                    onEmptyList={() => removeSpawnedList(spawnedList.id)}
-                    {isReadOnly}
-                    {spawnedList}
-                />
-            {/if}
-        {/each}
-    </div>
+    {#key $selectedTab}
+        {@const listType = getListForTabKind()}
+
+        <div class="list-items space-y-2">
+            {#each listType as spawnedList (spawnedList.id)}
+                <!-- {$selectedFile?.spikes} -->
+                {#if spawnedList.kind === 'ordered'}
+                    <OrderedListItem
+                        onEmptyList={() => removeSpawnedList(spawnedList.id)}
+                        {isReadOnly}
+                        {spawnedList}
+                    />
+                {:else if spawnedList.kind === 'unordered'}
+                    <UnorderedListItem
+                        onEmptyList={() => removeSpawnedList(spawnedList.id)}
+                        {isReadOnly}
+                        {spawnedList}
+                    />
+                {:else}
+                    <TaskListItem
+                        onEmptyList={() => removeSpawnedList(spawnedList.id)}
+                        {isReadOnly}
+                        {spawnedList}
+                    />
+                {/if}
+            {/each}
+        </div>
+    {/key}
 {/snippet}
 
 <div
