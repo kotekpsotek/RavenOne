@@ -1,54 +1,230 @@
 <script lang=ts>
     import { PUBLIC_SOCKET_IO_PLAY_CONNECTION_URL } from "$env/static/public";
     import { selectedFile } from "$lib/stores/files";
-    import { selectedTab } from "$lib/stores/lists";
+    import { selectedSpikeRoutineDocument, selectedTab } from "$lib/stores/lists";
     import { selectedWorkspace } from "$lib/stores/workspace";
     import { fetchAuthenticated } from "$lib/utils/fetch";
     import Icon from "@iconify/svelte";
     import { File } from "@ravenlens/shared";
     import { get } from "svelte/store";
+    import { getTitle } from "./utils";
 
-    async function donwloadResults() {
-        const mode = get(selectedTab).toLocaleLowerCase();
-        const fetchResult = await fetchAuthenticated(
-            `${PUBLIC_SOCKET_IO_PLAY_CONNECTION_URL}/routines-spikes/${mode}/download-results`,
-            {
-                method: "POST",
-                headers: {
-                    'Content-Type': "application/json"
-                },
-                body: JSON.stringify({
-                    fileId: get(selectedFile)?.id,
-                    workspaceId: get(selectedWorkspace)?.id
-                })
+    // Local stores
+    let editTitleDocumentId = $state<string | null>(null);
+    let titleRanameValue = $state<string>("");
+    let renamedDocumentNames = $state<Record<string, string>>({});
+
+    function getDocumentName(document: File.RoutinesSpikes.FrontendDownloadResultObject["resultDocumentsHTML"][number]): string {
+        return renamedDocumentNames[document.id] ?? document.documentName;
+    }
+
+    // Utils
+    async function donwloadResults(): Promise<File.RoutinesSpikes.FrontendDownloadResultObject[]> {
+        try {
+            const mode = get(selectedTab).toLocaleLowerCase();
+            const fetchResult = await fetchAuthenticated(
+                `${PUBLIC_SOCKET_IO_PLAY_CONNECTION_URL}/routines-spikes/${mode}/download-results`,
+                {
+                    method: "POST",
+                    headers: {
+                        'Content-Type': "application/json"
+                    },
+                    body: JSON.stringify({
+                        fileId: get(selectedFile)?.id,
+                        workspaceId: get(selectedWorkspace)?.id
+                    })
+                }
+            );
+
+            if (fetchResult) {
+                const results = await fetchResult.json() as File.RoutinesSpikes.FrontendDownloadResultObject[];
+
+                return results.map(result => ({
+                    ...result,
+                    date: new Date(result.date)
+                }))
             }
-        );
-
-        if (fetchResult) {
-            const results = await fetchResult.json() as File.RoutinesSpikes.FrontendDownloadResultObject[];
-
-            return results.map(result => ({
-                ...result,
-                date: new Date(result.date)
-            }))
+        }
+        catch(err) {
+            console.error('Cannot download results', err);
         }
 
-        return [];
+        // Default
+        return [
+            {
+                title: "Execution Result title",
+                resultDocumentsHTML: [
+                    {
+                        id: 'document-id-1',
+                        documentName: "Document Name",
+                        documentHTML: `<h1>Hello</h1><p></p>`,
+                        generatedForPointIds: ['point1', 'point10']
+                    },
+                    {
+                        id: 'document-id-2',
+                        documentName: "Document Name",
+                        documentHTML: `<h1>Hello</h1><p></p>`,
+                        generatedForPointIds: ['point1', 'point10']
+                    },
+                ],
+                date: new Date()
+            },
+            {
+                title: "Execution Result title",
+                resultDocumentsHTML: [
+                    {
+                        id: 'document-id-3',
+                        documentName: "Document Name",
+                        documentHTML: `<h1>Hello</h1><p></p>`,
+                        generatedForPointIds: ['point1', 'point10']
+                    }
+                ],
+                date: new Date()
+            },
+        ];
+    }
+
+    function focusInputAttachment(node: HTMLInputElement) {
+        queueMicrotask(() => {
+            node.focus();
+            node.select();
+        });
+    }
+
+    // Handlers
+    function onEditTitle(document: File.RoutinesSpikes.FrontendDownloadResultObject["resultDocumentsHTML"][number]) {
+        return (ev: Event) => {
+            ev.stopPropagation();
+            
+            editTitleDocumentId = document.id;
+            titleRanameValue = getDocumentName(document)
+        }
+    }
+
+    async function submitRename(documentId: string) {
+        const nextName = titleRanameValue.trim();
+
+        if (!nextName) {
+            cancelRename();
+            return;
+        }
+
+        // TODO: Send request to backend to rename the document with specified id
+
+        
+        // Updates locally after backend success
+        renamedDocumentNames = {
+            ...renamedDocumentNames,
+            [documentId]: nextName
+        };
+
+        selectedSpikeRoutineDocument.update((document) => {
+            if (!document || document.id !== documentId) {
+                return document;
+            }
+
+            return {
+                ...document,
+                documentName: nextName
+            };
+        });
+
+
+        // Cancel
+        editTitleDocumentId = null;
+        titleRanameValue = "";
+    }
+
+    function cancelRename() {
+        editTitleDocumentId = null;
+        titleRanameValue = "";
     }
 </script>
-<!--
-1. Show the results tray [v]
-2. [v] Download execution result from backend and download with {#await :then :catch} block 
-    - show the loading spinner once is loading
-    - show the list once clicked
 
-TODO:
-3. Clicked item has to show the generated documents below and unclicked has to hide -> multiple lists can be clicked simulatenously
-4. Clicked document instead of #listItemContent shows the document while upper stripe has the arrow left to go go back
-    - clicked document on Results list is shown as clicked
-    ! Only one document can be clicked atime
-5. Switching among files causes to close the selected document
--->
+{#snippet Document(document: File.RoutinesSpikes.FrontendDownloadResultObject["resultDocumentsHTML"][number])}
+    {@const hasDocumentManipulationPermission = $selectedWorkspace?.userPermissions.includes("manage_files")}
+
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div 
+        class="document w-full flex items-center justify-between gap-5 p-2 rounded-lg hover:bg-base-200 cursor-pointer"
+        data-document-id={document.id}
+        onclick={(e) => {
+            if ((e.target as HTMLElement).closest('button, input')) return;
+            selectedSpikeRoutineDocument.onSelectDocument({ ...document, documentName: getDocumentName(document) })();
+        }}
+    >
+        {#if editTitleDocumentId === document.id}
+            <div 
+                class="flex items-center gap-1 w-3/4"
+            >
+                <input
+                    {@attach focusInputAttachment}
+                    class="input input-sm text-sm w-full max-w-52 border-none outline-none bg-transparent"
+                    bind:value={titleRanameValue}
+                    onclick={ev => ev.stopPropagation()}
+                    onkeydown={(e) => {
+                        e.stopPropagation();
+                        if (e.key === 'Enter') {
+                            submitRename(document.id);
+                        } else if (e.key === 'Escape') {
+                            cancelRename();
+                        }
+                    }}
+                />
+                
+                <div
+                    class="flex gap-1 items-center"
+                >
+                    <button
+                        class="submit-rename btn btn-ghost btn-square btn-xs"
+                        onclick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            submitRename(document.id);
+                        }}
+                        aria-label="Accept rename"
+                    >
+                        <Icon icon="material-symbols:check-rounded" class="text-lg"/>
+                    </button>
+
+                    <button
+                        class="cancel-rename btn btn-ghost btn-square btn-xs"
+                        onclick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            cancelRename();
+                        }}
+                        aria-label="Cancel rename"
+                    >
+                        <Icon icon="material-symbols:close-rounded" class="text-lg"/>
+                    </button>
+                </div>
+            </div>
+        {:else}
+            <div
+                class="flex items-center gap-2"
+            >
+                <Icon
+                    icon="material-symbols:text-snippet"
+                />
+                <span>{getDocumentName(document)}</span>
+            </div>
+        {/if}
+
+        {#if hasDocumentManipulationPermission && !editTitleDocumentId}
+            <button
+                class="edit-document-title btn btn-xs btn-outline border-gray-500 text-gray-500"
+                title="Edit Document Title"
+                onclick={onEditTitle(document)}
+            >
+                <Icon
+                    icon="material-symbols:edit-outline-rounded"
+                />
+            </button>
+        {/if}
+    </div>
+{/snippet}
 
 <section class="execution-results h-full overflow-y-auto bg-base-100 p-4">
     <div class="mb-4 flex items-center gap-2 border-b border-base-300 pb-3">
@@ -64,13 +240,18 @@ TODO:
     {:then results}
         <div class="space-y-2 h-full">
             {#if results.length}
-                {#each results as result}
-                    <button
-                        type="button"
-                        class="w-full rounded-md px-2 py-2 text-left text-sm text-base-content/70 transition-colors hover:bg-base-200"
-                    >
-                        23.03.2026 (Title default is date)
-                    </button>
+                {#each results as result, resultIndex (`${result.title}-${result.date.getTime()}-${resultIndex}`)}
+                    <details class="collapse collapse-arrow bg-base-100 border-base-300 border">
+                        <summary class="collapse-title font-semibold cursor-pointer">
+                            {getTitle(result)}
+                        </summary>
+
+                        <div class="collapse-content text-sm">
+                            {#each result.resultDocumentsHTML as document (document.id)}
+                                {@render Document(document)}
+                            {/each}
+                        </div>
+                    </details>
                 {/each}
             {:else}
                 <div class="flex items-center text-sm justify-center w-full h-full">

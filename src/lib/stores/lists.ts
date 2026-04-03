@@ -1,5 +1,6 @@
 import { stopExecutionResultsResize } from "$lib/list&tray/resize";
 import { writable } from "svelte/store";
+import { File } from "@ravenlens/shared";
 
 export type TabsAvailable = "Tasks" | "Routines" | "Spikes";
 
@@ -9,11 +10,26 @@ export const tabsAvailable: TabsAvailable[] = [
     "Spikes"
 ];
 
+/** For `Routines` and `Spikes` */
 export const showExecutionResults = writable<boolean>(false);
 
 /** List with selected point timestamps */
 export const selectedSpikeRoutineResultDateTimestamps = writable<string[]>([]);
 export const selectedSpikeRoutineId = writable<string | null>(null);
+
+/** Is a selected document for routine or spike */
+export const selectedSpikeRoutineDocument = (() => {
+    const selectedDocument = writable<File.RoutinesSpikes.FrontendDownloadResultObject["resultDocumentsHTML"][number] | undefined>(undefined);
+
+    return {
+        ...selectedDocument,
+        onSelectDocument(document: File.RoutinesSpikes.FrontendDownloadResultObject["resultDocumentsHTML"][number]) {
+            return () => {
+                selectedDocument.set(document);
+            }
+        }
+    }
+})();
 
 export const selectedTab = (() => {
     const { ...all } = writable<TabsAvailable>("Tasks");
@@ -27,6 +43,10 @@ export const selectedTab = (() => {
                     stopExecutionResultsResize();
                 }
 
+                // Clears selected document
+                selectedSpikeRoutineDocument.set(undefined);
+                
+                //
                 all.set(tab);
             }
         }

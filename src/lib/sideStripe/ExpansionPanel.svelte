@@ -377,7 +377,7 @@
             return;
         }
 
-        entriesList.update((list) => updateFileById(list, fileId, (entry) => ({
+        entriesList.update((list) => updateFileById(list, fileId, (entry) => renameResult.file ?? ({
             ...entry,
             name: nextName
         })));

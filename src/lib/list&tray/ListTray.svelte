@@ -10,7 +10,7 @@
     import TaskListItem from '$lib/listItems/TaskListItem.svelte';
     import { createListId } from '../listItems/utils';
     import { File } from "@ravenlens/shared";
-    import { selectedTab, showExecutionResults, tabsAvailable } from '../stores/lists';
+    import { selectedSpikeRoutineDocument, selectedTab, showExecutionResults, tabsAvailable } from '../stores/lists';
     import {
         clampExecutionResultsWidth,
         executionResultsWidth,
@@ -27,6 +27,7 @@
         trayHeight,
     } from './resize';
     import RoutinesSpikesExecutionResults from './Routines&SpikesExecutionResults.svelte';
+    import ExecutionResultDocumentPreview from './ExecutionResultDocumentPreview.svelte';
 
     let { isReadOnly = false }: { isReadOnly?: boolean } = $props();
 
@@ -358,7 +359,11 @@
             {#if $showExecutionResults && !isListTrayModalOpen}
                 <div id="list-tray-content-panels" class="flex h-full min-h-[220px] min-w-0">
                     <div class="min-w-0 flex-1 overflow-y-auto pr-2">
-                        {@render listItemsContent()}
+                        {#if $selectedSpikeRoutineDocument}
+                            <ExecutionResultDocumentPreview/>
+                        {:else}
+                            {@render listItemsContent()}
+                        {/if}
                     </div>
 
                     <button
