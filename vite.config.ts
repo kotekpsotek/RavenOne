@@ -14,6 +14,9 @@ export default defineConfig(({ mode }) => {
 
 	return {
 		plugins: [tailwindcss(), sveltekit()],
+		optimizeDeps: {
+			include: ['@tiptap/extension-youtube']
+		},
 		resolve: {
 			dedupe: [
 				'codemirror',

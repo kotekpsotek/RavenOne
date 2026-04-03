@@ -2,7 +2,6 @@ import { createEditor } from "svelte-tiptap";
 import type { Editor as SvelteEditor } from "svelte-tiptap";
 import { Document } from "@tiptap/extension-document";
 import { Placeholder } from "@tiptap/extension-placeholder";
-// import Youtube from "@tiptap/extension-youtube";
 import { get, writable } from "svelte/store";
 import { StarterKit } from "@tiptap/starter-kit"
 import { patchFileById, selectedFile } from "./files";
@@ -16,7 +15,56 @@ import { File } from "@ravenlens/shared";
 import { collaborationInterface, isCurrentUserSelectedFileEditor } from "./collaboration.js";
 import { browser } from "$app/environment";
 import { editorAIChat } from "./aiRightSideChat.js";
-import type { Extensions } from "@tiptap/core";
+import type { Extension } from "@tiptap/core";
+
+type YoutubeExtensionType = {
+    configure: (options: {
+        addPasteHandler: boolean;
+        width: number;
+        height: number;
+        nocookie: boolean;
+        modestBranding: boolean;
+        HTMLAttributes: {
+            class: string;
+        };
+    }) => unknown;
+};
+
+let youtubeExtensionPromise: Promise<YoutubeExtensionType | null> | undefined;
+
+function isViteOutdatedOptimizeDepError(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error);
+    return message.includes("Outdated Optimize Dep") || message.includes("Failed to fetch dynamically imported module");
+}
+
+async function loadYoutubeExtension() {
+    if (!browser) {
+        return null;
+    }
+
+    if (!youtubeExtensionPromise) {
+        youtubeExtensionPromise = (async () => {
+            try {
+                const module = await import("@tiptap/extension-youtube");
+                return (module.default ?? (module as { Youtube?: YoutubeExtensionType }).Youtube) ?? null;
+            } catch (error) {
+                if (!isViteOutdatedOptimizeDepError(error)) {
+                    throw error;
+                }
+
+                // Vite can briefly return "Outdated Optimize Dep" while refreshing prebundled chunks.
+                await new Promise(resolve => setTimeout(resolve, 120));
+                const retriedModule = await import("@tiptap/extension-youtube");
+                return (retriedModule.default ?? (retriedModule as { Youtube?: YoutubeExtensionType }).Youtube) ?? null;
+            }
+        })().catch((error) => {
+            youtubeExtensionPromise = undefined;
+            throw error;
+        });
+    }
+
+    return youtubeExtensionPromise;
+}
 
 function normalizeContent(content?: string): string {
     if (!content || !content.trim()) {
@@ -26,12 +74,18 @@ function normalizeContent(content?: string): string {
     return content;
 }
 
-export function createEditorExtensions() {
+export async function createEditorExtensions() {
     //
     const HeadingStartDocument = Document.extend({
         // https://tiptap.dev/api/schema#content
         content: 'fileHeading block block*',
     });
+    
+    const youtubeExtension = await loadYoutubeExtension().catch((error) => {
+        console.warn("Unable to load @tiptap/extension-youtube", error);
+        return null;
+    });
+    console.log(youtubeExtension)
     
     return [
         StarterKit.configure({
@@ -54,19 +108,21 @@ export function createEditorExtensions() {
         StandardTaskList,
         StandardTaskItem,
         SlashCommand,
-        /* Youtube.configure({
-            addPasteHandler: true,
-            width: 640,
-            height: 360,
-            nocookie: true,
-            modestBranding: true,
-            HTMLAttributes: {
-                class: "tiptap-youtube-embed"
-            }
-        }), */
+        ...(youtubeExtension ? [
+            youtubeExtension.configure({
+                addPasteHandler: true,
+                width: 640,
+                height: 360,
+                nocookie: true,
+                modestBranding: true,
+                HTMLAttributes: {
+                    class: "tiptap-youtube-embed"
+                }
+            })
+        ] : []),
         // Custom Components
         CodeSnippet
-    ]
+    ] as Extension[];
 }
 
 export const editor = (() => {
@@ -94,7 +150,7 @@ export const editor = (() => {
     const store = {
         subscribe,
         update,
-        selectFile(file: File.File.File) {
+        async selectFile(file: File.File.File) {
             const content = normalizeContent(file.content);
             activeFileId = file.id;
             
@@ -106,7 +162,7 @@ export const editor = (() => {
             if (!currentEditor) {
                 const editorStore = createEditor({
                     content,
-                    extensions: createEditorExtensions(),
+                    extensions: await createEditorExtensions(),
                     onUpdate(props) {
                         if (!activeFileId) {
                             return;
@@ -168,9 +224,9 @@ export const editor = (() => {
     };
 
     // Auto-select whenever selectedFile store changes
-    selectedFile.subscribe(file => {
+    selectedFile.subscribe(async file => {
         if (file && (file.id !== activeFileId || !currentEditor)) {
-            store.selectFile(file);
+            await store.selectFile(file);
             clearTimer();   
         }
     });
