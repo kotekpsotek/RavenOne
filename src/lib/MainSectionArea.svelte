@@ -6,7 +6,7 @@
     import { isWorkspaceInAddition } from "./stores/workspace";
     import AddWorkspace from "./screens/AddWorkspace.svelte";
     import NoSelectedFile from "./screens/NoSelectedFile.svelte";
-    import ListTray from "./ListTray.svelte";
+    import ListTray from "./list&tray/ListTray.svelte";
     import BubbleMenuRavenOne from "./components/BubbleMenuRavenOne.svelte";
     import "./Editor.css";
     import { isSharedRoute } from "./stores/share";
