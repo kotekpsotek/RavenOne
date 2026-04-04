@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { onMount } from "svelte";
     import { UI } from "@ravenlens/frontend";
     import { selectedWorkspace } from "$lib/stores/workspace";
     import { JWTAuth } from "$lib/utils/auth";
@@ -13,24 +14,8 @@
         SaveWorkspaceModelRequest,
         SaveWorkspaceModelResponse
     } from "$lib/workspace-settings/ai-models/types";
-
-    function handleGetJWT() {
-        const jwt = JWTAuth.getToken();
-
-        if (!jwt) {
-            throw new Error("Cannot send request because JWT is missing");
-        }
-
-        return jwt;
-    }
-
-    function handleGetSelectedWorkspace() {
-        if (!$selectedWorkspace) {
-            throw new Error("Cannot send request because no workspace is selected");
-        }
-
-        return $selectedWorkspace;
-    }
+    import { handleGetJWT, handleGetSelectedWorkspace } from "./common";
+    import ErrorsTray from "./ErrorsTray.svelte";
 
     async function handleRetrieveAPIKeys() {
         const workspace = handleGetSelectedWorkspace();
@@ -154,21 +139,28 @@
     };
 </script>
 
-{#await handleRetrieveAPIKeys()}
-    Loading api keys..
-{:then apiKeys} 
-    <UI.Workspace.Settings.WorkspaceAIModelsScreen
-        bgColor="bg-base-200"
-        visibility={{
-            evaluationFrequency: false,
-            customModels: false,
-            gEval: false,
-            apiKeysTable: true
-        }}
-        apiKeysList={apiKeys ?? []}
-        on:apiKeySaved={handleAPIKeySaved}
-        on:apiKeyDeleted={handleAPIKeyDeleted}
-        on:modelSaved={handleModelSaved}
-        on:modelDeleted={handleModelDeleted}
-    />
-{/await}
+<div
+    class="flex flex-col gap-6"
+>
+    {#await handleRetrieveAPIKeys()}
+        Loading api keys..
+    {:then apiKeys}
+        <UI.Workspace.Settings.WorkspaceAIModelsScreen
+            bgColor="bg-base-200"
+            visibility={{
+                evaluationFrequency: false,
+                customModels: false,
+                gEval: false,
+                apiKeysTable: true
+            }}
+            apiKeysList={apiKeys ?? []}
+            on:apiKeySaved={handleAPIKeySaved}
+            on:apiKeyDeleted={handleAPIKeyDeleted}
+            on:modelSaved={handleModelSaved}
+            on:modelDeleted={handleModelDeleted}
+        />
+    {/await}
+
+    <!-- Tray with showing and clearing the llm errors -->
+    <ErrorsTray/>
+</div>
