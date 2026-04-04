@@ -12,6 +12,9 @@
     import { json } from "@codemirror/lang-json";
     import { oneDark } from "@codemirror/theme-one-dark";
     import { theme } from "$lib/stores/theme";
+    import { fetchAuthenticated } from "$lib/utils/fetch";
+    import { selectedTab } from "$lib/stores/lists";
+    import { PUBLIC_SOCKET_IO_PLAY_CONNECTION_URL } from "$env/static/public";
 
     type SpikeWebhook = File.RoutinesSpikesConfig.SpikeConfigWebhook;
     type WebhookDraft = {
@@ -188,47 +191,34 @@
 
     // Utils
     async function downloadWebhooksConfig(): Promise<SpikeWebhook[]> {
-        // TODO: Download from backend service
-
+        // Download from backend service
         const workspaceId = $selectedWorkspace?.id ?? "test-workspace";
         const fileId = $selectedFile?.id ?? "test-file";
-        const userId = $userProfile?.id ?? "anonymous-user";
-        const origin = getPublicOrigin();
+        const mode = $selectedTab.toLocaleLowerCase();
 
-        // Mock response until backend endpoints are wired
-        return [
-            {
-                workspaceId,
-                fileId,
-                webhookId: "test",
-                webhookUrl: `${origin}/api/spikes/webhooks/test`,
-                executeFor: "all",
-                name: "Webhook Alpha",
-                webhookSchema: `{"event":"spike.execute","version":1}`,
-                createdAt: new Date(),
-                createdByAuthorId: userId
-            },
-            {
-                workspaceId,
-                fileId,
-                webhookId: "test1",
-                webhookUrl: `${origin}/api/spikes/webhooks/test1`,
-                executeFor: "all",
-                name: "Webhook Beta",
-                createdAt: new Date(),
-                createdByAuthorId: userId
-            },
-            {
-                workspaceId,
-                fileId,
-                webhookId: "testx",
-                webhookUrl: `${origin}/api/spikes/webhooks/testx`,
-                executeFor: "all",
-                name: "Webhook Gamma",
-                createdAt: new Date(),
-                createdByAuthorId: userId
+        try {
+            const response = await fetchAuthenticated(`${PUBLIC_SOCKET_IO_PLAY_CONNECTION_URL}/routines-spikes/${mode}/download-config`, {
+                method: "POST",
+                headers: {
+                    'Content-Type': "application/json"
+                },
+                body: JSON.stringify({
+                    workspaceId: workspaceId,
+                    fileId: fileId
+                })
+            });
+
+            if (response.ok) {
+                const configWebhooks = await response.json() as SpikeWebhook[];
+                return configWebhooks;
             }
-        ];
+        }
+        catch(err) {
+            console.error('Cannot download Webhooks config', err)
+        }
+
+        // Return when error
+        return [];
     }
 
     function canSwitchEditTarget(nextWebhookId: string): boolean {
@@ -244,6 +234,7 @@
         return confirm("You have unsaved changes on another webhook. Discard them and continue?");
     }
 
+    // TODO: Send to backend
     function onCreateWebhook() {
         if (!canSwitchEditTarget("")) {
             return;
@@ -345,6 +336,7 @@
         }
     }
 
+    // TODO: Save to backend
     function onSaveEdition(webhook: SpikeWebhook) {
         return async () => {
             const draft = getWebhookDraft(webhook);
@@ -439,6 +431,7 @@
         };
     }
 
+    // TODO: Save to backend
     function onDeleteWebhook(webhook: SpikeWebhook) {
         return async () => {
             const confirmed = confirm(`Delete webhook "${webhook.name}"?`);
