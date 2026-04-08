@@ -877,7 +877,6 @@
             </div>
         {:else if chatConversations.length}
             <div class="flex flex-col gap-16 pb-1 p-4 pb-10">
-                {@debug $activeChat}
                 {#each $activeChat.messages as message (message)}
                     {#if message.messageType === "message-user-prompt"}
                         <UserPrompt 
@@ -959,7 +958,7 @@
                                 {@const isDisabled = !modeValue.isEnabled}
                                 <div
                                     class="tooltip tooltip-right"
-                                    data-tip={isDisabled ? `You've to be active collaborator of file to have access to this mode. You'll regain this mode once you become collaborator` : modeValue.modeDescription}
+                                    data-tip={isDisabled ? "This mode is currently unavailable." : modeValue.modeDescription}
                                 >
                                     <button
                                         class="btn btn-ghost btn-xs justify-start {mode === $editorAIChat.textFieldMode ? 'btn-active' : ''}"

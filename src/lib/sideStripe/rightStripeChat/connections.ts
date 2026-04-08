@@ -5,13 +5,12 @@ import { selectedFile } from "$lib/stores/files";
 import { selectedWorkspace } from "$lib/stores/workspace";
 import { JWTAuth } from "$lib/utils/auth";
 import { fetchAuthenticated } from "$lib/utils/fetch";
+import type { File } from "@ravenlens/shared";
 import type { BackendChatPopulated, DocumentManipulation, MessageOutput, MessageUserPrompt } from "@ravenlens/shared/chat-ai/backend/schema";
 import { io, type Socket } from "socket.io-client";
 import { get, writable } from "svelte/store";
 import type { LangchainAgent } from "@ravenlens/ai";
-import type { AIAgentOutputMessage, ChatMember } from "../../../../../../packages/shared/dist/types/chat-ai/universal";
 import type { PromptProcessingProgess } from "@ravenlens/shared/chat-ai";
-import type { SpawnedList } from "../../../../../../packages/shared/dist/types/file/file";
 
 type CreateChatResult = { success: true; chatId: string } | { success: false; reason?: string };
 type SendPromptResult = { error: true; reason: string } | { success: true; idPromptProcessing?: string | undefined; outputMessage?: MessageOutput };
@@ -23,7 +22,7 @@ type ProposalEventPayload = {
     chatId: string;
     messageOutputId: string;
     proposalType: ProposalType;
-    acceptanceContent?: SpawnedList[] | DocumentManipulation;
+    acceptanceContent?: File.File.SpawnedList[] | DocumentManipulation;
 };
 
 export async function loadChatsFromFileRequest(
@@ -114,7 +113,7 @@ export class SocketIoChatService {
         chatId: string,
         messageOutputId: string,
         proposalType: ProposalType,
-        acceptanceContent?: SpawnedList[] | DocumentManipulation
+        acceptanceContent?: File.File.SpawnedList[] | DocumentManipulation
     ): ProposalEventPayload {
         const basePayload: ProposalEventPayload = {
             workspaceId: this.workspaceId,
@@ -161,37 +160,7 @@ export class SocketIoChatService {
     }
 
     // Emitters
-    emitJoinChat(chatId: string): Promise<boolean> {
-        this.refreshScopeFromStores();
-        return this.emitWithAck<boolean>(
-            ack => this.connection?.emit(
-                "joinChat",
-                this.workspaceId,
-                this.fileId,
-                chatId,
-                (status: boolean) => ack(status)
-            ),
-            status => Boolean(status),
-            false
-        );
-    }
-
-    emitLeaveChat(chatId: string): Promise<boolean> {
-        this.refreshScopeFromStores();
-        return this.emitWithAck<boolean>(
-            ack => this.connection?.emit(
-                "leaveChat",
-                this.workspaceId,
-                this.fileId,
-                chatId,
-                (status: boolean) => ack(status)
-            ),
-            status => Boolean(status),
-            false
-        );
-    }
-
-    emitAcceptProposal(chatId: string, messageOutputId: string, proposalType: ProposalType, acceptanceContent: SpawnedList[] | DocumentManipulation | undefined): Promise<boolean> {
+    emitAcceptProposal(chatId: string, messageOutputId: string, proposalType: ProposalType, acceptanceContent: File.File.SpawnedList[] | DocumentManipulation | undefined): Promise<boolean> {
         this.refreshScopeFromStores();
         return this.emitWithAck<boolean>(
             ack => this.connection?.emit("accept-proposal", this.buildProposalPayload(chatId, messageOutputId, proposalType, acceptanceContent), (status: boolean) => ack(status)),
@@ -296,15 +265,7 @@ export class SocketIoChatService {
         );
     }
 
-    // Listeners // TODO: Add chat ids to all listeners
-    onNewMember(listener: (chatId: string, member: ChatMember) => void) {
-        this.connection?.on("new-member", listener);
-    }
-
-    onLeaveMember(listener: (chatId: string, member: ChatMember) => void) {
-        this.connection?.on("leave-member", listener);
-    }
-
+    // Listeners
     onNoModelsAbleToProcessAttachements(listener: (chatId: string, mediaType: LangchainAgent.Types.MediaKeys) => void) {
         this.connection?.on("no-models-able-to-process-attachement", listener);
     }
@@ -316,10 +277,6 @@ export class SocketIoChatService {
     onPromptProgressTool(listener: (chatId: string, toolEvent: PromptProcessingProgess.PromptProgressToolEvent) => void) {
         this.connection?.on("prompt-progress-tool", listener);
     }
-
-    onPromptPlaying(listener: (chatId: string, promptId: string, baseOutputMessage: MessageOutput) => void) {
-        this.connection?.on("prompt-playing", listener);
-    }
     
     /** Handles either send to other room members than emitted and for emitted */
     onPromptError(listener: (chatId: string, promptId: string | false, outputMessageId: string) => void) {
@@ -327,21 +284,15 @@ export class SocketIoChatService {
     }
 
     /** Handles either send to other room members than emitted and for emitted */
-    onPromptSuccess(listener: (chatId: string, outcomeMessage: AIAgentOutputMessage, outputMessageId: string) => void) {
+    onPromptSuccess(listener: (chatId: string, outcomeMessage: unknown, outputMessageId: string) => void) {
         this.connection?.on("prompt-success", listener);
-    }
-
-    onStopPlaying(listener: (chatId: string, member: ChatMember, fileId: string, promptProcessId: string) => void) {
-        this.connection?.on("stop-playing", listener);
     }
 }
 
 /**
- * Rules:
- * 1. When user opens chat should join to it (User can join to multiple chats atime)
- * 2. When user leaves the chat should leave it e.g:
- *  - when user closes chat
- * 3. Implement the listeners and apply changes to the storage
+ * Owner-scoped chat service facade.
+ * The backend validates ownership for each action, and pushes prompt progress
+ * events directly to the authenticated owner socket.
  */
 export const chatServiceConnection = (() => {
     const { ...all } = writable<SocketIoChatService | undefined>(undefined);
@@ -359,13 +310,7 @@ export const chatServiceConnection = (() => {
 
     return {
         ...all,
-        emitJoinChat(chatId: string): Promise<boolean> {
-            return getConnection()?.emitJoinChat(chatId) ?? Promise.resolve(false);
-        },
-        emitLeaveChat(chatId: string): Promise<boolean> {
-            return getConnection()?.emitLeaveChat(chatId) ?? Promise.resolve(false);
-        },
-        emitAcceptProposal(chatId: string, messageOutputId: string, proposalType: ProposalType, acceptanceContent: SpawnedList[] | DocumentManipulation | undefined): Promise<boolean> {
+        emitAcceptProposal(chatId: string, messageOutputId: string, proposalType: ProposalType, acceptanceContent: File.File.SpawnedList[] | DocumentManipulation | undefined): Promise<boolean> {
             return getConnection()?.emitAcceptProposal(chatId, messageOutputId, proposalType, acceptanceContent) ?? Promise.resolve(false);
         },
         emitDeclineProposal(chatId: string, messageOutputId: string, proposalType: ProposalType): Promise<boolean> {

@@ -256,6 +256,11 @@
 	}
 
 	function onSelectChatFromDropdown(chatId: string) {
+		const isLoadedChat = $loadedChatsOfWorkspaceFile.some((chat) => chat.id === chatId);
+		if (!isLoadedChat) {
+			return;
+		}
+
 		chatStripeTabsOfWorkspaceFile.openChatTab(chatId);
 		isChatActionsDropdownOpen = false;
 		isSelectChatListOpen = false;

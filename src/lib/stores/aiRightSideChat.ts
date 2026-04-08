@@ -10,7 +10,6 @@ import { matchesAttachmentKind } from "$lib/utils/attachments";
 import type { File } from "@ravenlens/shared";
 import type { AIChatMode, ChatTab } from "@ravenlens/shared/chat-ai/frontend";
 import type { AIChatModel, BackendChatPopulated, DownloadChat, MessageOutput, MessageUserPrompt, PromptProcessing, SelectedTextRangeContext } from "@ravenlens/shared/chat-ai/backend/schema";
-import type { AIAgentOutputMessage } from "../../../../../packages/shared/dist/types/chat-ai/universal";
 
 export const isLoadedChatsOfWorkspaceFileLoading = writable<boolean>(false);
 
@@ -19,13 +18,6 @@ type ProcessingChatsState = Record<string, PromptProcessing>;
 type ChatScope = {
 	fileId: string;
 	workspaceId: string;
-};
-
-type ChatPresenceMember = {
-	socketId: string;
-	user: {
-		id: string;
-	};
 };
 
 const pickPromptProcessing = (chatCandidate: unknown): PromptProcessing | undefined => {
@@ -166,13 +158,8 @@ export const processingChatsOfWorkspaceFile = (() => {
 })();
 
 const normalizeLoadedChat = (chat: BackendChatPopulated | DownloadChat): DownloadChat => {
-	const inFileCollaborators = Array.isArray((chat as DownloadChat).inFileCollaborators)
-		? [...(chat as DownloadChat).inFileCollaborators]
-		: [...chat.collaborators.map(collaborator => ({ ...collaborator, isActive: false as const }))];
-
 	return {
-		...chat,
-		inFileCollaborators
+		...chat
 	};
 };
 
@@ -224,59 +211,6 @@ const getCurrentChatScopeKey = (): string | undefined => {
 	}
 
 	return `${scope.workspaceId}:${scope.fileId}`;
-};
-
-const areChatScopesEqual = (left?: ChatScope, right?: ChatScope): boolean => {
-	if (!left && !right) {
-		return true;
-	}
-
-	if (!left || !right) {
-		return false;
-	}
-
-	return left.fileId === right.fileId && left.workspaceId === right.workspaceId;
-};
-
-const syncChatMemberPresence = <T extends { collaborators: unknown[]; inFileCollaborators?: unknown[] }>(
-	chat: T,
-	member: ChatPresenceMember,
-	isActive: boolean
-): T => {
-	const collaboratorId = member.user.id;
-	if (!collaboratorId) {
-		return chat;
-	}
-
-	const collaborators = [...(chat.collaborators as Array<{ id: string } & Record<string, unknown>> )];
-	const inFileCollaborators = Array.isArray(chat.inFileCollaborators)
-		? [...(chat.inFileCollaborators as Array<{ id: string; isActive?: boolean } & Record<string, unknown>>)]
-		: [];
-
-	const nextCollaborators = collaborators.some(collaborator => collaborator.id === collaboratorId)
-		? collaborators.map(collaborator => collaborator.id === collaboratorId ? { ...collaborator, ...member.user } : collaborator)
-		: [...collaborators, member.user as unknown as { id: string } & Record<string, unknown>];
-	const collaboratorIndex = inFileCollaborators.findIndex(collaborator => collaborator.id === collaboratorId);
-
-	if (collaboratorIndex >= 0) {
-		inFileCollaborators[collaboratorIndex] = {
-			...inFileCollaborators[collaboratorIndex],
-			...member.user,
-			isActive
-		};
-	}
-	else {
-		inFileCollaborators.push({
-			...(member.user as unknown as { id: string } & Record<string, unknown>),
-			isActive
-		});
-	}
-
-	return {
-		...chat,
-		collaborators: nextCollaborators as T["collaborators"],
-		inFileCollaborators: inFileCollaborators as T["inFileCollaborators"]
-	};
 };
 
 /** TODO: Each new user / collaborator change has to be annotated withing this storage to keep user marked as editors */
@@ -704,7 +638,6 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 		const asMaybeTab = chat as Partial<ChatTab>;
 		return {
 			...chat,
-			inFileCollaborators: [...asMaybeTab.inFileCollaborators ?? []],
 			selectedMode: normalizeSelectedMode(asMaybeTab.selectedMode),
 			selectedModel: normalizeSelectedModel(asMaybeTab.selectedModel),
 			selectedContext: normalizeSelectedContext(asMaybeTab.selectedContext),
@@ -1400,10 +1333,8 @@ export const rightSideStripeChat = (() => {
 					: [],
 				isActive: true,
 				createdByAuthor: user,
-				collaborators: [user],
 				workspaceId: selectedWorkspaceLocal.id,
-				fileId: selectedFileLocal.id,
-				inFileCollaborators: [{...user, isActive: true}]
+				fileId: selectedFileLocal.id
 			} satisfies ChatTab;
 
 			// Add chat tab
@@ -1997,24 +1928,6 @@ export const fileChatEditionPreviewShowing = (() => {
 	}
 })();
 
-// Chat Connection to chat service
-const updateChatMemberPresence = (chatId: string, member: ChatPresenceMember, isActive: boolean) => {
-	loadedChatsOfWorkspaceFile.updateChatById(chatId, chat => syncChatMemberPresence(chat, member, isActive));
-	chatStripeTabsOfWorkspaceFile.updateChatTabById(chatId, chatTab => syncChatMemberPresence(chatTab, member, isActive));
-};
-
-const updateCurrentUserPresence = (chatId: string, isActive: boolean) => {
-	const currentUser = get(userProfile);
-	if (!currentUser?.id) {
-		return;
-	}
-
-	updateChatMemberPresence(chatId, {
-		socketId: "self",
-		user: currentUser as unknown as ChatPresenceMember["user"]
-	}, isActive);
-};
-
 const updateChatNameInStores = (chatId: string, chatName: string) => {
 	const normalizedChatName = chatName.trim();
 	if (!normalizedChatName.length) {
@@ -2119,138 +2032,22 @@ const toOutputMessageFromEvent = (outcomeMessage: unknown, outputMessageId: stri
 
 if (browser) {
 	queueMicrotask(() => {
-		const joinedChatIds = new Set<string>();
-		let previousScope = getCurrentChatScope();
-		let previousDesiredRoomsSignature = "";
 		const chatServiceConnectionLocal = get(chatServiceConnection);
 		if (!chatServiceConnectionLocal) {
 			console.warn("Cannot establish chat connection");
 			return;
 		}
 
-		const getOpenChatIdsForScope = (scope: ChatScope): string[] => {
-			return get(chatStripeTabsOfWorkspaceFile)
-				.filter(chatTab => chatTab.fileId === scope.fileId && chatTab.workspaceId === scope.workspaceId)
-				.map(chatTab => chatTab.id)
-				.filter(chatId => chatId.trim().length > 0);
+		type PromptSuccessPayload = {
+			outputMessageContentHTML?: string;
+			chatName?: string;
+			tasksListManipulation?: MessageOutput["tasksListManipulation"];
+			documentManipulation?: MessageOutput["documentManipulation"];
+			time?: {
+				startDate?: string;
+				endDate?: string;
+			};
 		};
-
-		const getRoomsSignature = (scope?: ChatScope): string => {
-			if (!scope) {
-				return "";
-			}
-
-			const openChatIds = [...new Set(getOpenChatIdsForScope(scope))].sort();
-			return `${scope.workspaceId}:${scope.fileId}:${openChatIds.join(",")}`;
-		};
-
-		const leaveJoinedChats = (scope: ChatScope) => {
-			const chatIdsToLeave = [...joinedChatIds];
-			joinedChatIds.clear();
-			previousDesiredRoomsSignature = "";
-
-			for (const chatId of chatIdsToLeave) {
-				updateCurrentUserPresence(chatId, false);
-				chatServiceConnectionLocal.emitLeaveChat(chatId);
-			}
-		};
-
-		const syncJoinedChatRooms = () => {
-			const currentScope = getCurrentChatScope();
-
-			if (!currentScope) {
-				if (previousScope && joinedChatIds.size) {
-					leaveJoinedChats(previousScope);
-				}
-
-				previousDesiredRoomsSignature = "";
-				previousScope = undefined;
-				return;
-			}
-
-			if (!areChatScopesEqual(previousScope, currentScope) && previousScope && joinedChatIds.size) {
-				leaveJoinedChats(previousScope);
-			}
-
-			previousScope = currentScope;
-
-			const nextDesiredRoomsSignature = getRoomsSignature(currentScope);
-			if (nextDesiredRoomsSignature === previousDesiredRoomsSignature) {
-				return;
-			}
-
-			previousDesiredRoomsSignature = nextDesiredRoomsSignature;
-
-			const openChatIds = new Set(
-				getOpenChatIdsForScope(currentScope)
-			);
-
-			for (const joinedChatId of [...joinedChatIds]) {
-				if (openChatIds.has(joinedChatId)) {
-					continue;
-				}
-
-				joinedChatIds.delete(joinedChatId);
-				updateCurrentUserPresence(joinedChatId, false);
-				void chatServiceConnectionLocal.emitLeaveChat(joinedChatId);
-			}
-
-			for (const chatId of openChatIds) {
-				if (joinedChatIds.has(chatId)) {
-					continue;
-				}
-
-				joinedChatIds.add(chatId);
-				updateCurrentUserPresence(chatId, true);
-				void chatServiceConnectionLocal.emitJoinChat(chatId).then((status) => {
-					if (status) {
-						return;
-					}
-
-					joinedChatIds.delete(chatId);
-					updateCurrentUserPresence(chatId, false);
-				});
-			}
-		};
-
-		chatStripeTabsOfWorkspaceFile.subscribe(() => {
-			syncJoinedChatRooms();
-		});
-
-		let previousScopeKey = getCurrentChatScopeKey();
-		const onScopeMaybeChanged = () => {
-			const nextScopeKey = getCurrentChatScopeKey();
-			if (nextScopeKey === previousScopeKey) {
-				return;
-			}
-
-			previousScopeKey = nextScopeKey;
-			syncJoinedChatRooms();
-		};
-
-		selectedFile.subscribe(() => {
-			onScopeMaybeChanged();
-		});
-
-		selectedWorkspace.subscribe(() => {
-			onScopeMaybeChanged();
-		});
-
-		chatServiceConnectionLocal.onNewMember((chatId, member) => {
-			if (!joinedChatIds.has(chatId) || !isChatPresentInStores(chatId)) {
-				return;
-			}
-
-			updateChatMemberPresence(chatId, member as unknown as ChatPresenceMember, true);
-		});
-
-		chatServiceConnectionLocal.onLeaveMember((chatId, member) => {
-			if (!isChatPresentInStores(chatId)) {
-				return;
-			}
-
-			updateChatMemberPresence(chatId, member as unknown as ChatPresenceMember, false);
-		});
 
 		chatServiceConnectionLocal.onNoModelsAbleToProcessAttachements((chatId, mediaType) => {
 			if (!isChatPresentInStores(chatId)) {
@@ -2322,15 +2119,6 @@ if (browser) {
 			} as MessageOutput["reasoning"][number]);
 		});
 
-		chatServiceConnectionLocal.onPromptPlaying((chatId, promptId, baseOutputMessage) => {
-			if (!isChatPresentInStores(chatId)) {
-				return;
-			}
-
-			rightSideStripeChat.upsertOutputMessage(chatId, baseOutputMessage);
-			processingChatsOfWorkspaceFile.setPromptId(chatId, promptId);
-		});
-
 		chatServiceConnectionLocal.onPromptError((chatId, _promptId, outputMessageId) => {
 			if (!isChatPresentInStores(chatId)) {
 				return;
@@ -2349,24 +2137,7 @@ if (browser) {
 			rightSideStripeChat.stopProcessing(chatId, false);
 		});
 
-		chatServiceConnectionLocal.onStopPlaying((chatId, _member, fileId) => {
-			const currentScope = getCurrentChatScope();
-			if (!currentScope || currentScope.fileId !== fileId) {
-				return;
-			}
-
-			if (!isChatPresentInStores(chatId)) {
-				return;
-			}
-
-			rightSideStripeChat.flushQueuedReasoning(chatId);
-
-			rightSideStripeChat.stopProcessing(chatId);
-		});
-
 		chatServiceConnectionLocal.onPromptSuccess((chatId, outcomeMessage, outputMessageId) => {
-			console.log('Prompt success', outcomeMessage);
-			
 			if (!isChatPresentInStores(chatId)) {
 				return;
 			}
@@ -2388,12 +2159,7 @@ if (browser) {
 				return message.messageType === "message-user-output" && message.id === outputMessageId;
 			}) as MessageOutput | undefined;
 
-			const outcomePayload = outcomeMessage as Exclude<AIAgentOutputMessage, "time"> & {
-				time?: {
-					startDate?: string;
-					endDate?: string;
-				};
-			};
+			const outcomePayload = (outcomeMessage ?? {}) as PromptSuccessPayload;
 
 			const startAt = toValidDate(
 				outcomePayload.time?.startDate
@@ -2439,7 +2205,5 @@ if (browser) {
 			// Stops prompt processing
 			rightSideStripeChat.stopProcessing(chatId, false);
 		});
-
-		syncJoinedChatRooms();
 	});
 }

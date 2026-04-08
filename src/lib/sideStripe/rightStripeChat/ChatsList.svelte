@@ -6,9 +6,7 @@
 		loadedChatsOfWorkspaceFile,
 		processingChatsOfWorkspaceFile
 	} from "$lib/stores/aiRightSideChat"
-    import CollaboratorsBubbles from "$lib/components/CollaboratorsBubbles.svelte";
-    import type { DownloadChat, ProfileActiveCollborator } from "@ravenlens/shared/chat-ai/backend/schema";
-    import { mapChatCollaboratorsToBubbleCollabs } from "./utils";
+	import type { DownloadChat } from "@ravenlens/shared/chat-ai/backend/schema";
 
 	type ChatGroup = {
 		key: string;
@@ -122,27 +120,6 @@
 	function isChatActive(chatId: string): boolean {
 		return $activeChat?.id === chatId;
 	}
-
-	function getChatCollaborators(chat: DownloadChat) {
-		const activeCollaborators = chat.inFileCollaborators.filter(
-			(collab) => (collab as ProfileActiveCollborator).isActive
-		);
-		const allCollaborators = [...activeCollaborators, ...chat.collaborators];
-
-		// Gets only unique collabs
-		const uniqueCollaborators = Array.from(
-			new Map(allCollaborators.map((c) => [c.id, c])).values()
-		).map(collab => ({ // Has to be done since original acitve collabs looses context
-			...collab,
-			isActive: activeCollaborators.some(collabThere => collabThere.id === collab.id && (collabThere as ProfileActiveCollborator).isActive) ?? false
-		}));
-		
-		// Maps collabs to 
-		const mapped = mapChatCollaboratorsToBubbleCollabs(uniqueCollaborators);
-
-		// List with collabs
-		return mapped;
-	}
 </script>
 
 <section class="h-full flex flex-col min-h-0">
@@ -156,7 +133,7 @@
 						{#each group.chats as chat (chat.id)}
 							<button
 								type="button"
-								class="w-full rounded-lg border border-base-300 bg-base-100 px-3 py-2 text-left transition-colors hover:border-primary/40 hover:bg-base-200 {isChatActive(chat.id) ? 'border-primary bg-primary/10' : ''}"
+								class="w-full rounded-lg bg-base-100 px-3 p-4 text-left transition-colors hover:border-primary/40 hover:bg-base-200 {isChatActive(chat.id) ? 'border-primary bg-primary/10' : ''}"
 								onclick={() => onSelectChat(chat.id)}
 							>
 								<div class="flex items-center justify-between gap-2">
@@ -165,12 +142,7 @@
 										{#if $processingChatsOfWorkspaceFile[chat.id]}
 											<span class="loading loading-spinner loading-xs"></span>
 										{/if}
-										<CollaboratorsBubbles
-											collaborators={getChatCollaborators(chat)}
-											MAX_VISIBLE_COLLABORATORS={3}
-											activeUserSuffix="Interacting User"
-											size="small"
-										/>
+										
 										<span class="shrink-0 text-xs text-base-content/60">{formatChatTime(chat.createdAt)}</span>
 									</div>
 								</div>

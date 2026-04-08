@@ -4,9 +4,7 @@
     import ChatsList from "./ChatsList.svelte";
     import ChatTabs from "./ChatTabs.svelte";
     import { chatLayoutStore } from "./config";
-    import { activeChat, chatStripeTabsOfWorkspaceFile, editorAIChat, processingChatsOfWorkspaceFile, rightSideStripeChat } from "$lib/stores/aiRightSideChat";
-    import CollaboratorsBubbles from "$lib/components/CollaboratorsBubbles.svelte";
-    import { mapChatCollaboratorsToBubbleCollabs } from "./utils";
+    import { activeChat, editorAIChat, processingChatsOfWorkspaceFile, rightSideStripeChat } from "$lib/stores/aiRightSideChat";
 
     let screenWidth = $state(typeof window !== "undefined" ? window.innerWidth : 1440);
     /** Shows chats-list or the list with chat bubbles */
@@ -22,8 +20,6 @@
     let chatStripeWidth = $derived($chatLayoutStore.width);
     let chatStripeHeight = $derived($chatLayoutStore.height);
     let isActiveChatProcessing = $derived(Boolean($activeChat?.id && $processingChatsOfWorkspaceFile[$activeChat.id]));
-
-    let chatMappedActiveCollaborators = $derived(mapChatCollaboratorsToBubbleCollabs($activeChat?.inFileCollaborators ?? []));
 
     function onWindowResize() {
         screenWidth = window.innerWidth;
@@ -119,17 +115,6 @@
                     <Icon icon="material-symbols:chat-bubble-outline-rounded" class="text-lg"/>
                 </button>
                 <h2 class="font-semibold">RavenOne AI Chat</h2>
-
-                {#if chatMappedActiveCollaborators}
-                    <div class="mx-2">
-                        <CollaboratorsBubbles
-                            collaborators={chatMappedActiveCollaborators}
-                            MAX_VISIBLE_COLLABORATORS={3}
-                            size="small"
-                            activeUserSuffix="Interacting User"
-                        />
-                    </div>
-                {/if}
             </div>
 
             <div>
