@@ -211,6 +211,7 @@ export const selectedFile = (() => {
         }
     }
 
+    // TODO: Add file saving mechanism when user if offline
     const saveSingleFileRequest = async (
         fileToSave: NonNullable<FileType>,
         saveValue: SavingValues = true,
