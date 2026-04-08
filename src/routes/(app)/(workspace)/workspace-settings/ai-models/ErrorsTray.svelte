@@ -219,7 +219,7 @@
     {:else}
         <div class="mt-4 grid grid-cols-1 gap-3">
             {#each llmErrors as llmError, index (getLLMErrorKey(llmError, index))}
-                <article class="rounded-lg border border-base-300 bg-rose-100 theme-dark:bg-red-400/50 p-3">
+                <article class="rounded-lg border border-base-300 bg-base-300 theme-dark:bg-white/10 p-3">
                     <div class="flex flex-wrap items-center justify-between gap-2">
                         <span class="badge badge-outline badge-sm">Error #{index + 1}</span>
                         <span class="text-xs opacity-70">{formatCreatedAt(llmError)}</span>
