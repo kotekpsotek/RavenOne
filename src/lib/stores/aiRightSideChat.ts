@@ -5,7 +5,7 @@ import { chatServiceConnection, loadChatsFromFileRequest } from "$lib/sideStripe
 import { selectedWorkspace } from "./workspace";
 import { isChatSideStripeSelected, isFileListSideStripeSelected } from "./selectedSideStripes";
 import { userProfile } from "./user";
-import { setAlert } from "$lib/utils/alert";
+import { alertState, setAlert } from "$lib/utils/alert";
 import { matchesAttachmentKind } from "$lib/utils/attachments";
 import type { File } from "@ravenlens/shared";
 import type { AIChatMode, ChatTab } from "@ravenlens/shared/chat-ai/frontend";
@@ -2119,7 +2119,7 @@ if (browser) {
 			} as MessageOutput["reasoning"][number]);
 		});
 
-		chatServiceConnectionLocal.onPromptError((chatId, _promptId, outputMessageId) => {
+		chatServiceConnectionLocal.onPromptError((chatId, _promptId, outputMessageId, resultErrorMessage) => {
 			if (!isChatPresentInStores(chatId)) {
 				return;
 			}
@@ -2135,6 +2135,16 @@ if (browser) {
 
 			// Stop processing the messages
 			rightSideStripeChat.stopProcessing(chatId, false);
+
+			// Show the alert
+			alertState.set({
+				alert: {
+					type: "error",
+					name: "Error while processing prompt",
+					description: `Error content: ${JSON.stringify(resultErrorMessage, null, 4)}`
+				},
+				timeoutMs: 10_000
+			});
 		});
 
 		chatServiceConnectionLocal.onPromptSuccess((chatId, outcomeMessage, outputMessageId) => {

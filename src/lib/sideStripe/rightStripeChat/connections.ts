@@ -279,7 +279,7 @@ export class SocketIoChatService {
     }
     
     /** Handles either send to other room members than emitted and for emitted */
-    onPromptError(listener: (chatId: string, promptId: string | false, outputMessageId: string) => void) {
+    onPromptError(listener: (chatId: string, promptId: string | false, outputMessageId: string, resultErrorMessage: string) => void) {
         this.connection?.on("prompt-error", listener);
     }
 
