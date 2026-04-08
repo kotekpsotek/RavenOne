@@ -13,7 +13,7 @@ import { get } from "svelte/store";
 import type { DocumentManipulation, MessageOutput } from "@ravenlens/shared/chat-ai/backend/schema";
 import { chatServiceConnection } from "../connections";
 import type { SpawnedList } from "../../../../../../../packages/shared/dist/types/file/file";
-import { selectedFile } from "$lib/stores/files";
+import { entriesList, selectedFile } from "$lib/stores/files";
 import { editor } from "$lib/stores/editor";
 
 function setupDocumentManipulationStatus(chatId: string, outputMessage: MessageOutput, status: DocumentManipulation["status"]) {
@@ -77,12 +77,19 @@ export function callAcceptDocumentManipulation(outputMessage: MessageOutput) {
                 return ed;
             })
             
+            // Updates the selected file on Entries list
+            entriesList.overwriteFile({
+                ...sf!,
+                content: nextFileContent
+            });
+
             // Returns updated $selectedFileContent
             return {
                 ...sf!,
                 content: nextFileContent
-            }
+            };
         });
+
     
         // 2. If backend returned success
         setupDocumentManipulationStatus(activeChatState.id, outputMessage, "accepted");

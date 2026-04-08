@@ -10,7 +10,6 @@
     import TaskListItem from '$lib/listItems/TaskListItem.svelte';
     import { createListId } from './listItems/utils';
     import { File } from "@ravenlens/shared";
-    import { dev } from '$app/environment';
     import type { SpawnedList } from '../../../../packages/shared/dist/types/file/file';
 
     interface Props {

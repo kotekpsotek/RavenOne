@@ -16,8 +16,12 @@
     import EditorProposal from "./sideStripe/rightStripeChat/proposals/EditorProposal.svelte";
     import LoadingScreen from "./components/LoadingScreen.svelte";
     import ListTrayProposal from "./sideStripe/rightStripeChat/proposals/ListTrayProposal.svelte";
+    import FileUnsavedOfflineChangesDecisionScreen from "./offline/FileUnsavedOfflineChangesDecisionScreen.svelte";
+    import { onlineOfflineContentHandler } from "./offline/offline";
     import { setAlert } from "./utils/alert";
     import "./Editor.css";
+
+    const fileDecisionStore = onlineOfflineContentHandler.fileDecisionStore;
 
     const canEditWorkspaceContent = derived(
         [workspaceSubscriptionCheckInProgress, workspaceHasActiveSubscription],
@@ -102,11 +106,13 @@
                 {:else}
                     {#if $fileChatEditionPreviewShowing?.type === "document-manipulation"}
                         <EditorProposal/>
+                    {:else if $fileDecisionStore?.isOpen}
+                        <FileUnsavedOfflineChangesDecisionScreen />
                     {:else} <!-- Show for tasks proposal or when proposal isn't specified -->
                         <EditorContent editor={$editor} class="tiptap-editor" />
                     {/if}
                     
-                    {#if $isPointsStripeOpen}
+                    {#if $isPointsStripeOpen && !$fileDecisionStore?.isOpen}
                         {#if $fileChatEditionPreviewShowing?.type === "tasks-manipulation"}
                             <ListTrayProposal
                                 {canEditWorkspaceContent}

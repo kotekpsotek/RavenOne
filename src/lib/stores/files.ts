@@ -10,6 +10,7 @@ import { isSharedRoute } from "./share";
 import { FilePlayConnections, playInFile } from "$lib/play/connections";
 import { playableDocumentsAndListsWithPoints } from "./playModeStore";
 import { fileChatEditionPreviewShowing, selectedChatAnswerIds } from "./aiRightSideChat";
+import { onlineOfflineContentHandler } from "$lib/offline/offline";
 
 /** Entries */
 export const entriesList = (() => {
@@ -39,7 +40,45 @@ export const entriesList = (() => {
         });
     }
 
-    return entriesStore;
+    return {
+        ...entriesStore,
+        /**
+         * Finds file and overwrites it on files list
+        */
+        async overwriteFile(file: File.File.File) {
+            const replaceEntryById = (items: File.File.File[]): { items: File.File.File[]; found: boolean } => {
+                let found = false;
+
+                const nextItems = items.map(item => {
+                    if (item.id === file.id) {
+                        found = true;
+                        return file;
+                    }
+
+                    if (item.subentries?.length) {
+                        const nextSubentries = replaceEntryById(item.subentries);
+
+                        if (nextSubentries.found) {
+                            found = true;
+                            return {
+                                ...item,
+                                subentries: nextSubentries.items
+                            };
+                        }
+                    }
+
+                    return item;
+                });
+
+                return {
+                    items: found ? nextItems : items,
+                    found
+                };
+            };
+
+            entriesStore.update(entries => replaceEntryById(entries).items);
+        }
+    };
 })();
 /** Access saving state -> 'true' when file is actually saving, 'false' when is not */
 export type SavingValues = boolean | "without-scardfolding";
@@ -88,6 +127,8 @@ export const selectedFile = (() => {
     };
 
     const store = writable<FileType>(undefined);
+    const selectedFileBeforeChanged = writable<FileType>(undefined);
+    
     const AUTOSAVE_INTERVAL_MS = 30000;
     const EMPTY_FILE_CONTENT = "<p></p>";
     let activeSaveRequests = 0;
@@ -447,6 +488,13 @@ export const selectedFile = (() => {
                 if (recentlySelectedFile) {
                     playableDocumentsAndListsWithPoints.stopPlayingDocument(recentlySelectedFile);
                 }
+
+                // Offline mode: Handle offline mode file saving
+                const sfB = get(selectedFileBeforeChanged);
+                if (sfB && recentlySelectedFile) {
+                    onlineOfflineContentHandler.handleLeaveSelectedFile(sfB, recentlySelectedFile)
+                        .catch(err => console.error("Cannot store offline file snapshot because of:", err));
+                }
             }
             
             // Load recently selected file
@@ -456,8 +504,24 @@ export const selectedFile = (() => {
                 sInstance.save(file.id);
             }
 
+            // Registers selected file on file before change store
+            selectedFileBeforeChanged.set(file);
+            
             // Save to backend
-            void transitionSelection(this, file);
+            void transitionSelection(this, file)
+                .then(() => {
+                    if (!file?.id) {
+                        return;
+                    }
+
+                    // Ensure stale async transitions cannot override the newly selected file.
+                    if (get(store)?.id !== file.id) {
+                        return;
+                    }
+
+                    return onlineOfflineContentHandler.handleOpenFile(file);
+                })
+                .catch(err => console.error("Cannot transition file selection because of:", err));
 
             // Select the current file
             if (file?.id) {
@@ -638,6 +702,7 @@ export const selectedFile = (() => {
                 //
                 return filePlay;
             });
+            
         },
         update(updater: (file: FileType) => FileType) {
             const nextFile = updater(get(store));
