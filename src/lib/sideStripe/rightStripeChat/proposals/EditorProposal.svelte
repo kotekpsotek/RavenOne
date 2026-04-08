@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { onMount } from "svelte";
     import { createEditor, Editor, EditorContent } from "svelte-tiptap";
     import { fileChatEditionPreviewShowing } from "$lib/stores/aiRightSideChat";
     import { createEditorExtensions } from "$lib/stores/editor";
@@ -11,16 +12,103 @@
         - green markers - for the added elements
         - gray markers - fot the changed elements
     */
+   $effect(() => console.log($fileChatEditionPreviewShowing?.outputMessage))
 
-    const oldContentEditor = createEditor({
-        content: $fileChatEditionPreviewShowing?.outputMessage.documentManipulation?.oldDocumentContentHTML ?? "Content isn't available",
-        editable: false,
-        extensions: createEditorExtensions()
+    const editorExtensionsPromise = createEditorExtensions();
+    type PreviewEditor = ReturnType<typeof createEditor>;
+
+    const previewState = $derived({
+        oldContent:
+            $fileChatEditionPreviewShowing?.outputMessage.documentManipulation?.oldDocumentContentHTML ??
+            "<p>Content isn't available</p>",
+        newContent:
+            $fileChatEditionPreviewShowing?.outputMessage.documentManipulation?.newDocumentContentHTML ??
+            "<p>Content isn't available</p>",
     });
-    const newContentEditor = createEditor({
-        content: $fileChatEditionPreviewShowing?.outputMessage.documentManipulation?.newDocumentContentHTML ?? "Content isn't available",
-        editable: false,
-        extensions: createEditorExtensions()
+
+    let oldContentEditorStore = $state<PreviewEditor>();
+    let newContentEditorStore = $state<PreviewEditor>();
+    let oldContentEditorInstance = $state<Editor>();
+    let newContentEditorInstance = $state<Editor>();
+    let lastAppliedOldContent = "";
+    let lastAppliedNewContent = "";
+
+    onMount(() => {
+        let cancelled = false;
+        let createdOldEditor: PreviewEditor | undefined;
+        let createdNewEditor: PreviewEditor | undefined;
+        let unsubscribeOldEditor: (() => void) | undefined;
+        let unsubscribeNewEditor: (() => void) | undefined;
+
+        editorExtensionsPromise.then((extensions) => {
+            if (cancelled) {
+                return;
+            }
+
+            createdOldEditor = createEditor({
+                content: "<p></p>",
+                editable: false,
+                extensions
+            });
+            createdNewEditor = createEditor({
+                content: "<p></p>",
+                editable: false,
+                extensions
+            });
+
+            unsubscribeOldEditor = createdOldEditor.subscribe((editorInstance) => {
+                if (editorInstance) {
+                    oldContentEditorInstance = editorInstance;
+                }
+            });
+
+            unsubscribeNewEditor = createdNewEditor.subscribe((editorInstance) => {
+                if (editorInstance) {
+                    newContentEditorInstance = editorInstance;
+                }
+            });
+
+            oldContentEditorStore = createdOldEditor;
+            newContentEditorStore = createdNewEditor;
+        });
+
+        return () => {
+            cancelled = true;
+            unsubscribeOldEditor?.();
+            unsubscribeNewEditor?.();
+            oldContentEditorInstance?.destroy();
+            newContentEditorInstance?.destroy();
+        };
+    });
+
+    $effect(() => {
+        const editor = oldContentEditorInstance;
+        if (!editor) {
+            return;
+        }
+
+        const nextContent = previewState.oldContent;
+        if (lastAppliedOldContent === nextContent) {
+            return;
+        }
+
+        lastAppliedOldContent = nextContent;
+        editor.commands.setContent(nextContent, { emitUpdate: false });
+    });
+
+    $effect(() => {
+        const editor = newContentEditorInstance;
+        if (!editor) {
+            return;
+        }
+
+        const nextContent = previewState.newContent;
+        if (lastAppliedNewContent === nextContent) {
+            return;
+        }
+
+        lastAppliedNewContent = nextContent;
+        editor.commands.setContent(nextContent, { emitUpdate: false });
     });
 
     function onClose() {
@@ -76,8 +164,14 @@
     </button>
 
     <div class="flex gap-2 h-full overflow-y-auto">
-        {@render ShowEditorContent("old", $oldContentEditor)}
+        {#if oldContentEditorStore && oldContentEditorInstance}
+            {@render ShowEditorContent("old", oldContentEditorInstance)}
+        {/if}
+
         <span class="border-r h-full w-2 border-gray-500 mx-2"></span>
-        {@render ShowEditorContent("new", $newContentEditor)}
+
+        {#if newContentEditorStore && newContentEditorInstance}
+            {@render ShowEditorContent("new", newContentEditorInstance)}
+        {/if}
     </div>
 </div>

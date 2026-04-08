@@ -142,12 +142,14 @@ export const CHAT_MODES = derived(
             "document-manipulation": {
                 modeName: "Document Manipulation",
                 modeDescription: "Create, update RavenOne Document/s according to your specification",
-                isEnabled: isCollaborator
+                // Potentially when user isn't the chat collaborator this mode can be disabled although the acceptance handling is done by the proposition module
+                isEnabled: true
             },
             "tasks-manipulation": {
                 modeName: "Create Document Tasks",
                 modeDescription: "Create Questions for actually selected RavenOne Document",
-                isEnabled: isCollaborator
+                // Potentially when user isn't the chat collaborator this mode can be disabled although the acceptance handling is done by the proposition module
+                isEnabled: true
             }
         } satisfies Record<AIChatMode, ChatModeValue>;
     }

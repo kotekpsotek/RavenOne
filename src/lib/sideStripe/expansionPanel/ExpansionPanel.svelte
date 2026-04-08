@@ -17,6 +17,7 @@
     import { findFileById, getCurrentWorkspaceId } from "./utils";
     import { page } from "$app/stores";
     import { fileMap } from "$lib/utils/files";
+    import { goto } from "$app/navigation";
 
     let { isExpanded = false }: { isExpanded?: boolean } = $props();
 
@@ -219,7 +220,11 @@
         resetDragState();
     }
 
-    function onSelectFile(clickedFile: File.File.File) {
+    async function onSelectFile(clickedFile: File.File.File) {
+        if ($page.url.pathname.includes("workspace-settings")) {
+            await goto("/")
+        }
+        
         selectedFile.selectFile(clickedFile)
     }
 </script>
