@@ -2,12 +2,9 @@
     import { page } from '$app/stores';
     import { tick } from 'svelte';
     import { UI } from '@ravenlens/frontend';
-    import { clickedListItemId, hoveredListItemId } from '$lib/stores/hoveredListItem';
     import { selectedFile } from '$lib/stores/files';
-    import { createListItemId, findItemIndex, findSubtreeEndIndex, isPointPlayable } from './utils';
-    import { playableDocumentsAndListsWithPoints } from '$lib/stores/playModeStore';
-    import AITaskPlayingState from './mods/AITaskPlayingState.svelte';
     import { File } from "@ravenlens/shared";
+    import { createListItemId } from './utils';
 
     let {
         kind,
@@ -36,14 +33,6 @@
             depth,
             checked: false
         };
-    }
-
-    function stopPlayingItem(itemId: string) {
-        if (!playableDocumentsAndListsWithPoints.isPointPlaying($selectedFile, spawnedList.id, itemId)) {
-            return;
-        }
-
-        playableDocumentsAndListsWithPoints.stopPlayingPoint($selectedFile!, spawnedList.id, itemId);
     }
 
     function resizeTextarea(textarea: HTMLTextAreaElement) {
@@ -92,7 +81,6 @@
         if (isReadOnly) {
             return;
         }
-
         items = items.map((item) => {
             if (item.id !== itemId) {
                 return item;
@@ -105,183 +93,116 @@
         });
     }
 
-    function addSiblingItem(itemId: string) {
-        if (isReadOnly) {
+    async function addSiblingItem(itemId: string) {
+        if (isEditingDisabled) {
             return;
         }
 
-        const itemIndex = findItemIndex(items, itemId);
-        if (itemIndex === -1) {
+        const itemIndex = items.findIndex((item) => item.id === itemId);
+        if (itemIndex < 0) {
             return;
         }
 
         const currentItem = items[itemIndex];
-        const insertIndex = findSubtreeEndIndex(items, itemIndex);
+        let insertIndex = itemIndex + 1;
+
+        // Insert after the current item subtree so nested children stay grouped.
+        while (insertIndex < items.length && items[insertIndex].depth > currentItem.depth) {
+            insertIndex += 1;
+        }
+
         const newItem = createItem(currentItem.depth);
+        const nextItems = [
+            ...items.slice(0, insertIndex),
+            newItem,
+            ...items.slice(insertIndex)
+        ];
 
-        selectedFile.update(sf => {
-            const listIndex = sf?.lists.findIndex(list => list.id === spawnedList.id);
-            if (listIndex === undefined || listIndex < 0) {
-                return sf
-            }
-
-            sf!.lists[listIndex].items = [
-                ...items.slice(0, insertIndex),
-                newItem,
-                ...items.slice(insertIndex)
-            ]
-            
-            return sf;
-        })
-
-        void queueFocus(newItem.id);
+        items = nextItems;
+        await selectedFile.updateFileListItems(spawnedList.id, nextItems);
+        await queueFocus(newItem.id);
     }
 
-    function changeIndent(itemId: string, indentDelta: number) {
-        if (isReadOnly) {
+    async function changeIndent(itemId: string, indentDelta: number) {
+        if (isEditingDisabled || indentDelta === 0) {
             return;
         }
 
-        const itemIndex = findItemIndex(items, itemId);
-        if (itemIndex === -1) {
+        const itemIndex = items.findIndex((item) => item.id === itemId);
+        if (itemIndex < 0) {
             return;
         }
 
         const currentItem = items[itemIndex];
-        const subtreeEndIndex = findSubtreeEndIndex(items, itemIndex);
+        let nextDepth = currentItem.depth;
 
-        const previousItem = items[itemIndex - 1];
-        const maxDepth = previousItem ? previousItem.depth + 1 : 0;
-
-        const targetDepth = Math.min(maxDepth, Math.max(0, currentItem.depth + indentDelta));
-        if (targetDepth === currentItem.depth) {
-            return;
-        }
-
-        const depthDelta = targetDepth - currentItem.depth;
-
-        selectedFile.update(sf => {
-            const listIndex = sf?.lists.findIndex(list => list.id === spawnedList.id);
-            if (listIndex === undefined || listIndex < 0) {
-                return sf
+        if (indentDelta > 0) {
+            // Keep indentation valid: max one level deeper than the previous item.
+            if (itemIndex === 0) {
+                return;
             }
 
-            sf!.lists[listIndex].items = items.map((item, index) => {
-                if (index < itemIndex || index >= subtreeEndIndex) {
-                    return item;
-                }
+            const maxDepth = items[itemIndex - 1].depth + 1;
+            nextDepth = Math.min(currentItem.depth + indentDelta, maxDepth);
+        } else {
+            nextDepth = Math.max(0, currentItem.depth + indentDelta);
+        }
 
-                return {
-                    ...item,
-                    depth: Math.max(0, item.depth + depthDelta)
-                };
-            });
-            
-            return sf;
+        if (nextDepth === currentItem.depth) {
+            return;
+        }
+
+        const nextItems = items.map((item, index) => {
+            if (index !== itemIndex) {
+                return item;
+            }
+
+            return {
+                ...item,
+                depth: nextDepth
+            };
         });
-    }
 
-    /** Show alert only when item has some child isn't empty - otherwise remove simply */
-    function requestRemoveItem(itemId: string) {
-        if (isReadOnly) {
-            return;
-        }
-
-        if (!isPointPlayable(items, itemId)) {
-            removeItemWithChildren(itemId);
-            return;
-        }
-
-        removeTargetItemId = itemId;
+        items = nextItems;
+        await selectedFile.updateFileListItems(spawnedList.id, nextItems);
+        await queueFocus(itemId);
     }
 
     function closeRemoveModal() {
         removeTargetItemId = null;
     }
 
-    function getChildItemsCount(itemId: string) {
-        const itemIndex = findItemIndex(items, itemId);
-        if (itemIndex === -1) {
-            return 0;
-        }
-
-        const subtreeEndIndex = findSubtreeEndIndex(items, itemIndex);
-        return Math.max(0, subtreeEndIndex - itemIndex - 1);
-    }
-
-    function removeItemWithChildren(itemId: string) {
-        if (isReadOnly) {
+    async function removeItemWithChildren(itemId: string) {
+        const itemIndex = items.findIndex((item) => item.id === itemId);
+        if (itemIndex < 0) {
             return;
         }
 
-        const itemIndex = findItemIndex(items, itemId);
-        if (itemIndex === -1) {
-            closeRemoveModal();
-            return;
-        }
+        const itemDepth = items[itemIndex].depth;
+        let removeEndIndex = itemIndex + 1;
 
-        const subtreeEndIndex = findSubtreeEndIndex(items, itemIndex);
-        const removedItemIds = items.slice(itemIndex, subtreeEndIndex).map((item) => item.id);
-        const focusCandidateId = items[itemIndex - 1]?.id ?? items[subtreeEndIndex]?.id ?? null;
-
-        removedItemIds.forEach((id) => {
-            stopPlayingItem(id);
-        });
-
-        const hoveredItemId = $hoveredListItemId;
-        if (hoveredItemId && removedItemIds.includes(hoveredItemId)) {
-            hoveredListItemId.set(null);
-        }
-
-        const clickedItemId = $clickedListItemId;
-        if (clickedItemId && removedItemIds.includes(clickedItemId)) {
-            clickedListItemId.set(null);
+        while (removeEndIndex < items.length && items[removeEndIndex].depth > itemDepth) {
+            removeEndIndex += 1;
         }
 
         const nextItems = [
             ...items.slice(0, itemIndex),
-            ...items.slice(subtreeEndIndex)
+            ...items.slice(removeEndIndex)
         ];
 
-        // Removes from file
-        selectedFile.update(sf => {
-            const listIndex = sf?.lists.findIndex(list => list.id === spawnedList.id);
-            if (listIndex === undefined || listIndex < 0) {
-                return sf
-            }
-
-            sf!.lists[listIndex].items = nextItems;
-            
-            return sf;
-        });
-
-        // Remove item playing
-        playableDocumentsAndListsWithPoints.stopPlayingPoint($selectedFile!, spawnedList.id, itemId)
-            .catch(err => console.error(`Cannot stop point: ${err}`));
-        
-        //
-        closeRemoveModal();
+        items = nextItems;
+        await selectedFile.updateFileListItems(spawnedList.id, nextItems);
 
         if (nextItems.length === 0) {
             onEmptyList();
             return;
         }
 
-        if (focusCandidateId) {
-            void queueFocus(focusCandidateId);
+        const focusIndex = Math.min(itemIndex, nextItems.length - 1);
+        const nextFocusItem = nextItems[focusIndex];
+        if (nextFocusItem) {
+            await queueFocus(nextFocusItem.id);
         }
-    }
-
-    function onConfirmRemoveItem() {
-        if (isReadOnly) {
-            return;
-        }
-
-        if (!removeTargetItemId) {
-            return;
-        }
-
-        removeItemWithChildren(removeTargetItemId);
     }
 
     function getOrderedMarker(itemIndex: number) {
@@ -331,7 +252,18 @@
         resizeTextarea(textarea);
     }
 
-    function onItemKeyDown(event: KeyboardEvent, itemId: string) {
+    async function onConfirmRemoveItem() {
+        if (isEditingDisabled || !removeTargetItemId) {
+            return;
+        }
+
+        const itemId = removeTargetItemId;
+        removeTargetItemId = null;
+
+        await removeItemWithChildren(itemId);
+    }
+
+    async function onItemKeyDown(event: KeyboardEvent, itemId: string) {
         if (isEditingDisabled) {
             event.preventDefault();
             return;
@@ -339,44 +271,47 @@
 
         if (event.key === 'Enter' && !event.shiftKey) {
             event.preventDefault();
-            addSiblingItem(itemId);
+            void addSiblingItem(itemId);
             return;
         }
 
         if (event.key === 'Backspace') {
             const textarea = event.currentTarget as HTMLTextAreaElement;
-            const isCaretAtStart = textarea.selectionStart === 0 && textarea.selectionEnd === 0;
+            const isCursorAtStart = textarea.selectionStart === 0 && textarea.selectionEnd === 0;
 
-            if (isCaretAtStart) {
-                event.preventDefault();
-
-                const itemIndex = findItemIndex(items, itemId);
-                if (itemIndex < 0) {
-                    return;
-                }
-
-                if (items[itemIndex].depth > 0) {
-                    changeIndent(itemId, -1);
-                    return;
-                }
-
-                requestRemoveItem(itemId);
+            if (!isCursorAtStart) {
                 return;
             }
+
+            event.preventDefault();
+
+            const currentItem = items.find((item) => item.id === itemId);
+            if (!currentItem) {
+                return;
+            }
+
+            if (currentItem.depth > 0) {
+                void changeIndent(itemId, -1);
+                return;
+            }
+
+            if (currentItem.text.trim().length) {
+                removeTargetItemId = itemId;
+            }
+            else await removeItemWithChildren(itemId);
+
+            return;
         }
 
         if (event.key === 'Tab') {
             event.preventDefault();
-            changeIndent(itemId, event.shiftKey ? -1 : 1);
+            void changeIndent(itemId, event.shiftKey ? -1 : 1);
         }
     }
 </script>
 
 <div class="space-y-1">
     {#each items as item, itemIndex (item.id)}
-        {@const playableStoreState = $playableDocumentsAndListsWithPoints}
-        {@const isPointPlaying = playableStoreState && playableDocumentsAndListsWithPoints.isPointPlaying($selectedFile, spawnedList.id, item.id)}
-    
         <div
             class="flex flex-col w-full min-w-0 justify-center py-0.5"
             style={`padding-left: ${item.depth * INDENT_SIZE}px`}
@@ -408,8 +343,8 @@
                         value={item.text}
                         data-list-item-id={item.id}
                         placeholder="Type and press Enter"
-                        disabled={isPointPlaying || isSharedRoute || isReadOnly}
-                        class="w-full min-w-0 resize-none overflow-hidden rounded-md border border-transparent bg-transparent px-1 py-1 text-sm leading-6 outline-none focus:border-base-300 focus:bg-base-100"
+                        disabled={isSharedRoute || isReadOnly}
+                        class="point-text w-full min-w-0 resize-none overflow-hidden rounded-md border border-transparent bg-transparent px-1 py-1 text-sm leading-6 outline-none focus:border-base-300 focus:bg-base-100"
                         oninput={(event) => onItemInput(event, item.id)}
                         onkeydown={(event) => onItemKeyDown(event, item.id)}
                         onfocus={(event) => resizeTextarea(event.currentTarget as HTMLTextAreaElement)}
@@ -442,9 +377,6 @@
                 <div class="space-y-4">
                     <p class="text-sm text-base-content/80">
                         This list item will be removed with its subpoints.
-                        {#if getChildItemsCount(removeTargetItemId) > 0}
-                            It will also remove {getChildItemsCount(removeTargetItemId)} child item(s).
-                        {/if}
                     </p>
 
                     <div class="flex items-center justify-end gap-2">

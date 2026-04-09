@@ -4,23 +4,19 @@
     import { browser } from '$app/environment';
     import { UI } from '@ravenlens/frontend';
     import { avaiableModels } from '$lib/config/models';
-    import { availableTools, playMode, selectedFile, selectedModel, selectedTools } from '$lib/stores/files';
+    import { playMode, selectedFile, selectedModel, selectedTools } from '$lib/stores/files';
     import { canManageWorkspaceFiles } from '$lib/stores/subscription';
     import { contextSpecification } from '$lib/stores/contextSpec';
     import { editor } from '$lib/stores/editor';
-    import { mcpConfigurationStore, selectedMcpServers } from '$lib/stores/mcpConfig';
-    import { playableDocumentsAndListsWithPoints } from '$lib/stores/playModeStore';
+    import { mcpConfigurationStore } from '$lib/stores/mcpConfig';
     import { alertState, setAlert } from '$lib/utils/alert';
     import Icon from '@iconify/svelte';
-    import CodeMirror from 'svelte-codemirror-editor';
-    import { json } from '@codemirror/lang-json';
     import type { ElementInsertionItem } from '../editorComponents/ui/ElementsListForMenus';
     import ContextSelectionModal from '$lib/modals/ContextSelectionModal.svelte';
     import McpSelectionModal from '$lib/modals/McpSelectionModal.svelte';
     import OrderedListItem from '$lib/listItems/OrderedListItem.svelte';
     import UnorderedListItem from '$lib/listItems/UnorderedListItem.svelte';
     import TaskListItem from '$lib/listItems/TaskListItem.svelte';
-    import { createListId, isFilePlayable } from '../listItems/utils';
     import { File } from "@ravenlens/shared";
     import { selectedSpikeRoutineDocument, selectedTab, showExecutionResults, tabsAvailable, type TabsAvailable } from '../stores/lists';
     import {
@@ -45,6 +41,7 @@
     import RoutinesConfigModal from './RoutinesConfigModal.svelte';
     import { selectedWorkspace } from '$lib/stores/workspace';
     import { downloadUnavaiableModelsRequest } from '$lib/files/connections/connections';
+    import { createListItemId } from '$lib/listItems/utils';
 
     type DropdownName = "model-settings" | "mcp-tools" | "play-settings";
     type TabAIConfiguration = {
@@ -289,12 +286,7 @@
             return;
         }
 
-        await playableDocumentsAndListsWithPoints.playDocument(selectedFileLocal, {
-            model: selectedModelLocal,
-            tools: $selectedTools,
-            context: $contextSpecification,
-            selectedItemPlayMode: $playMode
-        });
+        // TODO: Start playing
     }
 
     function onStopPlaying() {
@@ -302,7 +294,7 @@
             return;
         }
 
-        playableDocumentsAndListsWithPoints.stopPlayingDocument($selectedFile);
+        // TODO: Stop playing
     }
 
     function playingDisabledReason(isFilePlayableLocal: boolean, isSomePointPlaying: boolean) {
@@ -397,14 +389,14 @@
         const listKind = resolveListKind(item);
         const listItem: File.File.EditableListItem = listKind === "task" ?
             {
-                id: createListId(),
+                id: createListItemId(),
                 text: "",
                 depth: 0,
                 checked: false
             }
             :
             {
-                id: createListId(),
+                id: createListItemId(),
                 text: "",
                 depth: 0
             };
@@ -627,105 +619,7 @@
                                 {err}
                             </div>
                         {/await}
-
-                        <!-- FIXME: IN MVP nor in begining versions weight -->
-                        <!-- {#if $canManageWorkspaceFiles}
-                            <details
-                                class="dropdown dropdown-end join-item"
-                                open={openDropdown === "model-settings"}
-                                ontoggle={(event) => onDropdownToggle("model-settings", event)}
-                            >
-                                <summary class="btn btn-sm h-full rounded-l-none bg-primary/95 text-white/70 border-primary px-1" aria-label="Model Settings" title="Model settings">
-                                    <Icon icon="material-symbols:settings-outline-rounded" class="w-3 h-3" />
-                                </summary>
-
-                                <div class="dropdown-content p-3 shadow bg-base-200 rounded-box z-[20] w-80 space-y-2">
-                                    <div class="flex items-center justify-between text-sm">
-                                        <div class="flex items-center gap-2">
-                                            {#if $selectedModel}
-                                                <Icon icon={getProviderIconifyIcon($selectedModel.provider)} class="w-4 h-4" />
-                                            {/if}
-                                            <span>{$selectedModel?.model ?? "Select model"}</span>
-                                        </div>
-                                        <span class="badge badge-outline">Weight: {getCurrentModelWeight().toFixed(2)}</span>
-                                    </div>
-
-                                    <input
-                                        type="range"
-                                        min="0"
-                                        max="1"
-                                        step="0.01"
-                                        value={getCurrentModelWeight()}
-                                        class="range range-primary"
-                                        oninput={(event) =>
-                                            updateCurrentModelWeight(Number((event.currentTarget as HTMLInputElement).value))}
-                                    />
-                                </div>
-                            </details>
-                        {/if} -->
                     </div>
-
-                    {#if $canManageWorkspaceFiles}
-                        <details
-                            class="dropdown dropdown-end"
-                            open={openDropdown === "mcp-tools"}
-                            ontoggle={(event) => onDropdownToggle("mcp-tools", event)}
-                        >
-                            <summary class="btn btn-sm btn-ghost" title="MCP & tools" aria-label="MCP & tools">
-                                <Icon icon="material-symbols:build-outline-rounded" class="w-5 h-5" />
-                            </summary>
-                            <div class="dropdown-content p-3 shadow bg-base-200 rounded-box z-[20] w-80 space-y-3">
-                                <div>
-                                    <p class="text-xs uppercase tracking-wide opacity-70 mb-1">Tools</p>
-                                    <div class="flex flex-wrap gap-2">
-                                        {#each availableTools as tool (tool)}
-                                            <label class="label cursor-pointer justify-start gap-2">
-                                                <input
-                                                    type="checkbox"
-                                                    class="checkbox checkbox-primary checkbox-sm"
-                                                    checked={$selectedTools.includes(tool)}
-                                                    onchange={() => onToggleTool(tool)}
-                                                />
-                                                <span class="label-text">{tool}</span>
-                                            </label>
-                                        {/each}
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <p class="text-xs uppercase tracking-wide opacity-70 mb-1">MCP servers access</p>
-                                    <label class="label cursor-pointer justify-between mb-1 px-0">
-                                        <span class="label-text text-xs">Use MCP servers for tasks</span>
-                                        <input type="checkbox" class="toggle toggle-primary toggle-sm" bind:checked={useMcpServers} />
-                                    </label>
-                                    <div class="rounded border border-base-300 bg-base-100 overflow-auto max-h-48">
-                                        <CodeMirror
-                                            value={$mcpConfigurationStore}
-                                            lang={json()}
-                                            readonly={true}
-                                            editable={false}
-                                            lineNumbers={true}
-                                            lineWrapping={false}
-                                            styles={{
-                                                "&": {
-                                                    minWidth: "36rem",
-                                                    height: "12rem"
-                                                }
-                                            }}
-                                        />
-                                    </div>
-                                    <div class="mt-2 flex items-center justify-between">
-                                        <span class="text-xs opacity-70">
-                                            {useMcpServers
-                                                ? `${$selectedMcpServers.length} server(s) configured`
-                                                : "MCP servers disabled for tasks"}
-                                        </span>
-                                        <button class="btn btn-xs btn-primary" onclick={openMcpConfigurationEditor}>Edit</button>
-                                    </div>
-                                </div>
-                            </div>
-                        </details>
-                    {/if}
 
                     <button class="btn btn-sm btn-ghost" disabled={!$canManageWorkspaceFiles} onclick={openContextModal} title="Context specification" aria-label="Context specification">
                         <Icon icon="material-symbols:note-stack-outline-rounded" class="w-5 h-5" />
@@ -733,8 +627,8 @@
 
                     {#if $selectedTab === "Tasks"}
                         <div class="join">
-                            {#key $playableDocumentsAndListsWithPoints}
-                                {#if playableDocumentsAndListsWithPoints.isDocumentPlaying($selectedFile)}
+                            <!-- {#key $playableDocumentsAndListsWithPoints} -->
+                                {#if false/* playableDocumentsAndListsWithPoints.isDocumentPlaying($selectedFile) */}
                                     <button 
                                         class="btn btn-sm join-item btn-neutral" 
                                         onclick={onStopPlaying}
@@ -744,25 +638,23 @@
                                         <span>Stop Playing</span>
                                     </button>
                                 {:else}
-                                    {@const isFilePlayableLocal = $selectedFile ? isFilePlayable($selectedFile, $playMode) : false}
-                                    {@const isSomePointPlaying = playableDocumentsAndListsWithPoints.isSomePointPlayingInSomeList($selectedFile)}
-                                    {@const isPlayingDisabled = !isFilePlayableLocal || isSomePointPlaying}
+                                    <!-- TODO: Add is playing disabled -->
 
                                     <div
                                         class="inline-block"
-                                        title={playingDisabledReason(isFilePlayableLocal, isSomePointPlaying)}
+                                        /* title={playingDisabledReason(isFilePlayableLocal, isSomePointPlaying)} */
                                     >
                                         <button
                                             class="btn btn-sm join-item btn-primary disabled:cursor-not-allowed"
                                             onclick={onPlay}
-                                            disabled={isPlayingDisabled || !$canManageWorkspaceFiles}
+                                            /* disabled={isPlayingDisabled || !$canManageWorkspaceFiles} */
                                         >
                                             <Icon icon="material-symbols:play-circle-outline-rounded" class="w-5 h-5" />
                                             <span>Play</span>
                                         </button>
                                     </div>
                                 {/if}
-                            {/key}
+                            <!-- {/key} -->
                         </div>
                     {/if}
                 </div>
