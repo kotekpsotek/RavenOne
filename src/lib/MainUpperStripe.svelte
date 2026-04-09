@@ -1,27 +1,19 @@
 <script lang="ts">
     import Icon from "@iconify/svelte";
-    import CodeMirror from "svelte-codemirror-editor";
-    import { json } from "@codemirror/lang-json";
-    import { avaiableModels, getProviderIconifyIcon } from "./config/models";
-    import { availableTools, playMode, selectedFile, selectedTools } from "./stores/files";
+    import { avaiableModels } from "./config/models";
+    import { selectedFile } from "./stores/files";
     import { selectedModel } from "./stores/files";
     import { selectedWorkspace } from "./stores/workspace";
     import { tick } from "svelte";
     import { contextSpecification } from "./stores/contextSpec";
-    import { mcpConfigurationStore, selectedMcpServers } from "./stores/mcpConfig";
+    import { mcpConfigurationStore } from "./stores/mcpConfig";
     import { alertState } from "./utils/alert";
-    import { editor } from "./stores/editor";
     import { get, writable } from "svelte/store";
     import McpSelectionModal from "./modals/McpSelectionModal.svelte";
-    import { UI } from "@ravenlens/frontend";
     import ContextSelectionModal from "./modals/ContextSelectionModal.svelte";
-    import PlayModeDropdownContent from "./components/PlayModeDropdownContent.svelte";
-    import { playableDocumentsAndListsWithPoints } from "./stores/playModeStore";
-    import { isFilePlayable } from "./listItems/utils";
     import SaveFile from "./components/SaveFile.svelte";
-    import { downloadUnavaiableModelsRequest, shareFileRequest } from "./files/connections/connections";
+    import { shareFileRequest } from "./files/connections/connections";
     import { File } from "@ravenlens/shared";
-    import { canManageWorkspaceFiles } from "./stores/subscription";
     import { browser } from "$app/environment";
 
     type DropdownName = "model-settings" | "mcp-tools" | "play-settings" | "share";
@@ -48,10 +40,6 @@
             }
         }
     })();
-    let modelWeights = $state<Record<string, number>>(
-        get(selectedModelKey) ? { [get(selectedModelKey)]: 1 } : {}
-    );
-    let useMcpServers = $state(true);
     let mcpConfigurationDraft = $state(get(mcpConfigurationStore));
     let mcpConfigurationError = $state("");
 
@@ -68,76 +56,13 @@
     let isShareLinkGenerating = $state(false);
     const shareUrl = $derived(generatedShareUrl);
 
-    function cloneContextPayload(payload: File.FileAI.ContextSpecificationPayload): File.FileAI.ContextSpecificationPayload {
-        return {
-            desktopFiles: [...payload.desktopFiles],
-            editorFiles: [...payload.editorFiles],
-            networkUrls: [...payload.networkUrls]
-        };
-    }
-    
     const getModelByKey = (key: string) =>
         avaiableModels.find((model) => model.model === key);
 
-    const modelOrderByName = new Map(
-        avaiableModels.map((model, index) => [model.model, index])
-    );
-
-    function sortModelsByAvailability(disabledModels?: typeof avaiableModels) {
-        const unavailableModelNames = new Set((disabledModels ?? []).map((model) => model.model));
-
-        return [...avaiableModels].sort((leftModel, rightModel) => {
-            const isLeftUnavailable = unavailableModelNames.has(leftModel.model);
-            const isRightUnavailable = unavailableModelNames.has(rightModel.model);
-
-            if (isLeftUnavailable === isRightUnavailable) {
-                return (modelOrderByName.get(leftModel.model) ?? 0) - (modelOrderByName.get(rightModel.model) ?? 0);
-            }
-
-            return isLeftUnavailable ? 1 : -1;
-        });
-    }
-
     const currentModel = $derived(getModelByKey($selectedModelKey));
-
-    const getCurrentModelWeight = () => modelWeights[$selectedModelKey] ?? 1;
-
-    function ensureModelWeight(key: string) {
-        if (!key || modelWeights[key] !== undefined) {
-            return;
-        }
-
-        modelWeights = {
-            ...modelWeights,
-            [key]: 1
-        };
-    }
-
     $effect(() => {
         $selectedModel = currentModel;
     });
-
-    function onModelChange(ev: Event) {
-        const target = ev.currentTarget as HTMLSelectElement | null;
-        const modelNameFromTarget = target?.value;
-        const modelNameFromDetail = (ev as CustomEvent<string | undefined>).detail;
-        const nextModelKey = modelNameFromTarget ?? modelNameFromDetail ?? get(selectedModelKey);
-        ensureModelWeight(nextModelKey);
-    }
-
-    function toggleValue(state: File.FileAI.BrowserToolsUnion[], value: File.FileAI.BrowserToolsUnion): File.FileAI.BrowserToolsUnion[] {
-        if (state.includes(value)) {
-            return state.filter((entry) => entry !== value) as any;
-        }
-        return [...state, value] as any;
-    }
-
-    function updateCurrentModelWeight(weight: number) {
-        modelWeights = {
-            ...modelWeights,
-            [$selectedModelKey]: weight
-        };
-    }
 
     function onDropdownToggle(name: DropdownName, event: Event) {
         const target = event.currentTarget as HTMLDetailsElement;
@@ -167,11 +92,6 @@
         }
 
         openDropdown = undefined;
-    }
-
-    function openContextModal() {
-        contextModalPayloadDraft = cloneContextPayload($contextSpecification);
-        isContextModalOpen = true;
     }
 
     function onSaveGlobalContext(payload: File.FileAI.ContextSpecificationPayload) {
@@ -305,66 +225,6 @@
         }
     }
 
-    function onSelectPlayMode(mode: File.FileAI.PlayMode) {
-        $playMode = mode;
-    }
-
-    function openMcpConfigurationEditor() {
-        mcpConfigurationDraft = $mcpConfigurationStore;
-        mcpConfigurationError = "";
-        isMcpConfigModalOpen = true;
-        openDropdown = undefined;
-    }
-
-    async function onPlay() {
-        const selectedModelLocal = get(selectedModel);
-        if (!selectedModelLocal) {
-            $alertState = {
-                alert: {
-                    type: "error",
-                    name: "AI Model has to be selected",
-                    description: "AI Model has to be selected to play document content"
-                },
-                timeoutMs: 6_500
-            }
-            return;
-        }
-    
-        const selectedFileLocal = get(selectedFile);
-        if (!selectedFileLocal) {
-            $alertState = {
-                alert: {
-                    type: "error",
-                    name: "File has to be selected",
-                    description: "To play the document the document has to be selected"
-                },
-                timeoutMs: 6_500
-            }
-            return;
-        }
-
-        if (!$editor) {
-            console.error("Cannot play because editor is undefined");
-            return;
-        }
-
-        const _setupState = await playableDocumentsAndListsWithPoints.playDocument(selectedFileLocal, {
-            model: selectedModelLocal,
-            tools: $selectedTools,
-            context: $contextSpecification,
-            // selectedItemMcpServers: useMcpServers ? $selectedMcpServers : [],
-            selectedItemPlayMode: $playMode
-        });
-    }
-
-    function onStopPlaying() {
-        if (!$selectedFile) {
-            return;
-        }
-
-        playableDocumentsAndListsWithPoints.stopPlayingDocument($selectedFile);
-    }
-
     function collectCurrentPageStyles(): string {
         let styles = "";
 
@@ -449,16 +309,6 @@
             isDownloadingPdf = false;
         }
     }
-
-    function playingDisabledReason(isFilePlayable: boolean, isSomePointPlaying: boolean) {
-        if (!isFilePlayable) {
-            return "Playing is disabled since document has no playable node/element; Add some playable AI Node/Element first to make file playable";
-        }
-
-        if (isSomePointPlaying) {
-            return "Cannot play document since some point is already playing. Stop playing point or wait for its finish"
-        }
-    }
 </script>
 
 <svelte:window onclick={onWindowClick} />
@@ -475,187 +325,6 @@
         <div 
             class="left-side flex gap-7 items-center"
         >
-            <div class="flex items-center gap-2">
-                <div class="join">
-                    {#await downloadUnavaiableModelsRequest({ workspaceId: $selectedWorkspace?.id! })}
-                        <div>
-                            <span class="loading-spinner loading-sm"></span>
-                            <span>Loading Models...</span>
-                        </div>
-                    {:then unavaiableModels}
-                        {@const sortedModels = sortModelsByAvailability(unavaiableModels?.allNotAvaiableModels)}
-                    
-                        <UI.Common.AI.SelectAIModel
-                            bind:selectedModel={$selectedModelKey}
-                            avaiabaleModels={sortedModels}
-                            disabledModels={unavaiableModels?.allNotAvaiableModels}
-                            placeholder="Select model"
-                            onChange={onModelChange}
-                            disabled={!$canManageWorkspaceFiles}
-                            selectSize="sm"
-                        />
-                    {:catch err}
-                        <div class="text-xs text-error">
-                            <span>Cannot download unavaiable models:</span>
-                            {err}
-                        </div>
-                    {/await}
-
-                    {#if $canManageWorkspaceFiles}
-                        <details
-                            class="dropdown dropdown-end join-item"
-                            open={openDropdown === "model-settings"}
-                            ontoggle={(event) => onDropdownToggle("model-settings", event)}
-                        >
-                            <summary class="btn btn-sm h-full rounded-l-none bg-primary/95 text-white/70 border-primary px-1" aria-label="Model Settings" title="Model settings">
-                                <Icon icon="material-symbols:settings-outline-rounded" class="w-3 h-3" />
-                            </summary>
-
-                            <div class="dropdown-content p-3 shadow bg-base-200 rounded-box z-[20] w-80 space-y-2">
-                                <div class="flex items-center justify-between text-sm">
-                                    <div class="flex items-center gap-2">
-                                        {#if $selectedModel}
-                                            <Icon icon={getProviderIconifyIcon($selectedModel.provider)} class="w-4 h-4" />
-                                        {/if}
-                                        <span>{$selectedModel?.model ?? "Select model"}</span>
-                                    </div>
-                                    <span class="badge badge-outline">Weight: {getCurrentModelWeight().toFixed(2)}</span>
-                                </div>
-
-                                <input
-                                    type="range"
-                                    min="0"
-                                    max="1"
-                                    step="0.01"
-                                    value={getCurrentModelWeight()}
-                                    class="range range-primary"
-                                    oninput={(event) =>
-                                        updateCurrentModelWeight(Number((event.currentTarget as HTMLInputElement).value))}
-                                />
-                            </div>
-                        </details>
-                    {/if}
-                </div>
-
-                {#if $canManageWorkspaceFiles}
-                    <details
-                        class="dropdown dropdown-end"
-                        open={openDropdown === "mcp-tools"}
-                        ontoggle={(event) => onDropdownToggle("mcp-tools", event)}
-                    >
-                        <summary class="btn btn-sm btn-ghost" title="MCP & tools" aria-label="MCP & tools">
-                            <Icon icon="material-symbols:build-outline-rounded" class="w-5 h-5" />
-                        </summary>
-                        <div class="dropdown-content p-3 shadow bg-base-200 rounded-box z-[20] w-80 space-y-3">
-                            <div>
-                                <p class="text-xs uppercase tracking-wide opacity-70 mb-1">Tools</p>
-                                <div class="flex flex-wrap gap-2">
-                                    {#each availableTools as tool (tool)}
-                                        <label class="label cursor-pointer justify-start gap-2">
-                                            <input
-                                                type="checkbox"
-                                                class="checkbox checkbox-primary checkbox-sm"
-                                                checked={$selectedTools.includes(tool)}
-                                                onchange={() => ($selectedTools = toggleValue($selectedTools, tool))}
-                                            />
-                                            <span class="label-text">{tool}</span>
-                                        </label>
-                                    {/each}
-                                </div>
-                            </div>
-
-                            <div>
-                                <p class="text-xs uppercase tracking-wide opacity-70 mb-1">MCP servers access</p>
-                                <label class="label cursor-pointer justify-between mb-1 px-0">
-                                    <span class="label-text text-xs">Use MCP servers for tasks</span>
-                                    <input type="checkbox" class="toggle toggle-primary toggle-sm" bind:checked={useMcpServers} />
-                                </label>
-                                <div class="rounded border border-base-300 bg-base-100 overflow-auto max-h-48">
-                                    <CodeMirror
-                                        value={$mcpConfigurationStore}
-                                        lang={json()}
-                                        readonly={true}
-                                        editable={false}
-                                        lineNumbers={true}
-                                        lineWrapping={false}
-                                        styles={{
-                                            "&": {
-                                                minWidth: "36rem",
-                                                height: "12rem"
-                                            }
-                                        }}
-                                    />
-                                </div>
-                                <div class="mt-2 flex items-center justify-between">
-                                    <span class="text-xs opacity-70">
-                                        {useMcpServers
-                                            ? `${$selectedMcpServers.length} server(s) configured`
-                                            : "MCP servers disabled for tasks"}
-                                    </span>
-                                    <button class="btn btn-xs btn-primary" onclick={openMcpConfigurationEditor}>Edit</button>
-                                </div>
-                            </div>
-                        </div>
-                    </details>
-                {/if}
-
-                <button class="btn btn-sm btn-ghost" disabled={!$canManageWorkspaceFiles} onclick={openContextModal} title="Context specification" aria-label="Context specification">
-                    <Icon icon="material-symbols:note-stack-outline-rounded" class="w-5 h-5" />
-                </button>
-
-                <div class="join">
-                    {#key $playableDocumentsAndListsWithPoints}
-                        {#if playableDocumentsAndListsWithPoints.isDocumentPlaying($selectedFile)}
-                            <button 
-                                class="btn btn-sm join-item btn-neutral" 
-                                onclick={onStopPlaying}
-                                title="Stop Playing"
-                            >
-                                <span class="loading loading-spinner loading-xs"></span>
-                                <span>Stop Playing</span>
-                            </button>
-                        {:else}
-                            {@const isFilePlayableLocal = isFilePlayable($selectedFile, $playMode)}
-                            {@const isSomePointPlaying = playableDocumentsAndListsWithPoints.isSomePointPlayingInSomeList($selectedFile)}
-                            {@const isPlayingDisabled = !isFilePlayableLocal || isSomePointPlaying}
-
-                            <div
-                                class="inline-block"
-                                title={playingDisabledReason(isFilePlayableLocal, isSomePointPlaying)}
-                            >
-                                <button
-                                    class="btn btn-sm join-item btn-primary disabled:cursor-not-allowed"
-                                    onclick={onPlay}
-                                    disabled={isPlayingDisabled || !$canManageWorkspaceFiles}
-                                >
-                                    <Icon icon="material-symbols:play-circle-outline-rounded" class="w-5 h-5" />
-                                    <span>Play</span>
-                                </button>
-                            </div>
-
-                            {#if $canManageWorkspaceFiles}
-                                <details
-                                    class="dropdown dropdown-end join-item"
-                                    open={openDropdown === "play-settings"}
-                                    ontoggle={(event) => onDropdownToggle("play-settings", event)}
-                                >
-                                    <summary class="btn btn-sm rounded-l-none bg-primary/95 text-white/70 shadow-xl border-primary px-1" aria-label="Play settings" title="Play settings">
-                                        <Icon icon="material-symbols:settings-outline-rounded" class="w-3 h-3" />
-                                    </summary>
-
-                                    <div class="dropdown-content z-[20]">
-                                        <PlayModeDropdownContent
-                                            selectedPlayMode={$playMode}
-                                            onSelect={onSelectPlayMode}
-                                        />
-                                    </div>
-                                </details>
-                            {/if}
-                        {/if}
-                    {/key}
-                </div>
-            </div>
-        
             <details
                 class="dropdown dropdown-end"
                 open={openDropdown === "share"}

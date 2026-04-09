@@ -46,13 +46,20 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 			return json({ status: false, error: "User profile not found" }, { status: 401 });
 		}
 
+		const workspaceAccessFilters: Record<string, unknown>[] = [
+			{ ownerUserId: payload.userId },
+			{ "workspaceMembers.user": currentUserProfile._id },
+			{ "workspaceInvitements.user.id": payload.userId }
+		];
+
+		if (payload.email) {
+			workspaceAccessFilters.push({ "workspaceInvitements.user.email": payload.email });
+		}
+
 		const workspace = await DB_Models.Workspace.Workspace.workspaceModel
 			.findOne({
 				id: workspaceId,
-				$or: [
-					{ ownerUserId: payload.userId },
-					{ "workspaceMembers.user": currentUserProfile._id }
-				]
+				$or: workspaceAccessFilters
 			})
 			.select({ ownerUserId: 1 })
 			.lean<WorkspaceDocumentRaw>();

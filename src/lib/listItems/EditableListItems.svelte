@@ -2,16 +2,11 @@
     import { page } from '$app/stores';
     import { tick } from 'svelte';
     import { UI } from '@ravenlens/frontend';
-    import { clickedListItemId, hoveredListItemId, mouseOutTimeout } from '$lib/stores/hoveredListItem';
-    import AITaskOpenButton from '$lib/listItems/mods/AITaskOpenButton.svelte';
-    import AIListItemHoverActions from '$lib/listItems/mods/AIListItemHoverActions.svelte';
-    import { playMode, selectedFile, selectedModel, selectedTools } from '$lib/stores/files';
+    import { clickedListItemId, hoveredListItemId } from '$lib/stores/hoveredListItem';
+    import { selectedFile } from '$lib/stores/files';
     import { createListItemId, findItemIndex, findSubtreeEndIndex, isPointPlayable } from './utils';
     import { playableDocumentsAndListsWithPoints } from '$lib/stores/playModeStore';
-    import { selectedMcpServers } from '$lib/stores/mcpConfig';
     import AITaskPlayingState from './mods/AITaskPlayingState.svelte';
-    import { contextSpecification } from '$lib/stores/contextSpec';
-    import AIAnswersList from './mods/AIAnswersList.svelte';
     import { File } from "@ravenlens/shared";
 
     let {
@@ -28,10 +23,8 @@
 
     const INDENT_SIZE = 24;
     const ITEM_ID_ATTR = 'data-list-item-id';
-    const PLAY_SIMULATION_DELAY = 5000;
 
     let items = $derived(spawnedList!.items);
-    let pendingFocusId = $state<string | null>(null);
     let removeTargetItemId = $state<string | null>(null);
     const isSharedRoute = $derived($page.url.pathname.startsWith('/share/'));
     const isEditingDisabled = $derived(isSharedRoute || isReadOnly);
@@ -45,55 +38,12 @@
         };
     }
 
-    async function startPlayingItem(itemId: string) {
-        if (isSharedRoute) {
-            return;
-        }
-
-        if (playableDocumentsAndListsWithPoints.isPointPlaying($selectedFile, spawnedList.id, itemId)) {
-            return;
-        }
-
-        if (!$selectedModel) {
-            alert("Too play point Model has to be set up")
-            return;
-        }
-        
-        const itemIndex = findItemIndex(items, itemId);
-        const item = spawnedList.items[itemIndex];
-
-        await playableDocumentsAndListsWithPoints.playPoint($selectedFile!, spawnedList.id, items[itemIndex], {
-            model: $selectedModel,
-            tools: $selectedTools ?? [],
-            context: item.context ?? $contextSpecification ?? [],
-            // selectedItemMcpServers: $selectedMcpServers ?? [],
-            selectedItemPlayMode: item.playMode ?? $playMode
-        });
-    }
-
     function stopPlayingItem(itemId: string) {
         if (!playableDocumentsAndListsWithPoints.isPointPlaying($selectedFile, spawnedList.id, itemId)) {
             return;
         }
 
         playableDocumentsAndListsWithPoints.stopPlayingPoint($selectedFile!, spawnedList.id, itemId);
-    }
-
-    function handleItemMouseEnter(itemId: string) {
-        if (isSharedRoute) {
-            return;
-        }
-
-        mouseOutTimeout.clearTimeout();
-        hoveredListItemId.set(itemId);
-    }
-
-    function handleItemMouseLeave() {
-        if (isSharedRoute) {
-            return;
-        }
-
-        mouseOutTimeout.setTimeout();
     }
 
     function resizeTextarea(textarea: HTMLTextAreaElement) {
@@ -108,7 +58,6 @@
     }
 
     async function queueFocus(itemId: string) {
-        pendingFocusId = itemId;
         await tick();
 
         const textarea = document.querySelector<HTMLTextAreaElement>(`textarea[${ITEM_ID_ATTR}="${itemId}"]`);
@@ -118,7 +67,6 @@
 
         setCaretAtEnd(textarea);
         resizeTextarea(textarea);
-        pendingFocusId = null;
     }
 
     async function updateItemText(itemId: string, text: string) {
@@ -422,31 +370,12 @@
             changeIndent(itemId, event.shiftKey ? -1 : 1);
         }
     }
-
-    function getDisabledReason(isSomeChildPlaying: boolean, isPointParentPlaying: boolean, isPointPlayableState: boolean) {
-        if (isSomeChildPlaying) {
-            return "Cannot play because some subchildren is playing";
-        }
-
-        if (!isPointPlayableState) {
-            return "Cannot play because point is empty: hasn't got subpoints nor text content";
-        }
-
-        if (isPointParentPlaying) {
-            return "Cannot play point since its parent is playing. Wait till it finish or stop it now";
-        }
-
-        return "";
-    }
 </script>
 
 <div class="space-y-1">
     {#each items as item, itemIndex (item.id)}
         {@const playableStoreState = $playableDocumentsAndListsWithPoints}
         {@const isPointPlaying = playableStoreState && playableDocumentsAndListsWithPoints.isPointPlaying($selectedFile, spawnedList.id, item.id)}
-        {@const isPointPlayableState = isPointPlayable(items, item.id, $playMode)}
-        {@const isSomeChildPlaying = playableStoreState && playableDocumentsAndListsWithPoints.isPointSomeChildPlaying($selectedFile, spawnedList.id, item.id)}
-        {@const isPointParentPlaying = playableStoreState && playableDocumentsAndListsWithPoints.isPointParentPlaying($selectedFile, spawnedList.id, item.id)}
     
         <div
             class="flex flex-col w-full min-w-0 justify-center py-0.5"
@@ -455,35 +384,7 @@
             <div
                 class="upper flex w-full min-w-0 items-center"
             >
-                {#if !isSharedRoute}
-                    <AITaskOpenButton 
-                        itemId={item.id}
-                        onmouseenter={() => handleItemMouseEnter(item.id)}
-                        onmouseleave={handleItemMouseLeave}
-                    />
-                {:else}
-                    <span class="block h-6 w-6" aria-hidden="true"></span>
-                {/if}
-
                 <div class="relative flex w-full min-w-0 items-center gap-2">
-                    {#if !isEditingDisabled}
-                        <AIListItemHoverActions
-                            visible={$hoveredListItemId === item.id || $clickedListItemId === item.id}
-                            itemId={item.id}
-                            {isPointPlaying}
-                            isPointPlayable={isPointPlayableState && !isSomeChildPlaying && !isPointParentPlaying}
-                            playDisabledReason={getDisabledReason(isSomeChildPlaying, isPointParentPlaying, isPointPlayableState)}
-                            onPlay={(pointId) => startPlayingItem(pointId)}
-                            onStop={(pointId) => stopPlayingItem(pointId)}
-                            onClearContent={() => requestRemoveItem(item.id)}
-                            selectedItemModel={$selectedModel}
-                            availableItemTools={$selectedTools}
-                            selectedItemMcpServers={$selectedMcpServers}
-                            selectedItemContext={item.context ?? $contextSpecification}
-                            selectedItemPlayMode={item.playMode ?? $playMode}
-                        />
-                    {/if}
-
                     {#if kind === 'ordered'}
                         <span class="w-fit shrink-0 text-right text-sm text-base-content/70">{getOrderedMarker(itemIndex)}.</span>
                     {:else if kind === 'unordered'}
@@ -514,20 +415,7 @@
                         onfocus={(event) => resizeTextarea(event.currentTarget as HTMLTextAreaElement)}
                     ></textarea>
                 </div>
-
-                <!-- TODO: Add playing state here -->
-                <AITaskPlayingState
-                    itemId={item.id}
-                    {spawnedList}
-                />
             </div>
-
-            {#if item.answers}
-                <AIAnswersList
-                    aiAnswers={item.answers}
-                    itemId={item.id}
-                />
-            {/if}
         </div>
     {/each}
 </div>

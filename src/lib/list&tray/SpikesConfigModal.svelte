@@ -234,7 +234,7 @@
         return confirm("You have unsaved changes on another webhook. Discard them and continue?");
     }
 
-    // TODO: Send to backend
+    // TODO: Send to backend and retrive the generated webhooks id
     function onCreateWebhook() {
         if (!canSwitchEditTarget("")) {
             return;
@@ -337,6 +337,7 @@
     }
 
     // TODO: Save to backend
+    // TODO: Webhook has to be copied with secretValue to secure the webhook
     function onSaveEdition(webhook: SpikeWebhook) {
         return async () => {
             const draft = getWebhookDraft(webhook);
@@ -516,7 +517,8 @@
             </p>
         </div>
 
-        <div class="flex flex-col gap-2.5 border-t border-gray-200 pt-4">
+        <!-- FIXME: Add this feature in the after mvp nth version -->
+        <!-- <div class="flex flex-col gap-2.5 border-t border-gray-200 pt-4">
             <label class="label text-sm">
                 <input
                     type="checkbox"
@@ -539,12 +541,12 @@
                     Specific target selection is currently stored as edition intent.
                 </div>
             {/if}
-        </div>
+        </div> -->
 
         <div id="spikeSchema" class="flex flex-col gap-2">
             <div class="">
                 <p class="font-semibold text-[15px] text-black">Payload Schema</p>
-                <p class="text-sm text-gray-500">Specify Payload schema(s) for payload is deliver with WebHook Request. <u>It's to be <b>JSON compilant payload</b></u></p>
+                <p class="text-sm text-gray-500">Specify Payload schema as description for payload deliver with WebHook Request</p>
             </div>
             
             <CodeMirror
@@ -556,11 +558,13 @@
                 onchange={(value) => onSchemaCodeChange(webhook.webhookId, value)}
                 styles={{
                     "&": {
-                        fontSize: "18px",
+                        fontSize: "15px",
                         lineHeight: "1.5"
                     }
                 }}
             />
+
+            <p class="text-[11px]">* It's to be <b>JSON compilant payload</b></p>
         </div>
 
         <div class="flex gap-5 items-center justify-between border-t border-gray-200 pt-4 mt-2">
@@ -595,6 +599,7 @@
     >
         <UI.Modals.ModalWrapperHeading
             headingName="Spikes Config"
+            description="Call the webhooks with REST to execute the Spikes"
             on:close={onClose}
         />
 

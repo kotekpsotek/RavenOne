@@ -3,12 +3,37 @@ import { fetchAuthenticated } from "$lib/utils/fetch";
 
 type WorkspaceSubscriptionCheckResponse = {
 	status?: boolean;
+	subscribed?: boolean;
+	hasActiveSubscription?: boolean;
 	subscriptionKind?: unknown;
+	kind?: unknown;
+	subscription?: {
+		subscriptionKind?: unknown;
+		kind?: unknown;
+	} | null;
 };
 
 function asSubscriptionKind(value: unknown): SubscriptionKinds | undefined {
 	if (value === "starter" || value === "growth" || value === "enterprise") {
 		return value;
+	}
+
+	return undefined;
+}
+
+function parseWorkspaceSubscriptionKind(responseBody: WorkspaceSubscriptionCheckResponse): SubscriptionKinds | undefined {
+	const subscriptionKind = asSubscriptionKind(responseBody.subscriptionKind)
+		?? asSubscriptionKind(responseBody.kind)
+		?? asSubscriptionKind(responseBody.subscription?.subscriptionKind)
+		?? asSubscriptionKind(responseBody.subscription?.kind);
+
+	if (subscriptionKind) {
+		return subscriptionKind;
+	}
+
+	if (responseBody.subscribed === true || responseBody.hasActiveSubscription === true) {
+		// Older endpoints may indicate active status without explicitly returning the plan.
+		return "growth";
 	}
 
 	return undefined;
@@ -33,7 +58,6 @@ export async function getWorkspaceActiveSubscription(workspaceId: string): Promi
 			},
 			body: JSON.stringify({ workspaceId: normalizedWorkspaceId })
 		});
-		console.log('Response', response.status)
 	} catch {
 		return undefined;
 	}
@@ -49,8 +73,7 @@ export async function getWorkspaceActiveSubscription(workspaceId: string): Promi
 
 	try {
 		const responseBody = await response.json() as WorkspaceSubscriptionCheckResponse;
-		console.log('Body', responseBody)
-		return asSubscriptionKind(responseBody.subscriptionKind);
+		return parseWorkspaceSubscriptionKind(responseBody);
 	} catch {
 		return undefined;
 	}

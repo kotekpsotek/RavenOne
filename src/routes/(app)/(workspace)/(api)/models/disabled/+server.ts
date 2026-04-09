@@ -103,7 +103,9 @@ export const POST: RequestHandler = async ({ request, url }) => {
 
         // 2. Get models avaiable for subscription
         const avaiableSubscriptionModels = subscriptionAvaiableAIModels[subscription.subscriptionKind!];
-        const subscriptionModelNames = avaiableSubscriptionModels.map(subModel => subModel.model);
+        if (!avaiableSubscriptionModels) return [];
+        
+        const subscriptionModelNames = avaiableSubscriptionModels?.map(subModel => subModel.model);
 
         // 3. Get All not avaiable in subscription models
         return avaiableModels.filter(aModel => !subscriptionModelNames.includes(aModel.model))
