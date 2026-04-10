@@ -1,5 +1,6 @@
 <script lang="ts">
     import { browser } from "$app/environment";
+    import { onMount } from "svelte";
     import { UI } from "@ravenlens/frontend";
     import { File } from "@ravenlens/shared";
     import ModalScreen from "./ModalScreen.svelte";
@@ -49,11 +50,7 @@
 
     let loadRequestId = 0;
 
-    $effect(() => {
-        if (!open) {
-            return;
-        }
-
+    onMount(() => {
         void loadWebhooks();
     });
 
@@ -221,6 +218,73 @@
         return [];
     }
 
+    async function createWebhookConfig(webhook: SpikeWebhook): Promise<void> {
+        const workspaceId = $selectedWorkspace?.id ?? "test-workspace";
+        const fileId = $selectedFile?.id ?? "test-file";
+        const mode = $selectedTab.toLocaleLowerCase();
+
+        const response = await fetchAuthenticated(`${PUBLIC_SOCKET_IO_PLAY_CONNECTION_URL}/routines-spikes/${mode}/create-config`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                workspaceId,
+                fileId,
+                creation: webhook
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error("Cannot create webhook");
+        }
+    }
+
+    async function updateWebhookConfig(webhook: SpikeWebhook): Promise<void> {
+        const workspaceId = $selectedWorkspace?.id ?? "test-workspace";
+        const fileId = $selectedFile?.id ?? "test-file";
+        const mode = $selectedTab.toLocaleLowerCase();
+
+        const response = await fetchAuthenticated(`${PUBLIC_SOCKET_IO_PLAY_CONNECTION_URL}/routines-spikes/${mode}/update-config`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                workspaceId,
+                fileId,
+                targetId: webhook.webhookId,
+                updation: webhook
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error("Cannot update webhook");
+        }
+    }
+
+    async function deleteWebhookConfig(webhookId: string): Promise<void> {
+        const workspaceId = $selectedWorkspace?.id ?? "test-workspace";
+        const fileId = $selectedFile?.id ?? "test-file";
+        const mode = $selectedTab.toLocaleLowerCase();
+
+        const response = await fetchAuthenticated(`${PUBLIC_SOCKET_IO_PLAY_CONNECTION_URL}/routines-spikes/${mode}/delete-config`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                workspaceId,
+                fileId,
+                targetId: webhookId
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error("Cannot delete webhook");
+        }
+    }
+
     function canSwitchEditTarget(nextWebhookId: string): boolean {
         if (!editionWebhookId || editionWebhookId === nextWebhookId) {
             return true;
@@ -369,44 +433,56 @@
                 executeFor: (draft.executeForSpecific ? "specific" : "all") as SpikeWebhook["executeFor"]
             };
 
-            webhooks = webhooks.map((candidate) => {
-                if (candidate.webhookId !== webhook.webhookId) {
-                    return candidate;
+            try {
+                if (newWebHook?.webhookId === webhook.webhookId) {
+                    await createWebhookConfig(updatedWebhook);
+                }
+                else {
+                    await updateWebhookConfig(updatedWebhook);
                 }
 
-                return updatedWebhook;
-            });
+                webhooks = webhooks.map((candidate) => {
+                    if (candidate.webhookId !== webhook.webhookId) {
+                        return candidate;
+                    }
 
-            draftByWebhookId = {
-                ...draftByWebhookId,
-                [webhook.webhookId]: buildWebhookDraft(updatedWebhook)
-            };
+                    return updatedWebhook;
+                });
 
-            const editResult: EditionResult = {
-                id: crypto.randomUUID(),
-                savedAt: new Date(),
-                summary: `${nextName} saved successfully`,
-                snapshot: {
-                    name: updatedWebhook.name,
-                    webhookSchema: updatedWebhook.webhookSchema ?? "",
-                    executeForSpecific: updatedWebhook.executeFor !== "all"
+                draftByWebhookId = {
+                    ...draftByWebhookId,
+                    [webhook.webhookId]: buildWebhookDraft(updatedWebhook)
+                };
+
+                const editResult: EditionResult = {
+                    id: crypto.randomUUID(),
+                    savedAt: new Date(),
+                    summary: `${nextName} saved successfully`,
+                    snapshot: {
+                        name: updatedWebhook.name,
+                        webhookSchema: updatedWebhook.webhookSchema ?? "",
+                        executeForSpecific: updatedWebhook.executeFor !== "all"
+                    }
+                };
+
+                editionResultsByWebhookId = {
+                    ...editionResultsByWebhookId,
+                    [webhook.webhookId]: [
+                        editResult,
+                        ...(editionResultsByWebhookId[webhook.webhookId] ?? [])
+                    ]
+                };
+
+                if (newWebHook?.webhookId === webhook.webhookId) {
+                    newWebHook = undefined;
                 }
-            };
 
-            editionResultsByWebhookId = {
-                ...editionResultsByWebhookId,
-                [webhook.webhookId]: [
-                    editResult,
-                    ...(editionResultsByWebhookId[webhook.webhookId] ?? [])
-                ]
-            };
-
-            if (newWebHook?.webhookId === webhook.webhookId) {
-                newWebHook = undefined;
+                editionWebhookId = undefined;
+                notifyInfo("Webhook saved", "Edition result was recorded and can be edited again.");
             }
-
-            editionWebhookId = undefined;
-            notifyInfo("Webhook saved", "Edition result was recorded and can be edited again.");
+            catch {
+                notifyError("Save failed", "Backend rejected the webhook save request.");
+            }
         };
     }
 
@@ -440,25 +516,32 @@
                 return;
             }
 
-            webhooks = webhooks.filter((candidate) => candidate.webhookId !== webhook.webhookId);
+            try {
+                await deleteWebhookConfig(webhook.webhookId);
 
-            const { [webhook.webhookId]: removedDraft, ...remainingDrafts } = draftByWebhookId;
-            void removedDraft;
-            draftByWebhookId = remainingDrafts;
+                webhooks = webhooks.filter((candidate) => candidate.webhookId !== webhook.webhookId);
 
-            const { [webhook.webhookId]: removedResults, ...remainingResults } = editionResultsByWebhookId;
-            void removedResults;
-            editionResultsByWebhookId = remainingResults;
+                const { [webhook.webhookId]: removedDraft, ...remainingDrafts } = draftByWebhookId;
+                void removedDraft;
+                draftByWebhookId = remainingDrafts;
 
-            if (editionWebhookId === webhook.webhookId) {
-                editionWebhookId = undefined;
+                const { [webhook.webhookId]: removedResults, ...remainingResults } = editionResultsByWebhookId;
+                void removedResults;
+                editionResultsByWebhookId = remainingResults;
+
+                if (editionWebhookId === webhook.webhookId) {
+                    editionWebhookId = undefined;
+                }
+
+                if (newWebHook?.webhookId === webhook.webhookId) {
+                    newWebHook = undefined;
+                }
+
+                notifyInfo("Webhook deleted", "Webhook was removed successfully.");
             }
-
-            if (newWebHook?.webhookId === webhook.webhookId) {
-                newWebHook = undefined;
+            catch {
+                notifyError("Delete failed", "Backend rejected the webhook delete request.");
             }
-
-            notifyInfo("Webhook deleted", "Webhook was removed successfully.");
         };
     }
 </script>

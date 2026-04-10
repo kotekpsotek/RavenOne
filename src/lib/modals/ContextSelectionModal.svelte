@@ -19,15 +19,15 @@
     } = $props<{
         open: boolean;
         contextPayload: File.FileAI.ContextSpecificationPayload;
-        onSave?: (payload: File.FileAI.ContextSpecificationPayload) => void;
+        onSave?: (payload: File.FileAI.ContextSpecificationPayload) => void | boolean | Promise<void | boolean>;
         infoMessage?: string;
     }>();
 
     // ...
-    const contextPayloadClone = cloneContextPayload(contextPayload);
-    let desktopContextFiles = $state<File.FileAI.ContextDeviceFile[]>(contextPayloadClone.desktopFiles);
-    let editorContextFiles = $state<File.FileAI.ContextEditorFile[]>(contextPayloadClone.editorFiles);
-    let networkContextUrls = $state<File.FileAI.ContextNetworkURL[]>(contextPayloadClone.networkUrls);
+    const getInitialContextPayload = () => cloneContextPayload(contextPayload);
+    let desktopContextFiles = $state<File.FileAI.ContextSpecificationPayload["desktopFiles"]>(getInitialContextPayload().desktopFiles);
+    let editorContextFiles = $state<File.FileAI.ContextEditorFile[]>(getInitialContextPayload().editorFiles);
+    let networkContextUrls = $state<File.FileAI.ContextNetworkURL[]>(getInitialContextPayload().networkUrls);
     let networkUrlDraft = $state("");
 
     function cloneContextPayload(payload: File.FileAI.ContextSpecificationPayload): File.FileAI.ContextSpecificationPayload {
@@ -45,6 +45,22 @@
 
     function removeDesktopContextFile(id: string) {
         desktopContextFiles = desktopContextFiles.filter((entry) => entry.id !== id);
+    }
+
+    function isContextDeviceFileDB(file: File.FileAI.ContextSpecificationPayload["desktopFiles"][number]): file is File.FileAI.ContextDeviceFileDB {
+        return "contentURL" in file && typeof file.contentURL === "string";
+    }
+
+    function getDesktopContextPreviewUrl(file: File.FileAI.ContextSpecificationPayload["desktopFiles"][number]): string | undefined {
+        if (file.previewDataUrl) {
+            return file.previewDataUrl;
+        }
+
+        if (file.type.startsWith("image/") && isContextDeviceFileDB(file)) {
+            return file.contentURL;
+        }
+
+        return undefined;
     }
 
     async function fileToDataUrl(file: globalThis.File) {
@@ -68,6 +84,7 @@
         const filesToAdd = await Promise.all(
             fileList.map(async (file) => {
                 const isImage = file.type.startsWith("image/");
+                const content = await fileToDataUrl(file);
 
                 return {
                     id: `${file.name}-${file.lastModified}-${file.size}`,
@@ -75,7 +92,8 @@
                     type: file.type || "application/octet-stream",
                     size: file.size,
                     locationHint,
-                    previewDataUrl: isImage ? await fileToDataUrl(file) : undefined
+                    previewDataUrl: isImage ? content : undefined,
+                    content
                 } satisfies File.FileAI.ContextDeviceFile;
             })
         );
@@ -119,7 +137,7 @@
         return `https://www.google.com/s2/favicons?domain=${host}&sz=64`;
     }
 
-    function handleSaveContext() {
+    async function handleSaveContext() {
         const payload: File.FileAI.ContextSpecificationPayload = {
             desktopFiles: desktopContextFiles,
             editorFiles: editorContextFiles,
@@ -127,7 +145,10 @@
         };
 
         if (onSave) {
-            onSave(payload);
+            const shouldClose = await onSave(payload);
+            if (shouldClose === false) {
+                return;
+            }
         }
 
         open = false;
@@ -208,10 +229,11 @@
                             {/if}
 
                             {#each desktopContextFiles as file (file.id)}
+                                {@const previewUrl = getDesktopContextPreviewUrl(file)}
                                 <div class="flex items-center justify-between rounded border border-base-300 px-2 py-1" title={file.locationHint}>
                                     <div class="flex items-center gap-2 min-w-0">
-                                        {#if file.previewDataUrl}
-                                            <img src={file.previewDataUrl} alt={file.name} class="w-8 h-8 rounded object-cover" />
+                                        {#if previewUrl}
+                                            <img src={previewUrl} alt={file.name} class="w-8 h-8 rounded object-cover" />
                                         {:else}
                                             <Icon icon="material-symbols:description-outline-rounded" class="w-5 h-5 opacity-70" />
                                         {/if}

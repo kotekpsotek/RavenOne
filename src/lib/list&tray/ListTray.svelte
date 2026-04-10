@@ -8,6 +8,7 @@
     import { canManageWorkspaceFiles } from '$lib/stores/subscription';
     import { editor } from '$lib/stores/editor';
     import { mcpConfigurationStore } from '$lib/stores/mcpConfig';
+    import { fetchAuthenticated } from '$lib/utils/fetch';
     import { alertState, setAlert } from '$lib/utils/alert';
     import Icon from '@iconify/svelte';
     import type { ElementInsertionItem } from '../editorComponents/ui/ElementsListForMenus';
@@ -27,6 +28,7 @@
         showExecutionResults,
         tabsAvailable,
     } from '../stores/lists';
+    import type { TabsAvailable } from '../stores/lists';
     import {
         clampExecutionResultsWidth,
         executionResultsWidth,
@@ -114,6 +116,104 @@
         };
     }
 
+    function cloneUsedModel(model: File.FileAI.UsedAIModel): File.FileAI.UsedAIModel {
+        return {
+            ...model,
+            provider: typeof model.provider === 'object'
+                ? { ...model.provider }
+                : model.provider
+        };
+    }
+
+    function getConfigSaveScope(): { workspaceId: string; fileId: string; tab: TabsAvailable } | undefined {
+        const workspaceId = $selectedWorkspace?.id?.trim() || $selectedFile?.createdByAuthorId?.trim();
+        const fileId = $selectedFile?.id?.trim();
+
+        if (!workspaceId || !fileId) {
+            return undefined;
+        }
+
+        return {
+            workspaceId,
+            fileId,
+            tab: $selectedTab
+        };
+    }
+
+    async function persistSelectedTabModel(model: File.FileAI.UsedAIModel): Promise<File.FileAI.UsedAIModel | undefined> {
+        const saveScope = getConfigSaveScope();
+        if (!saveScope) {
+            return undefined;
+        }
+
+        try {
+            const response = await fetchAuthenticated('/files/api/config/model', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    workspaceId: saveScope.workspaceId,
+                    fileId: saveScope.fileId,
+                    tab: saveScope.tab,
+                    model
+                })
+            });
+
+            if (!response.ok) {
+                return undefined;
+            }
+
+            const responseBody = await response.json() as {
+                model?: File.FileAI.UsedAIModel;
+            };
+
+            return responseBody.model;
+        }
+        catch (error) {
+            console.error('Cannot persist selected tab model', error);
+            return undefined;
+        }
+    }
+
+    async function persistSelectedTabContext(
+        context: File.FileAI.ContextSpecificationPayload
+    ): Promise<File.FileAI.ContextSpecificationPayload | undefined> {
+        const saveScope = getConfigSaveScope();
+        if (!saveScope) {
+            return undefined;
+        }
+
+        try {
+            const response = await fetchAuthenticated('/files/api/config/context', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    workspaceId: saveScope.workspaceId,
+                    fileId: saveScope.fileId,
+                    tab: saveScope.tab,
+                    context
+                })
+            });
+
+            if (!response.ok) {
+                return undefined;
+            }
+
+            const responseBody = await response.json() as {
+                context?: File.FileAI.ContextSpecificationPayload;
+            };
+
+            return responseBody.context;
+        }
+        catch (error) {
+            console.error('Cannot persist selected tab context', error);
+            return undefined;
+        }
+    }
+
     const selectedModelKeyFromStore = $derived(getModelKeyFromStore($selectedTabModel));
 
     function sortModelsByAvailability(disabledModels?: typeof avaiableModels) {
@@ -131,16 +231,36 @@
         });
     }
 
-    function onModelChange(ev: Event) {
+    async function onModelChange(ev: Event) {
         const target = ev.currentTarget as HTMLSelectElement | null;
         const modelNameFromTarget = target?.value;
         const modelNameFromDetail = (ev as CustomEvent<string | undefined>).detail;
         const nextModelKey = modelNameFromTarget ?? modelNameFromDetail ?? selectedModelKeyFromStore;
-        selectedTabModel.set(createUsedModel(nextModelKey));
+        const previousModel = cloneUsedModel(get(selectedTabModel));
+        const nextModel = createUsedModel(nextModelKey);
+
+        selectedTabModel.set(nextModel);
 
         if (browser) {
             localStorage.setItem("localSelectedLLM", nextModelKey);
         }
+
+        const savedModel = await persistSelectedTabModel(nextModel);
+        if (!savedModel) {
+            selectedTabModel.set(previousModel);
+            if (browser) {
+                localStorage.setItem("localSelectedLLM", getModelKeyFromStore(previousModel));
+            }
+
+            setAlert(
+                'error',
+                'Cannot save selected model',
+                'The selected model could not be persisted for this file and tab.'
+            );
+            return;
+        }
+
+        selectedTabModel.set(savedModel);
     }
 
     function onWindowClick(event: MouseEvent) {
@@ -165,9 +285,23 @@
         isContextModalOpen = true;
     }
 
-    function onSaveGlobalContext(payload: File.FileAI.ContextSpecificationPayload) {
-        selectedTabContext.set(cloneContextPayload(payload));
+    async function onSaveGlobalContext(payload: File.FileAI.ContextSpecificationPayload): Promise<boolean> {
+        const savedContext = await persistSelectedTabContext(payload);
+        if (!savedContext) {
+            setAlert(
+                'error',
+                'Cannot save selected context',
+                'The selected context could not be persisted for this file and tab.'
+            );
+            return false;
+        }
+
+        const normalizedContext = cloneContextPayload(savedContext);
+        selectedTabContext.set(normalizedContext);
+        contextModalPayloadDraft = cloneContextPayload(normalizedContext);
         isContextModalOpen = false;
+
+        return true;
     }
 
     async function onPlay() {
