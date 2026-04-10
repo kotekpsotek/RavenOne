@@ -10,6 +10,7 @@
     import AddWorkspace from "./screens/AddWorkspace.svelte";
     import NoSelectedFile from "./screens/NoSelectedFile.svelte";
     import ListTray from "./ListTray.svelte";
+    // import BubbleMenuRavenOne from "./components/BubbleMenuRavenOne.svelte";
     import { isSharedRoute } from "./stores/share";
     import "./Editor.css";
 
