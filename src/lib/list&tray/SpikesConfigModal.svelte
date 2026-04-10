@@ -54,10 +54,6 @@
         void loadWebhooks();
     });
 
-    function getPublicOrigin(): string {
-        return browser ? window.location.origin : "http://localhost:5173";
-    }
-
     function normalizeWebhookDate(webhook: SpikeWebhook): SpikeWebhook {
         return {
             ...webhook,
@@ -310,8 +306,8 @@
         const createdWebhook: SpikeWebhook = {
             workspaceId,
             fileId,
-            webhookId,
-            webhookUrl: `${getPublicOrigin()}/api/spikes/webhooks/${webhookId}`,
+            webhookId, // Webhook id still isn't matched since backend generates own
+            webhookUrl: `${PUBLIC_SOCKET_IO_PLAY_CONNECTION_URL}/spikes/webhook/${webhookId}`,
             executeFor: "all",
             name: buildDefaultWebhookName(),
             webhookSchema: "{\n\n}",
