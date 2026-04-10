@@ -4,6 +4,7 @@
     import { NodeViewWrapper } from "svelte-tiptap";
     import { setAlert } from "$lib/utils/alert";
     import { deleteEditorImage, uploadEditorImage } from "../components/RavenImage.api";
+    import { isEditable as isEditableLocal } from "../components/elements.edition";
 
     type UploadState = "empty" | "uploading" | "ready" | "error";
 
@@ -26,8 +27,9 @@
     const MIN_WIDTH = 180;
     const MIN_HEIGHT = 120;
 
-    let { node, editor, updateAttributes, getPos }: NodeViewProps = $props();
+    let { node, editor: editorLocal, updateAttributes, getPos }: NodeViewProps = $props();
 
+    let isEditable = $derived($isEditableLocal);
     let fileInput: HTMLInputElement | null = null;
     let isHovered = $state(false);
     let isBusy = $state(false);
@@ -41,7 +43,6 @@
     let imageSource = $derived((attrs.src ?? "").trim());
     let objectKey = $derived((attrs.objectKey ?? "").trim());
     let imageAlignment = $derived(normalizeAlignment(attrs.align));
-    let isEditable = $derived(editor?.isEditable ?? false);
     let isLoading = $derived(uploadState === "uploading" || isBusy);
     let hasImage = $derived(Boolean(imageSource));
 
@@ -282,8 +283,8 @@
 
             const nodePosition = getPos();
             if (typeof nodePosition === "number") {
-                const tr = editor.state.tr.delete(nodePosition, nodePosition + node.nodeSize);
-                editor.view.dispatch(tr.scrollIntoView());
+                const tr = editorLocal.state.tr.delete(nodePosition, nodePosition + node.nodeSize);
+                editorLocal.view.dispatch(tr.scrollIntoView());
             }
         } catch (error) {
             setAlert("error", "Image delete failed", asErrorMessage(error));
@@ -371,7 +372,7 @@
         const aspectRatio = initialWidth / Math.max(1, initialHeight);
         const startX = event.clientX;
 
-        const editorArea = (event.currentTarget as HTMLElement).closest(".tiptap-editor") as HTMLElement | null;
+        const editorArea = (event.currentTarget as HTMLElement).closest(".tiptap-editorLocal") as HTMLElement | null;
         const maxWidth = Math.max(MIN_WIDTH, (editorArea?.clientWidth ?? 1100) - 24);
 
         isResizing = true;
@@ -418,7 +419,7 @@
         class:ml-auto={imageAlignment === "right"}
         contenteditable="false"
         role="group"
-        aria-label="Editor image block"
+        aria-label="editorLocal image block"
         onmouseenter={() => (isHovered = true)}
         onmouseleave={() => (isHovered = false)}
     >
@@ -474,75 +475,79 @@
             {/if}
         </div>
 
-        {#if isEditable && (isHovered || !hasImage || uploadState === "error")}
+        {#if (isHovered || !hasImage || uploadState === "error")}
             <div class="image-manipulation absolute right-2.5 top-2.5 z-[10] inline-flex items-start gap-0.5 rounded-lg border border-white/50 bg-[#4f4f4f]/50 p-0.5">
-                <button
-                    type="button"
-                    class="toolbar-button"
-                    onclick={triggerFileSelection}
-                    disabled={isLoading}
-                    title={hasImage ? "Change image" : "Select image"}
-                >
-                    <Icon icon="material-symbols:edit-outline" />
-                </button>
+                {#if isEditable}
+                    <button
+                        type="button"
+                        class="toolbar-button"
+                        onclick={triggerFileSelection}
+                        disabled={isLoading}
+                        title={hasImage ? "Change image" : "Select image"}
+                    >
+                        <Icon icon="material-symbols:edit-outline" />
+                    </button>
+                {/if}
 
                 {#if hasImage}
-                    <div
-                        class="dropdown dropdown-bottom dropdown-end"
-                        class:dropdown-open={isAlignMenuOpen}
-                        onfocusout={closeAlignMenu}
-                    >
-                        <button
-                            type="button"
-                            class="toolbar-button"
-                            onclick={onAlignImage}
-                            disabled={isLoading}
-                            aria-haspopup="menu"
-                            aria-expanded={isAlignMenuOpen}
-                            title="Align image"
+                    {#if isEditable}
+                        <div
+                            class="dropdown dropdown-bottom dropdown-end"
+                            class:dropdown-open={isAlignMenuOpen}
+                            onfocusout={closeAlignMenu}
                         >
-                            <Icon icon={getAlignmentIcon(imageAlignment)} />
-                        </button>
+                            <button
+                                type="button"
+                                class="toolbar-button"
+                                onclick={onAlignImage}
+                                disabled={isLoading}
+                                aria-haspopup="menu"
+                                aria-expanded={isAlignMenuOpen}
+                                title="Align image"
+                            >
+                                <Icon icon={getAlignmentIcon(imageAlignment)} />
+                            </button>
 
-                        <ul class="dropdown-content menu z-[999] mt-2 w-40 rounded-box border border-base-300 bg-base-100 p-1 shadow-xl">
-                            <li>
-                                <button
-                                    type="button"
-                                    class="btn btn-sm justify-start gap-2"
-                                    class:btn-primary={imageAlignment === "left"}
-                                    class:btn-ghost={imageAlignment !== "left"}
-                                    onclick={(event) => setImageAlignment(event, "left")}
-                                >
-                                    <Icon icon="material-symbols:format-align-left-rounded" width="18" height="18" />
-                                    <span>Left</span>
-                                </button>
-                            </li>
-                            <li>
-                                <button
-                                    type="button"
-                                    class="btn btn-sm justify-start gap-2"
-                                    class:btn-primary={imageAlignment === "center"}
-                                    class:btn-ghost={imageAlignment !== "center"}
-                                    onclick={(event) => setImageAlignment(event, "center")}
-                                >
-                                    <Icon icon="material-symbols:format-align-center-rounded" width="18" height="18" />
-                                    <span>Center</span>
-                                </button>
-                            </li>
-                            <li>
-                                <button
-                                    type="button"
-                                    class="btn btn-sm justify-start gap-2"
-                                    class:btn-primary={imageAlignment === "right"}
-                                    class:btn-ghost={imageAlignment !== "right"}
-                                    onclick={(event) => setImageAlignment(event, "right")}
-                                >
-                                    <Icon icon="material-symbols:format-align-right-rounded" width="18" height="18" />
-                                    <span>Right</span>
-                                </button>
-                            </li>
-                        </ul>
-                    </div>
+                            <ul class="dropdown-content menu z-[999] mt-2 w-40 rounded-box border border-base-300 bg-base-100 p-1 shadow-xl">
+                                <li>
+                                    <button
+                                        type="button"
+                                        class="btn btn-sm justify-start gap-2"
+                                        class:btn-primary={imageAlignment === "left"}
+                                        class:btn-ghost={imageAlignment !== "left"}
+                                        onclick={(event) => setImageAlignment(event, "left")}
+                                    >
+                                        <Icon icon="material-symbols:format-align-left-rounded" width="18" height="18" />
+                                        <span>Left</span>
+                                    </button>
+                                </li>
+                                <li>
+                                    <button
+                                        type="button"
+                                        class="btn btn-sm justify-start gap-2"
+                                        class:btn-primary={imageAlignment === "center"}
+                                        class:btn-ghost={imageAlignment !== "center"}
+                                        onclick={(event) => setImageAlignment(event, "center")}
+                                    >
+                                        <Icon icon="material-symbols:format-align-center-rounded" width="18" height="18" />
+                                        <span>Center</span>
+                                    </button>
+                                </li>
+                                <li>
+                                    <button
+                                        type="button"
+                                        class="btn btn-sm justify-start gap-2"
+                                        class:btn-primary={imageAlignment === "right"}
+                                        class:btn-ghost={imageAlignment !== "right"}
+                                        onclick={(event) => setImageAlignment(event, "right")}
+                                    >
+                                        <Icon icon="material-symbols:format-align-right-rounded" width="18" height="18" />
+                                        <span>Right</span>
+                                    </button>
+                                </li>
+                            </ul>
+                        </div>
+                    {/if}
 
                     <button
                         type="button"
@@ -554,15 +559,17 @@
                         <Icon icon="material-symbols:downloading-rounded" />
                     </button>
 
-                    <button
-                        type="button"
-                        class="toolbar-button"
-                        onclick={onRemoveImage}
-                        disabled={isLoading}
-                        title="Remove image"
-                    >
-                        <Icon icon="material-symbols:delete-outline-rounded" />
-                    </button>
+                    {#if isEditable}
+                        <button
+                            type="button"
+                            class="toolbar-button"
+                            onclick={onRemoveImage}
+                            disabled={isLoading}
+                            title="Remove image"
+                        >
+                            <Icon icon="material-symbols:delete-outline-rounded" />
+                        </button>
+                    {/if}
                 {/if}
             </div>
         {/if}

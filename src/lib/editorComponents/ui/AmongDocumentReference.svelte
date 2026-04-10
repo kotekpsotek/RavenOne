@@ -8,6 +8,7 @@
     import { entriesList, selectedFile } from "$lib/stores/files";
     import { canManageWorkspaceFiles } from "$lib/stores/subscription";
     import { userProfile } from "$lib/stores/user";
+    import { isEditable } from "../components/elements.edition";
 
     type FlattenedEntry = {
         id: string;
@@ -26,7 +27,6 @@
 
     let referenceFileId = $derived(normalizeText(node.attrs.fileId));
     let referenceFileName = $derived(normalizeText(node.attrs.fileName));
-    let isEditable = $derived(Boolean(editor?.isEditable));
 
     let availableEntries = $derived(flattenEntries($entriesList));
     let linkedEntry = $derived(availableEntries.find((entry) => entry.id === referenceFileId));
@@ -35,7 +35,7 @@
 
     let isMissingReference = $derived(Boolean(referenceFileId) && !linkedFile);
     let canEditReference = $derived(
-        isEditable
+        $isEditable
         && ($canManageWorkspaceFiles || isLinkedFileOwnedByCurrentUser(linkedFile ?? $selectedFile, $userProfile))
     );
 
@@ -180,6 +180,8 @@
         event.preventDefault();
         event.stopPropagation();
 
+        if (!$isEditable) return;
+        
         if (!canEditReference) {
             return;
         }
@@ -233,7 +235,7 @@
     }
 
     onMount(() => {
-        if (isEditable && !referenceFileId) {
+        if ($isEditable && !referenceFileId) {
             queueMicrotask(() => {
                 openPicker();
             });
@@ -315,7 +317,7 @@
             class="dropdown dropdown-open fixed z-50"
         >
             <ul class="px-1 menu dropdown-content w-[200px] z-[1] rounded-box border border-base-300 bg-base-100 p-1 shadow-xl">
-                <li class="px-0" style="padding-inline-start: 0px;">
+                <li class="px-0" style="padding-inline-start: 0px !important;">
                     <button 
                         class="w-full"
                         onclick={openPicker}
@@ -326,7 +328,7 @@
                         </span>
                     </button>
                 </li>
-                <li class="px-0" style="padding-inline-start: 0px;">
+                <li class="px-0" style="padding-inline-start: 0px !important;">
                     <button 
                         class="text-rose-500 w-full"
                         onclick={openPicker}

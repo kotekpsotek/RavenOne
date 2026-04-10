@@ -5,19 +5,121 @@
     import type { Node as ProseMirrorNode, ResolvedPos } from "@tiptap/pm/model";
     import type { EditorView } from "@tiptap/pm/view";
     import { setConfirmationAlert } from "$lib/utils/alert";
+    import { isEditable } from "./elements.edition";
 
     export class RavenTableView extends TableView {
         private readonly editorView: EditorView;
-        private readonly addRowContainer: HTMLDivElement;
-        private readonly addRowButton: HTMLButtonElement;
-        private readonly removeTableRowButton: HTMLButtonElement;
-        private readonly removeTableButton: HTMLButtonElement;
+        private addRowContainer: HTMLDivElement | null = null;
+        private addRowButton: HTMLButtonElement | null = null;
+        private removeTableRowButton: HTMLButtonElement | null = null;
+        private removeTableButton: HTMLButtonElement | null = null;
         private tableResizeObserver: ResizeObserver | undefined;
         private selectionListener: (() => void) | undefined;
+        private editableUnsubscribe: (() => void) | undefined;
 
         constructor(node: ProseMirrorNode, cellMinWidth: number, view: EditorView) {
             super(node, cellMinWidth);
             this.editorView = view;
+
+            this.editableUnsubscribe = isEditable.subscribe((editable) => {
+                if (editable) {
+                    this.ensureEditableControls();
+                }
+
+                this.syncTableActionState();
+            });
+
+            if (typeof ResizeObserver !== "undefined") {
+                this.tableResizeObserver = new ResizeObserver(() => {
+                    this.syncAddRowWidth();
+                });
+                this.tableResizeObserver.observe(this.table);
+            }
+
+            this.syncAddRowWidth();
+            this.syncTableActionState();
+
+            this.selectionListener = () => {
+                this.syncTableActionState();
+            };
+
+            this.editorView.dom.ownerDocument?.addEventListener("selectionchange", this.selectionListener);
+        }
+
+        update(node: ProseMirrorNode): boolean {
+            const updated = super.update(node);
+            if (updated) {
+                this.syncAddRowWidth();
+            }
+
+            return updated;
+        }
+
+        destroy() {
+            this.tableResizeObserver?.disconnect();
+            this.editableUnsubscribe?.();
+            this.editableUnsubscribe = undefined;
+            if (this.selectionListener) {
+                this.editorView.dom.ownerDocument?.removeEventListener("selectionchange", this.selectionListener);
+                this.selectionListener = undefined;
+            }
+            this.addRowButton?.removeEventListener("mousedown", this.handleButtonMouseDown);
+            this.addRowButton?.removeEventListener("click", this.handleButtonClick);
+            this.removeTableRowButton?.removeEventListener("mousedown", this.handleButtonMouseDown);
+            this.removeTableRowButton?.removeEventListener("click", this.handleRemoveTableRowButtonClick);
+            this.removeTableButton?.removeEventListener("mousedown", this.handleButtonMouseDown);
+            this.removeTableButton?.removeEventListener("click", this.handleRemoveTableButtonClick);
+        }
+
+        private readonly handleButtonMouseDown = (event: MouseEvent) => {
+            // Keep editor focus/selection stable before executing row insertion.
+            event.preventDefault();
+        };
+
+        private readonly handleButtonClick = (event: MouseEvent) => {
+            event.preventDefault();
+            this.appendRowToTableEnd();
+        };
+
+        private readonly handleRemoveTableRowButtonClick = (event: MouseEvent) => {
+            event.preventDefault();
+
+            if (!this.canDeleteCurrentTablePart()) {
+                return;
+            }
+
+            setConfirmationAlert({
+                name: "Remove table row?",
+                description: "This will delete the current row from the table.",
+                confirmLabel: "Remove Row",
+                onConfirm: () => this.deleteCurrentTableRow()
+            });
+        };
+
+        private readonly handleRemoveTableButtonClick = (event: MouseEvent) => {
+            event.preventDefault();
+
+            if (!this.canDeleteCurrentTablePart()) {
+                return;
+            }
+
+            setConfirmationAlert({
+                name: "Remove table?",
+                description: "This will delete the entire table.",
+                confirmLabel: "Remove Table",
+                onConfirm: () => this.deleteCurrentTable()
+            });
+        };
+
+        private syncAddRowWidth() {
+            const tableWidth = Math.max(this.table.getBoundingClientRect().width, 64);
+            this.addRowContainer ? this.addRowContainer.style.width = `${tableWidth}px` : null;
+        }
+
+        private ensureEditableControls() {
+            if (this.addRowContainer) {
+                return;
+            }
 
             this.addRowContainer = document.createElement("div");
             this.addRowContainer.className = "tiptap-table-add-row";
@@ -67,103 +169,21 @@
             this.addRowContainer.appendChild(this.removeTableButton);
             this.dom.appendChild(this.addRowContainer);
 
-            if (typeof ResizeObserver !== "undefined") {
-                this.tableResizeObserver = new ResizeObserver(() => {
-                    this.syncAddRowWidth();
-                });
-                this.tableResizeObserver.observe(this.table);
-            }
-
             this.syncAddRowWidth();
-            this.syncTableActionState();
-
-            this.selectionListener = () => {
-                this.syncTableActionState();
-            };
-
-            this.editorView.dom.ownerDocument?.addEventListener("selectionchange", this.selectionListener);
-        }
-
-        update(node: ProseMirrorNode): boolean {
-            const updated = super.update(node);
-            if (updated) {
-                this.syncAddRowWidth();
-            }
-
-            return updated;
-        }
-
-        destroy() {
-            this.tableResizeObserver?.disconnect();
-            if (this.selectionListener) {
-                this.editorView.dom.ownerDocument?.removeEventListener("selectionchange", this.selectionListener);
-                this.selectionListener = undefined;
-            }
-            this.addRowButton.removeEventListener("mousedown", this.handleButtonMouseDown);
-            this.addRowButton.removeEventListener("click", this.handleButtonClick);
-            this.removeTableRowButton.removeEventListener("mousedown", this.handleButtonMouseDown);
-            this.removeTableRowButton.removeEventListener("click", this.handleRemoveTableRowButtonClick);
-            this.removeTableButton.removeEventListener("mousedown", this.handleButtonMouseDown);
-            this.removeTableButton.removeEventListener("click", this.handleRemoveTableButtonClick);
-        }
-
-        private readonly handleButtonMouseDown = (event: MouseEvent) => {
-            // Keep editor focus/selection stable before executing row insertion.
-            event.preventDefault();
-        };
-
-        private readonly handleButtonClick = (event: MouseEvent) => {
-            event.preventDefault();
-            this.appendRowToTableEnd();
-        };
-
-        private readonly handleRemoveTableRowButtonClick = (event: MouseEvent) => {
-            event.preventDefault();
-
-            if (!this.canDeleteCurrentTablePart()) {
-                return;
-            }
-
-            setConfirmationAlert({
-                name: "Remove table row?",
-                description: "This will delete the current row from the table.",
-                confirmLabel: "Remove Row",
-                onConfirm: () => this.deleteCurrentTableRow()
-            });
-        };
-
-        private readonly handleRemoveTableButtonClick = (event: MouseEvent) => {
-            event.preventDefault();
-
-            if (!this.canDeleteCurrentTablePart()) {
-                return;
-            }
-
-            setConfirmationAlert({
-                name: "Remove table?",
-                description: "This will delete the entire table.",
-                confirmLabel: "Remove Table",
-                onConfirm: () => this.deleteCurrentTable()
-            });
-        };
-
-        private syncAddRowWidth() {
-            const tableWidth = Math.max(this.table.getBoundingClientRect().width, 64);
-            this.addRowContainer.style.width = `${tableWidth}px`;
         }
 
         private syncTableActionState() {
             const canDelete = this.canDeleteCurrentTablePart();
 
-            this.removeTableRowButton.disabled = !canDelete;
-            this.removeTableButton.disabled = !canDelete;
+            this.removeTableRowButton ? this.removeTableRowButton.disabled = !canDelete : null;
+            this.removeTableButton ? this.removeTableButton.disabled = !canDelete : null;
 
-            this.removeTableRowButton.title = canDelete
+            this.removeTableRowButton ? this.removeTableRowButton.title = canDelete
                 ? "Remove the current row from this table"
-                : "Place the cursor inside a row in this table to remove that row";
-            this.removeTableButton.title = canDelete
+                : "Place the cursor inside a row in this table to remove that row" : null;
+            this.removeTableButton ? this.removeTableButton.title = canDelete
                 ? "Remove this table"
-                : "Place the cursor inside a row in this table to remove the table";
+                : "Place the cursor inside a row in this table to remove the table" : null;
         }
 
         private canDeleteCurrentTablePart(): boolean {
