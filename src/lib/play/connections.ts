@@ -4,9 +4,26 @@ import { env } from "$env/dynamic/public";
 import { browser } from "$app/environment";
 import { JWTAuth } from "$lib/utils/auth";
 import { selectedFile } from "$lib/stores/files";
+import { selectedWorkspace } from "$lib/stores/workspace";
 import { liveExecutionResultsStore, playingFilesAndTasksListStore } from "$lib/stores/lists";
 import { userProfile } from "$lib/stores/user";
 import { get, writable } from "svelte/store";
+
+type JoinedFilePayload = {
+    workspaceId: string;
+    fileId: string;
+};
+
+function resolveWorkspaceIdFromFile(file: File.File.File | undefined): string | undefined {
+    const workspaceId = file?.createdByAuthorId?.trim();
+    if (workspaceId?.length) {
+        return workspaceId;
+    }
+
+    const selectedWorkspaceId = get(selectedWorkspace)?.id?.trim();
+
+    return selectedWorkspaceId?.length ? selectedWorkspaceId : undefined;
+}
 
 function createSocketOptions() {
     const token = JWTAuth.getToken();
@@ -29,11 +46,19 @@ function createSocketOptions() {
 
 class FilePlayConnections {
     file: File.File.File | undefined = undefined;
+    joinedFile: JoinedFilePayload | undefined = undefined;
     connection: Socket;
     
     constructor(file?: File.File.File) {
-        this.file = file;
         this.connection = io(env.PUBLIC_SOCKET_IO_PLAY_CONNECTION_URL, createSocketOptions());
+
+        this.connection.on("connect", () => {
+            if (!this.joinedFile) {
+                return;
+            }
+
+            this.connection.emit("join-file", this.joinedFile);
+        });
 
         if (file) {
             this.emitJoinFile(file);
@@ -41,17 +66,31 @@ class FilePlayConnections {
     }
     
     emitJoinFile(file: File.File.File) {
-        this.file = file;
-        this.connection.emit("join-file", file);
-    }
+        const workspaceId = resolveWorkspaceIdFromFile(file);
 
-    emitLeaveFile() {
-        if (!this.file) {
+        if (!workspaceId) {
+            console.warn("Cannot join file play connection because workspaceId is missing", file.id);
             return;
         }
 
-        this.connection.emit("leave-file", this.file);
+        this.file = file;
+        this.joinedFile = {
+            workspaceId,
+            fileId: file.id
+        };
+        this.connection.emit("join-file", this.joinedFile);
+    }
+
+    emitLeaveFile() {
+        const fileId = this.joinedFile?.fileId ?? this.file?.id;
+
+        if (!fileId) {
+            return;
+        }
+
+        this.connection.emit("leave-file", fileId);
         this.file = undefined;
+        this.joinedFile = undefined;
     }
 
     /** If specified leaves old file and joins to new file */
@@ -113,6 +152,7 @@ export const FilePlayConnectionStore = (() => {
     let isStarted = false;
     let selectedFileUnsubscribe: (() => void) | undefined;
     let currentJoinedFileId: string | undefined;
+    let currentJoinedWorkspaceId: string | undefined;
     let currentSyncRequestId = 0;
     let playStartHandler: ((fileId: string, userTriggeredPlayId: string) => void | Promise<void>) | undefined;
     let playEndHandler: ((fileId: string, userTriggeredPlayId: string, result: File.RoutinesSpikes.FrontendDownloadResultObject) => void | Promise<void>) | undefined;
@@ -135,15 +175,26 @@ export const FilePlayConnectionStore = (() => {
         }
 
         const nextFileId = file?.id;
-        if (nextFileId === currentJoinedFileId) {
+        const nextWorkspaceId = resolveWorkspaceIdFromFile(file);
+        const hasSelectionChanged = nextFileId !== currentJoinedFileId || nextWorkspaceId !== currentJoinedWorkspaceId;
+
+        if (!hasSelectionChanged) {
             return;
         }
+
+        currentSyncRequestId += 1;
 
         const connection = getOrCreateConnection();
         connection.automateFile(file);
         currentJoinedFileId = nextFileId;
+        currentJoinedWorkspaceId = nextWorkspaceId;
 
         if (!nextFileId) {
+            return;
+        }
+
+        if (!nextWorkspaceId) {
+            console.warn("Cannot sync selected file play state because workspaceId is missing", nextFileId);
             return;
         }
 
@@ -204,6 +255,7 @@ export const FilePlayConnectionStore = (() => {
         selectedFileUnsubscribe = undefined;
         currentSyncRequestId += 1;
         currentJoinedFileId = undefined;
+        currentJoinedWorkspaceId = undefined;
 
         const connection = get(store);
 
@@ -227,6 +279,17 @@ export const FilePlayConnectionStore = (() => {
 
         start();
         const connection = getOrCreateConnection();
+        const currentSelectedFile = get(selectedFile);
+        const currentWorkspaceId = resolveWorkspaceIdFromFile(currentSelectedFile);
+
+        if (currentSelectedFile?.id === fileId) {
+            await syncSelectedFile(currentSelectedFile);
+        }
+
+        if (!currentWorkspaceId) {
+            console.error("Cannot start file playing because workspaceId is missing", fileId);
+            return false;
+        }
 
         try {
             const isStartedPlaying = await connection.emitPlayFile(fileId);

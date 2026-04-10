@@ -307,7 +307,7 @@
         selectedFilePlayingState.playByUserId !== $userProfile?.id
     ));
     const isTaskEditingLockedByPlaying = $derived($selectedTab === "Tasks" && isSelectedFilePlaying);
-    const isPlayButtonDisabled = $derived(isReadOnly || isSelectedFilePlaying);
+    const isPlayButtonDisabled = $derived(isReadOnly || isSelectedFilePlaying || !$selectedFile?.lists.list.length);
     const playButtonTitle = $derived.by(() => {
         if (!$selectedFile) {
             return "Select file to start playing";

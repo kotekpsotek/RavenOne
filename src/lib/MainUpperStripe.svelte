@@ -1,56 +1,19 @@
 <script lang="ts">
     import Icon from "@iconify/svelte";
-    import { avaiableModels } from "./config/models";
     import { selectedFile } from "./stores/files";
     import { selectedWorkspace } from "./stores/workspace";
     import { tick } from "svelte";
-    import { contextSpecification } from "./stores/contextSpec";
-    import { mcpConfigurationStore } from "./stores/mcpConfig";
     import { alertState } from "./utils/alert";
-    import { get, writable } from "svelte/store";
-    import McpSelectionModal from "./modals/McpSelectionModal.svelte";
-    import ContextSelectionModal from "./modals/ContextSelectionModal.svelte";
+    import { get } from "svelte/store";
     import SaveFile from "./components/SaveFile.svelte";
     import { shareFileRequest } from "./files/connections/connections";
-    import { File } from "@ravenlens/shared";
-    import { browser } from "$app/environment";
 
     type DropdownName = "model-settings" | "mcp-tools" | "play-settings" | "share";
 
     let isDownloadingPdf = $state(false);
 
-    const selectedModelKey = (() => {
-        const initialModelKey = avaiableModels[0]?.model ?? "";
-        const selectedModelName = writable<string>(initialModelKey);
-
-        if (browser) {
-            const model = localStorage.getItem("localSelectedLLM");
-            selectedModelName.set(model ?? initialModelKey);
-        }
-
-        return {
-            ...selectedModelName,
-            set(model: string) {
-                if (browser) {
-                    localStorage.setItem('localSelectedLLM', model);
-                }
-                
-                selectedModelName.set(model ?? initialModelKey);
-            }
-        }
-    })();
-    let mcpConfigurationDraft = $state(get(mcpConfigurationStore));
-    let mcpConfigurationError = $state("");
-
     let openDropdown = $state<DropdownName | undefined>(undefined);
 
-    let isContextModalOpen = $state(false);
-    let isMcpConfigModalOpen = $state(false);
-    let contextModalPayloadDraft = $state<File.FileAI.ContextSpecificationPayload>({
-        desktopFiles: [],
-        editorFiles: [],
-        networkUrls: []
-    });
     let generatedShareUrl = $state("");
     let isShareLinkGenerating = $state(false);
     const shareUrl = $derived(generatedShareUrl);
@@ -83,11 +46,6 @@
         }
 
         openDropdown = undefined;
-    }
-
-    function onSaveGlobalContext(payload: File.FileAI.ContextSpecificationPayload) {
-        contextSpecification.set(payload);
-        isContextModalOpen = false;
     }
 
     async function generateShareUrl() {
@@ -424,18 +382,4 @@
             </details>
         </div>
     </section>
-
-    {#if isContextModalOpen}
-        <ContextSelectionModal
-            bind:open={isContextModalOpen}
-            contextPayload={contextModalPayloadDraft}
-            onSave={onSaveGlobalContext}
-        />
-    {/if}
-    
-    <McpSelectionModal
-        bind:open={isMcpConfigModalOpen}
-        bind:mcpConfigurationDraft
-        bind:mcpConfigurationError
-    />
 {/if}
