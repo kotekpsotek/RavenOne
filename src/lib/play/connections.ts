@@ -2,10 +2,30 @@ import type { File } from "@ravenlens/shared";
 import io, { Socket } from "socket.io-client";
 import { env } from "$env/dynamic/public";
 import { browser } from "$app/environment";
+import { JWTAuth } from "$lib/utils/auth";
 import { selectedFile } from "$lib/stores/files";
 import { liveExecutionResultsStore, playingFilesAndTasksListStore } from "$lib/stores/lists";
 import { userProfile } from "$lib/stores/user";
 import { get, writable } from "svelte/store";
+
+function createSocketOptions() {
+    const token = JWTAuth.getToken();
+
+    return {
+        ...(token ? {
+            auth: {
+                token
+            },
+            transportOptions: {
+                polling: {
+                    extraHeaders: {
+                        authorization: `Bearer ${token}`
+                    }
+                }
+            }
+        } : {})
+    };
+}
 
 class FilePlayConnections {
     file: File.File.File | undefined = undefined;
@@ -13,7 +33,7 @@ class FilePlayConnections {
     
     constructor(file?: File.File.File) {
         this.file = file;
-        this.connection = io(env.PUBLIC_SOCKET_IO_PLAY_CONNECTION_URL);
+        this.connection = io(env.PUBLIC_SOCKET_IO_PLAY_CONNECTION_URL, createSocketOptions());
 
         if (file) {
             this.emitJoinFile(file);
