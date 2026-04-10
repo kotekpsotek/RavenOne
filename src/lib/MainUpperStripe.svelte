@@ -2,7 +2,6 @@
     import Icon from "@iconify/svelte";
     import { avaiableModels } from "./config/models";
     import { selectedFile } from "./stores/files";
-    import { selectedModel } from "./stores/files";
     import { selectedWorkspace } from "./stores/workspace";
     import { tick } from "svelte";
     import { contextSpecification } from "./stores/contextSpec";
@@ -55,14 +54,6 @@
     let generatedShareUrl = $state("");
     let isShareLinkGenerating = $state(false);
     const shareUrl = $derived(generatedShareUrl);
-
-    const getModelByKey = (key: string) =>
-        avaiableModels.find((model) => model.model === key);
-
-    const currentModel = $derived(getModelByKey($selectedModelKey));
-    $effect(() => {
-        $selectedModel = currentModel;
-    });
 
     function onDropdownToggle(name: DropdownName, event: Event) {
         const target = event.currentTarget as HTMLDetailsElement;

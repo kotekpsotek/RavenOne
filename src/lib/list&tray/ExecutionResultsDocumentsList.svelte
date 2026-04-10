@@ -1,7 +1,7 @@
 <script lang=ts>
     import { PUBLIC_SOCKET_IO_PLAY_CONNECTION_URL } from "$env/static/public";
     import { selectedFile } from "$lib/stores/files";
-    import { selectedSpikeRoutineDocument, selectedTab } from "$lib/stores/lists";
+    import { liveExecutionResultsStore, selectedSpikeRoutineDocument, selectedTab } from "$lib/stores/lists";
     import { selectedWorkspace } from "$lib/stores/workspace";
     import { fetchAuthenticated } from "$lib/utils/fetch";
     import Icon from "@iconify/svelte";
@@ -18,8 +18,47 @@
         return renamedDocumentNames[document.id] ?? document.documentName;
     }
 
+    function normalizeResult(result: File.RoutinesSpikes.FrontendDownloadResultObject): File.RoutinesSpikes.FrontendDownloadResultObject {
+        return {
+            ...result,
+            date: new Date(result.date)
+        };
+    }
+
+    function createResultIdentity(result: File.RoutinesSpikes.FrontendDownloadResultObject): string {
+        const normalizedResult = normalizeResult(result);
+        const documentIds = normalizedResult.resultDocumentsHTML.map((document) => document.id).join("|");
+
+        return `${normalizedResult.title}|${normalizedResult.date.getTime()}|${documentIds}`;
+    }
+
+    function mergeResults(
+        downloadedResults: File.RoutinesSpikes.FrontendDownloadResultObject[],
+        liveResults: File.RoutinesSpikes.FrontendDownloadResultObject[]
+    ): File.RoutinesSpikes.FrontendDownloadResultObject[] {
+        const dedupedResultsByIdentity: Record<string, File.RoutinesSpikes.FrontendDownloadResultObject> = {};
+        const identitiesInOrder: string[] = [];
+
+        for (const result of [...liveResults, ...downloadedResults]) {
+            const normalizedResult = normalizeResult(result);
+            const identity = createResultIdentity(normalizedResult);
+
+            if (!(identity in dedupedResultsByIdentity)) {
+                dedupedResultsByIdentity[identity] = normalizedResult;
+                identitiesInOrder.push(identity);
+            }
+        }
+
+        return identitiesInOrder.map((identity) => dedupedResultsByIdentity[identity]);
+    }
+
+    const selectedFileLiveResultsCount = $derived(($liveExecutionResultsStore[$selectedFile?.id ?? ""] ?? []).length);
+
     // Utils
     async function donwloadResults(): Promise<File.RoutinesSpikes.FrontendDownloadResultObject[]> {
+        const selectedFileId = get(selectedFile)?.id;
+        const liveResults = liveExecutionResultsStore.getResultsForFile(selectedFileId ?? "");
+
         try {
             const mode = get(selectedTab).toLocaleLowerCase();
             const fetchResult = await fetchAuthenticated(
@@ -39,10 +78,7 @@
             if (fetchResult) {
                 const results = await fetchResult.json() as File.RoutinesSpikes.FrontendDownloadResultObject[];
 
-                return results.map(result => ({
-                    ...result,
-                    date: new Date(result.date)
-                }))
+                return mergeResults(results, liveResults);
             }
         }
         catch(err) {
@@ -50,7 +86,7 @@
         }
 
         // Default
-        return [
+        const fallbackResults = [
             {
                 title: "Execution Result title",
                 resultDocumentsHTML: [
@@ -96,6 +132,8 @@ For official information, see Lamborghini official site.>`,
                 date: new Date()
             },
         ];
+
+        return mergeResults(fallbackResults, liveResults);
     }
 
     function focusInputAttachment(node: HTMLInputElement) {
@@ -241,11 +279,11 @@ For official information, see Lamborghini official site.>`,
     </div>
 {/snippet}
 
-{#key $selectedTab}
+{#key `${$selectedTab}-${$selectedFile?.id ?? 'none'}-${selectedFileLiveResultsCount}`}
     <section class="execution-results h-full overflow-y-auto bg-base-100 p-4">
         <div class="mb-4 flex items-center gap-2 border-b border-base-300 pb-3">
             <Icon icon="material-symbols:checklist-rtl-rounded" class="text-lg text-base-content" />
-            <h3 class="text-sm font-semibold uppercase tracking-wide text-base-content">Execution Results</h3>
+            <h3 class="text-sm font-semibold tracking-wide text-base-content">Execution Results</h3>
         </div>
 
         {#await donwloadResults()}

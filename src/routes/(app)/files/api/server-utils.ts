@@ -80,6 +80,56 @@ function normalizeFileContent(contentCandidate: unknown): string {
     return contentCandidate;
 }
 
+function normalizeSpawnedList(spawnedListCandidate: unknown): File.File.SpawnedList {
+    const defaultReturnValue: File.File.SpawnedList = {
+        list: [],
+        config: {
+            model: {
+                id: "",
+                name: "",
+                provider: {
+                    provider: ""
+                },
+                weight: 0
+            },
+            context: {
+                desktopFiles: [],
+                editorFiles: [],
+                networkUrls: []
+            }
+        }
+    };
+
+    if (Array.isArray(spawnedListCandidate)) {
+        return {
+            ...defaultReturnValue,
+            list: spawnedListCandidate as File.File.SpawnedList["list"]
+        };
+    }
+
+    if (!spawnedListCandidate || typeof spawnedListCandidate !== "object") {
+        return defaultReturnValue;
+    }
+
+    const spawnedList = spawnedListCandidate as Partial<File.File.SpawnedList>;
+    const config = (spawnedList.config ?? {}) as Partial<File.File.SpawnedList["config"]>;
+
+    return {
+        list: Array.isArray(spawnedList.list) ? spawnedList.list : [],
+        config: {
+            model: {
+                ...defaultReturnValue.config.model,
+                ...(config.model ?? {})
+            },
+            context: {
+                desktopFiles: [...(config.context?.desktopFiles ?? [])],
+                editorFiles: [...(config.context?.editorFiles ?? [])],
+                networkUrls: [...(config.context?.networkUrls ?? [])]
+            }
+        }
+    };
+}
+
 export async function parseJsonBody<T>(request: Request): Promise<T | null> {
     try {
         return (await request.json()) as T;
@@ -208,7 +258,9 @@ export function sanitizeEntry(entry: FileEntry, workspaceId: string): FileEntry 
         id: String(entry.id),
         name: String(entry.name),
         createdAt: toDate(entry.createdAt),
-        lists: Array.isArray(entry.lists) ? entry.lists : [],
+        lists: normalizeSpawnedList(entry.lists),
+        routines: normalizeSpawnedList(entry.routines),
+        spikes: normalizeSpawnedList(entry.spikes),
         content: normalizeFileContent(entry.content),
         // Keep entries grouped per workspace in the current schema shape.
         createdByAuthorId: workspaceId,
@@ -301,7 +353,9 @@ export function createFileEntry(name: string, workspaceId: string): FileEntry {
         type: "file",
         id: randomUUID(),
         name,
-        lists: [],
+        lists: normalizeSpawnedList(undefined),
+        routines: normalizeSpawnedList(undefined),
+        spikes: normalizeSpawnedList(undefined),
         createdAt: new Date(),
         content: EMPTY_FILE_CONTENT,
         createdByAuthorId: workspaceId

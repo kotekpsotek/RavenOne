@@ -41,7 +41,9 @@ export const selectedFile = (() => {
 
         return JSON.stringify({
             content: file.content ?? "",
-            lists: file.lists ?? []
+            lists: file.lists,
+            routines: file.routines,
+            spikes: file.spikes
         });
     }
 
@@ -339,7 +341,7 @@ export const selectedFile = (() => {
             // Schedule only persisted changes (content/lists) for autosave.
             unsavedFiles.addNew([constructUnsavedFile(afterFile, Date.now())]);
         },
-        updateFileListItems(spawnedListId: string, items: File.File.EditableListItem[]): Promise<boolean> {
+        updateFileListItems(spawnedListId: string, items: File.File.EditableListItemItself[]): Promise<boolean> {
             const priorFile = get(store);
             const priorPersistedState = getPersistedStateSignature(priorFile);
             let wasUpdated = false;
@@ -348,27 +350,40 @@ export const selectedFile = (() => {
                 if (!file) {
                     return file;
                 }
-                
-                const listIndex = file.lists.findIndex(list => list.id === spawnedListId);
-                if (listIndex < 0) {
-                    return file;
+
+                const targets: Array<keyof Pick<File.File.File, "lists" | "routines" | "spikes">> = [
+                    "lists",
+                    "routines",
+                    "spikes"
+                ];
+
+                for (const target of targets) {
+                    const listIndex = file[target].list.findIndex(list => list.id === spawnedListId);
+                    if (listIndex < 0) {
+                        continue;
+                    }
+
+                    wasUpdated = true;
+
+                    return {
+                        ...file,
+                        [target]: {
+                            list: file[target].list.map((list, index) => {
+                                if (index !== listIndex) {
+                                    return list;
+                                }
+
+                                return {
+                                    ...list,
+                                    items
+                                };
+                            }),
+                            config: file[target].config
+                        }
+                    };
                 }
 
-                wasUpdated = true;
-
-                return {
-                    ...file,
-                    lists: file.lists.map((list, index) => {
-                        if (index !== listIndex) {
-                            return list;
-                        }
-
-                        return {
-                            ...list,
-                            items
-                        };
-                    })
-                };
+                return file;
             });
 
             if (!wasUpdated) {
@@ -390,26 +405,6 @@ export const selectedFile = (() => {
         },
     };
 })();
-
-export const availableTools = ["Web search", "Current Document", "RavenOne Documents"] as File.FileAI.BrowserToolsUnion[];
-
-// File config
-export const selectedModel = writable<AI.RavenLensAvaiableAIModel | undefined>(undefined);
-export const playMode = writable<File.FileAI.PlayMode>("run-all");
-
-const STORAGE_KEY = "raven_selected_tools";
-const initialTools = (typeof window !== 'undefined' && localStorage.getItem(STORAGE_KEY)) 
-    ? JSON.parse(localStorage.getItem(STORAGE_KEY)!) 
-    : [];
-
-export const selectedTools = writable<File.FileAI.BrowserToolsUnion[]>(initialTools);
-
-if (typeof window !== 'undefined') {
-    selectedTools.subscribe(tools => {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(tools));
-    });
-}
-
 
 export const isSearchModalOpen = writable(false);
 

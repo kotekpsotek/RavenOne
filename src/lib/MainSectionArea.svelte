@@ -8,8 +8,8 @@
     import NoSelectedFile from "./screens/NoSelectedFile.svelte";
     import ListTray from "./list&tray/ListTray.svelte";
     import BubbleMenuRavenOne from "./components/BubbleMenuRavenOne.svelte";
-    import "./Editor.css";
     import { isSharedRoute } from "./stores/share";
+    import "./Editor.css";
 
     let canEditWorkspaceContent = $derived(!$workspaceSubscriptionCheckInProgress && $workspaceHasActiveSubscription);
 
@@ -39,6 +39,8 @@
 
                 <BubbleMenuRavenOne />
                 <EditorContent editor={$editor} class="tiptap-editor" />
+
+                <!-- TODO: Wehn item is playing it has to be readonly too -->
                 <ListTray isReadOnly={!canEditWorkspaceContent}/>
             </div>
         {/if}

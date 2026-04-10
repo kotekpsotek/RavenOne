@@ -2,6 +2,8 @@
     import { File } from '@ravenlens/shared';
     import EditableListItems from './EditableListItems.svelte';
 
+    type SpawnedListEntry = File.File.SpawnedList["list"][number];
+
     let {
         onEmptyList = () => {},
         isReadOnly = false,
@@ -9,7 +11,7 @@
     }: {
         onEmptyList?: () => void;
         isReadOnly?: boolean;
-        spawnedList: File.File.SpawnedList
+        spawnedList: SpawnedListEntry
     } = $props();
 </script>
 

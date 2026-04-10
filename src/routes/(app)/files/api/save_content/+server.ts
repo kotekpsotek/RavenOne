@@ -24,13 +24,17 @@ type IncomingFilePayload = {
     id?: unknown;
     content?: unknown;
     lists?: unknown;
+    routines?: unknown;
+    spikes?: unknown;
 };
 
 type FileUpdate = {
     fileId: string;
     date: number;
     content: string;
-    lists: File.File.SpawnedList[];
+    lists: File.File.SpawnedList;
+    routines: File.File.SpawnedList;
+    spikes: File.File.SpawnedList;
 };
 
 const EMPTY_FILE_CONTENT = "<p></p>";
@@ -43,12 +47,54 @@ function normalizeDate(dateCandidate: unknown): number {
     return Date.now();
 }
 
-function normalizeLists(listsCandidate: unknown): File.File.SpawnedList[] {
-    if (!Array.isArray(listsCandidate)) {
-        return [];
+function normalizeSpawnedList(spawnedListCandidate: unknown): File.File.SpawnedList {
+    const defaultReturnValue: File.File.SpawnedList = {
+        list: [],
+        config: {
+            model: {
+                id: "",
+                name: "",
+                provider: {
+                    provider: ""
+                },
+                weight: 0
+            },
+            context: {
+                desktopFiles: [],
+                editorFiles: [],
+                networkUrls: []
+            }
+        }
+    };
+
+    if (Array.isArray(spawnedListCandidate)) {
+        return {
+            ...defaultReturnValue,
+            list: spawnedListCandidate as File.File.SpawnedList["list"]
+        };
     }
 
-    return listsCandidate as File.File.SpawnedList[];
+    if (!spawnedListCandidate || typeof spawnedListCandidate !== "object") {
+        return defaultReturnValue;
+    }
+
+    const spawnedList = spawnedListCandidate as Partial<File.File.SpawnedList>;
+    const config = (spawnedList.config ?? {}) as Partial<File.File.SpawnedList["config"]>;
+
+    return {
+        list: Array.isArray(spawnedList.list) ? spawnedList.list : [],
+        config: {
+            model: {
+                ...defaultReturnValue.config.model,
+                ...(config.model ?? {})
+            },
+            context: {
+                desktopFiles: [...(config.context?.desktopFiles ?? [])],
+                editorFiles: [...(config.context?.editorFiles ?? [])],
+                networkUrls: [...(config.context?.networkUrls ?? [])]
+            }
+        }
+    };
 }
 
 function normalizeFileContent(contentCandidate: unknown): string {
@@ -91,7 +137,9 @@ function buildFileUpdates(filesCandidate: unknown): FileUpdate[] | null {
             fileId,
             date: normalizeDate(envelope.date),
             content: normalizeFileContent(filePayload.content),
-            lists: normalizeLists(filePayload.lists)
+            lists: normalizeSpawnedList(filePayload.lists),
+            routines: normalizeSpawnedList(filePayload.routines),
+            spikes: normalizeSpawnedList(filePayload.spikes)
         });
     }
 
@@ -154,7 +202,9 @@ export const POST: RequestHandler = async ({ request, cookies, fetch }) => {
                 return {
                     ...entry,
                     content: update.content,
-                    lists: update.lists
+                    lists: update.lists,
+                    routines: update.routines,
+                    spikes: update.spikes
                 };
             });
 

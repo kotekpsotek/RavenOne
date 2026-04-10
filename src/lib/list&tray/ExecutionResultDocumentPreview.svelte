@@ -23,10 +23,10 @@
 
         const pointField = (() => {
             if (tabMode === "Spikes") {
-                return $selectedFile?.spikes;
+                return $selectedFile?.spikes.list;
             }
             else if (tabMode === "Routines") {
-                return $selectedFile?.routines;
+                return $selectedFile?.routines.list;
             }
         })() ?? [];
 

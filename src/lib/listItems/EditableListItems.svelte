@@ -6,6 +6,8 @@
     import { File } from "@ravenlens/shared";
     import { createListItemId } from './utils';
 
+    type SpawnedListEntry = File.File.SpawnedList["list"][number];
+
     let {
         kind,
         onEmptyList = () => {},
@@ -13,7 +15,7 @@
         spawnedList
     }: {
         kind: File.File.ListItemKind;
-        spawnedList: File.File.SpawnedList
+        spawnedList: SpawnedListEntry
         onEmptyList?: () => void;
         isReadOnly?: boolean;
     } = $props();
@@ -26,7 +28,7 @@
     const isSharedRoute = $derived($page.url.pathname.startsWith('/share/'));
     const isEditingDisabled = $derived(isSharedRoute || isReadOnly);
 
-    function createItem(depth: number): File.File.EditableListItem {
+    function createItem(depth: number): File.File.EditableListItemItself {
         return {
             id: createListItemId(),
             text: '',

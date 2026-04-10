@@ -4,9 +4,8 @@
     import { browser } from '$app/environment';
     import { UI } from '@ravenlens/frontend';
     import { avaiableModels } from '$lib/config/models';
-    import { playMode, selectedFile, selectedModel, selectedTools } from '$lib/stores/files';
+    import { selectedFile } from '$lib/stores/files';
     import { canManageWorkspaceFiles } from '$lib/stores/subscription';
-    import { contextSpecification } from '$lib/stores/contextSpec';
     import { editor } from '$lib/stores/editor';
     import { mcpConfigurationStore } from '$lib/stores/mcpConfig';
     import { alertState, setAlert } from '$lib/utils/alert';
@@ -18,7 +17,16 @@
     import UnorderedListItem from '$lib/listItems/UnorderedListItem.svelte';
     import TaskListItem from '$lib/listItems/TaskListItem.svelte';
     import { File } from "@ravenlens/shared";
-    import { selectedSpikeRoutineDocument, selectedTab, showExecutionResults, tabsAvailable, type TabsAvailable } from '../stores/lists';
+    import {
+        getConfigTargetByTab,
+        playingFilesAndTasksListStore,
+        selectedSpikeRoutineDocument,
+        selectedTab,
+        selectedTabContext,
+        selectedTabModel,
+        showExecutionResults,
+        tabsAvailable,
+    } from '../stores/lists';
     import {
         clampExecutionResultsWidth,
         executionResultsWidth,
@@ -34,7 +42,7 @@
         stopResize,
         trayHeight,
     } from './resize';
-    import RoutinesSpikesExecutionResults from './Routines&SpikesExecutionResults.svelte';
+    import RoutinesSpikesExecutionResults from './ExecutionResultsDocumentsList.svelte';
     import ExecutionResultDocumentPreview from './ExecutionResultDocumentPreview.svelte';
     import ModalScreen from './ModalScreen.svelte';
     import SpikesConfigModal from './SpikesConfigModal.svelte';
@@ -42,13 +50,10 @@
     import { selectedWorkspace } from '$lib/stores/workspace';
     import { downloadUnavaiableModelsRequest } from '$lib/files/connections/connections';
     import { createListItemId } from '$lib/listItems/utils';
+    import { FilePlayConnectionStore } from '$lib/play/connections';
+    import { userProfile } from '$lib/stores/user';
 
     type DropdownName = "model-settings" | "mcp-tools" | "play-settings";
-    type TabAIConfiguration = {
-        selectedContext: File.FileAI.ContextSpecificationPayload;
-        selectedTools: File.FileAI.BrowserToolsUnion[];
-        selectedModelKey: string;
-    };
 
     let { isReadOnly = false }: { isReadOnly?: boolean } = $props();
 
@@ -56,31 +61,6 @@
     let isRoutinesConfigModalOpen = $state(false);
     let isSpikesConfigModalOpen = $state(false);
     const initialModelKey = avaiableModels[0]?.model ?? "";
-    const initialSelectedModelKey = browser
-        ? (localStorage.getItem("localSelectedLLM") ?? initialModelKey)
-        : initialModelKey;
-    let selectedModelKey = $state(initialSelectedModelKey);
-
-    let modelWeights = $state<Record<string, number>>({});
-    let tabAiConfigurations = $state<Record<TabsAvailable, TabAIConfiguration>>({
-        Tasks: {
-            selectedContext: cloneContextPayload(get(contextSpecification)),
-            selectedTools: cloneTools(get(selectedTools)),
-            selectedModelKey: initialSelectedModelKey
-        },
-        Routines: {
-            selectedContext: cloneContextPayload(get(contextSpecification)),
-            selectedTools: cloneTools(get(selectedTools)),
-            selectedModelKey: initialSelectedModelKey
-        },
-        Spikes: {
-            selectedContext: cloneContextPayload(get(contextSpecification)),
-            selectedTools: cloneTools(get(selectedTools)),
-            selectedModelKey: initialSelectedModelKey
-        }
-    });
-    let activeTabConfiguration = get(selectedTab);
-    let useMcpServers = $state(true);
     let mcpConfigurationDraft = $state(get(mcpConfigurationStore));
     let mcpConfigurationError = $state("");
     let openDropdown = $state<DropdownName | undefined>(undefined);
@@ -107,35 +87,34 @@
         };
     }
 
-    function cloneTools(tools: File.FileAI.BrowserToolsUnion[]): File.FileAI.BrowserToolsUnion[] {
-        return [...tools] as File.FileAI.BrowserToolsUnion[];
+    function getModelKeyFromStore(model: File.FileAI.UsedAIModel | undefined): string {
+        const modelKey = model?.id?.trim() || model?.name?.trim();
+        return modelKey?.length ? modelKey : initialModelKey;
     }
 
-    function saveActiveTabConfiguration(tab: TabsAvailable) {
-        tabAiConfigurations = {
-            ...tabAiConfigurations,
-            [tab]: {
-                selectedContext: cloneContextPayload($contextSpecification),
-                selectedTools: cloneTools($selectedTools),
-                selectedModelKey
-            }
+    function createUsedModel(modelKey: string): File.FileAI.UsedAIModel {
+        const model = getModelByKey(modelKey);
+
+        if (!model) {
+            return {
+                id: modelKey,
+                name: modelKey,
+                provider: {
+                    provider: ""
+                },
+                weight: 1
+            };
+        }
+
+        return {
+            id: model.model,
+            name: model.model,
+            provider: model.provider,
+            weight: 1
         };
     }
 
-    function applyTabConfiguration(tab: TabsAvailable) {
-        const tabConfiguration = tabAiConfigurations[tab];
-        if (!tabConfiguration) {
-            return;
-        }
-
-        selectedModelKey = tabConfiguration.selectedModelKey || initialModelKey;
-        selectedTools.set(cloneTools(tabConfiguration.selectedTools));
-        contextSpecification.set(cloneContextPayload(tabConfiguration.selectedContext));
-
-        if (browser) {
-            localStorage.setItem("localSelectedLLM", selectedModelKey);
-        }
-    }
+    const selectedModelKeyFromStore = $derived(getModelKeyFromStore($selectedTabModel));
 
     function sortModelsByAvailability(disabledModels?: typeof avaiableModels) {
         const unavailableModelNames = new Set((disabledModels ?? []).map((model) => model.model));
@@ -152,51 +131,15 @@
         });
     }
 
-    const currentModel = $derived(getModelByKey(selectedModelKey));
-
-    const getCurrentModelWeight = () => modelWeights[selectedModelKey] ?? 1;
-
-    $effect(() => {
-        $selectedModel = currentModel;
-    });
-
     function onModelChange(ev: Event) {
         const target = ev.currentTarget as HTMLSelectElement | null;
         const modelNameFromTarget = target?.value;
         const modelNameFromDetail = (ev as CustomEvent<string | undefined>).detail;
-        selectedModelKey = modelNameFromTarget ?? modelNameFromDetail ?? selectedModelKey;
+        const nextModelKey = modelNameFromTarget ?? modelNameFromDetail ?? selectedModelKeyFromStore;
+        selectedTabModel.set(createUsedModel(nextModelKey));
 
         if (browser) {
-            localStorage.setItem("localSelectedLLM", selectedModelKey);
-        }
-
-        saveActiveTabConfiguration($selectedTab);
-    }
-
-    function toggleValue(state: File.FileAI.BrowserToolsUnion[], value: File.FileAI.BrowserToolsUnion): File.FileAI.BrowserToolsUnion[] {
-        if (state.includes(value)) {
-            return state.filter((entry) => entry !== value) as any;
-        }
-        return [...state, value] as any;
-    }
-
-    function updateCurrentModelWeight(weight: number) {
-        modelWeights = {
-            ...modelWeights,
-            [selectedModelKey]: weight
-        };
-    }
-
-    function onDropdownToggle(name: DropdownName, event: Event) {
-        const target = event.currentTarget as HTMLDetailsElement;
-
-        if (target.open) {
-            openDropdown = name;
-            return;
-        }
-
-        if (openDropdown === name) {
-            openDropdown = undefined;
+            localStorage.setItem("localSelectedLLM", nextModelKey);
         }
     }
 
@@ -218,45 +161,18 @@
     }
 
     function openContextModal() {
-        contextModalPayloadDraft = cloneContextPayload($contextSpecification);
+        contextModalPayloadDraft = cloneContextPayload($selectedTabContext);
         isContextModalOpen = true;
     }
 
     function onSaveGlobalContext(payload: File.FileAI.ContextSpecificationPayload) {
-        contextSpecification.set(payload);
-        saveActiveTabConfiguration($selectedTab);
+        selectedTabContext.set(cloneContextPayload(payload));
         isContextModalOpen = false;
     }
 
-    function onToggleTool(tool: File.FileAI.BrowserToolsUnion) {
-        $selectedTools = toggleValue($selectedTools, tool);
-        saveActiveTabConfiguration($selectedTab);
-    }
-
-    function syncTabConfigurationOnTabChange(nextTab: TabsAvailable) {
-        if (nextTab === activeTabConfiguration) {
-            return;
-        }
-
-        saveActiveTabConfiguration(activeTabConfiguration);
-        applyTabConfiguration(nextTab);
-        activeTabConfiguration = nextTab;
-    }
-
-    function onSelectPlayMode(mode: File.FileAI.PlayMode) {
-        $playMode = mode;
-    }
-
-    function openMcpConfigurationEditor() {
-        mcpConfigurationDraft = $mcpConfigurationStore;
-        mcpConfigurationError = "";
-        isMcpConfigModalOpen = true;
-        openDropdown = undefined;
-    }
-
     async function onPlay() {
-        const selectedModelLocal = get(selectedModel);
-        if (!selectedModelLocal) {
+        const selectedModelLocal = get(selectedTabModel);
+        if (!selectedModelLocal.id && !selectedModelLocal.name) {
             $alertState = {
                 alert: {
                     type: "error",
@@ -286,7 +202,32 @@
             return;
         }
 
-        // TODO: Start playing
+        if (selectedFilePlayingState) {
+            if (isSelectedFilePlayingByOtherUser) {
+                setAlert(
+                    'warning',
+                    'Another user is already playing this file',
+                    'Wait until current play session is finished before starting a new one.'
+                );
+                return;
+            }
+
+            setAlert(
+                'warning',
+                'This file is already playing',
+                'Wait until your current play session is finished before starting another one.'
+            );
+            return;
+        }
+
+        const isStartedPlaying = await FilePlayConnectionStore.playFile(selectedFileLocal.id);
+        if (!isStartedPlaying) {
+            setAlert(
+                'error',
+                'Cannot start playing',
+                'The server denied the play request or the connection failed.'
+            );
+        }
     }
 
     function onStopPlaying() {
@@ -295,16 +236,6 @@
         }
 
         // TODO: Stop playing
-    }
-
-    function playingDisabledReason(isFilePlayableLocal: boolean, isSomePointPlaying: boolean) {
-        if (!isFilePlayableLocal) {
-            return "Playing is disabled since document has no playable node/element; Add some playable AI Node/Element first to make file playable";
-        }
-
-        if (isSomePointPlaying) {
-            return "Cannot play document since some point is already playing. Stop playing point or wait for its finish";
-        }
     }
 
     // Types
@@ -338,23 +269,64 @@
     const listsForSelectedTab = $derived.by(() => {
         const selectedFileLocal = $selectedFile;
         if (!selectedFileLocal) {
-            return [] as File.File.SpawnedList[];
+            return [] as File.File.SpawnedList["list"];
         }
 
         if ($selectedTab === "Routines") {
-            return selectedFileLocal.routines ?? [];
+            return selectedFileLocal.routines.list ?? [];
         }
 
         if ($selectedTab === "Spikes") {
-            return selectedFileLocal.spikes ?? [];
+            return selectedFileLocal.spikes.list ?? [];
         }
 
-        return selectedFileLocal.lists ?? [];
+        return selectedFileLocal.lists.list ?? [];
     });
 
     const hasItemsInLists = $derived(
-        listsForSelectedTab.some((list: File.File.SpawnedList) => list.items.length > 0)
+        listsForSelectedTab.some((list) => list.items.length > 0)
     );
+
+    const selectedFilePlayingState = $derived.by(() => {
+        const selectedFileId = $selectedFile?.id;
+        if (!selectedFileId) {
+            return undefined;
+        }
+
+        return $playingFilesAndTasksListStore.find((item) => item.fileId === selectedFileId);
+    });
+
+    const isSelectedFilePlaying = $derived(Boolean(selectedFilePlayingState));
+    const isSelectedFilePlayingByCurrentUser = $derived(Boolean(
+        selectedFilePlayingState &&
+        $userProfile?.id &&
+        selectedFilePlayingState.playByUserId === $userProfile.id
+    ));
+    const isSelectedFilePlayingByOtherUser = $derived(Boolean(
+        selectedFilePlayingState &&
+        selectedFilePlayingState.playByUserId !== $userProfile?.id
+    ));
+    const isTaskEditingLockedByPlaying = $derived($selectedTab === "Tasks" && isSelectedFilePlaying);
+    const isPlayButtonDisabled = $derived(isReadOnly || isSelectedFilePlaying);
+    const playButtonTitle = $derived.by(() => {
+        if (!$selectedFile) {
+            return "Select file to start playing";
+        }
+
+        if (isReadOnly) {
+            return "Cannot play because this workspace is read-only";
+        }
+
+        if (isSelectedFilePlayingByOtherUser) {
+            return "Cannot play because another user is currently playing this tasks list";
+        }
+
+        if (isSelectedFilePlayingByCurrentUser) {
+            return "You are already playing this tasks list";
+        }
+
+        return "Play selected tasks list";
+    });
 
     function createId() {
         if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
@@ -387,7 +359,7 @@
         }
 
         const listKind = resolveListKind(item);
-        const listItem: File.File.EditableListItem = listKind === "task" ?
+        const listItem: File.File.EditableListItemItself = listKind === "task" ?
             {
                 id: createListItemId(),
                 text: "",
@@ -406,39 +378,32 @@
                 return file;
             }
 
-            const itemLocal = {
+            const itemLocal: File.File.SpawnedList["list"][number] = {
                 id: createId(),
                 kind: listKind,
                 name: item.name,
                 icon: item.icon,
                 items: [listItem]
-            }
-            if ($selectedTab === "Routines") {
-                return {
-                    ...file,
-                    routines: [
-                        ...(file.routines ?? []),
-                        itemLocal
-                    ]
-                };
-            }
+            };
 
-            if ($selectedTab === "Spikes") {
-                return {
-                    ...file,
-                    spikes: [
-                        ...(file.spikes ?? []),
-                        itemLocal
-                    ]
-                };
-            }
+            const target = getConfigTargetByTab($selectedTab);
+            const targetData = file[target];
+            const fallbackContext = cloneContextPayload($selectedTabContext);
+            const fallbackModel = createUsedModel(selectedModelKeyFromStore);
 
             return {
                 ...file,
-                lists: [
-                    ...(file.lists ?? []),
-                    itemLocal
-                ]
+                [target]: {
+                    list: [...targetData.list, itemLocal],
+                    config: {
+                        model: (targetData.config.model.id || targetData.config.model.name)
+                            ? targetData.config.model
+                            : fallbackModel,
+                        context: targetData.config.context.desktopFiles || targetData.config.context.editorFiles || targetData.config.context.networkUrls
+                            ? targetData.config.context
+                            : fallbackContext
+                    }
+                }
             };
         });
 
@@ -456,23 +421,15 @@
                 return file;
             }
 
-            if ($selectedTab === "Routines") {
-                return {
-                    ...file,
-                    routines: (file.routines ?? []).filter(spawnedList => spawnedList.id !== spawnedListId)
-                };
-            }
-
-            if ($selectedTab === "Spikes") {
-                return {
-                    ...file,
-                    spikes: (file.spikes ?? []).filter(spawnedList => spawnedList.id !== spawnedListId)
-                };
-            }
+            const target = getConfigTargetByTab($selectedTab);
+            const targetData = file[target];
 
             return {
                 ...file,
-                lists: file.lists.filter(spawnedList => spawnedList.id !== spawnedListId)
+                [target]: {
+                    list: targetData.list.filter(spawnedList => spawnedList.id !== spawnedListId),
+                    config: targetData.config
+                }
             };
         });
     }
@@ -507,10 +464,7 @@
         const unsubscribe = selectedFile.subscribe((file) => {
             loadTrayHeight(file?.id ?? '');
         });
-
-        const unsubscribeSelectedTab = selectedTab.subscribe((tab) => {
-            syncTabConfigurationOnTabChange(tab);
-        });
+        const stopFilePlayConnection = FilePlayConnectionStore.start();
 
         window.addEventListener("keydown", (ev) => {
             // Toggle execution results
@@ -521,7 +475,7 @@
         
         return () => {
             unsubscribe();
-            unsubscribeSelectedTab();
+            stopFilePlayConnection();
             stopResize();
             stopExecutionResultsResize();
         };
@@ -536,20 +490,20 @@
             {#if spawnedList.kind === 'ordered'}
                 <OrderedListItem
                     onEmptyList={() => removeSpawnedList(spawnedList.id)}
-                    {isReadOnly}
-                    {spawnedList}
+                    isReadOnly={isReadOnly || isTaskEditingLockedByPlaying}
+                    spawnedList={spawnedList as any}
                 />
             {:else if spawnedList.kind === 'unordered'}
                 <UnorderedListItem
                     onEmptyList={() => removeSpawnedList(spawnedList.id)}
-                    {isReadOnly}
-                    {spawnedList}
+                    isReadOnly={isReadOnly || isTaskEditingLockedByPlaying}
+                    spawnedList={spawnedList as any}
                 />
             {:else}
                 <TaskListItem
                     onEmptyList={() => removeSpawnedList(spawnedList.id)}
-                    {isReadOnly}
-                    {spawnedList}
+                    isReadOnly={isReadOnly || isTaskEditingLockedByPlaying}
+                    spawnedList={spawnedList as any}
                 />
             {/if}
         {/each}
@@ -605,7 +559,7 @@
                             {@const sortedModels = sortModelsByAvailability(unavaiableModels?.allNotAvaiableModels)}
                         
                             <UI.Common.AI.SelectAIModel
-                                bind:selectedModel={selectedModelKey}
+                                selectedModel={selectedModelKeyFromStore}
                                 avaiabaleModels={sortedModels}
                                 disabledModels={unavaiableModels?.allNotAvaiableModels}
                                 placeholder="Select model"
@@ -627,34 +581,19 @@
 
                     {#if $selectedTab === "Tasks"}
                         <div class="join">
-                            <!-- {#key $playableDocumentsAndListsWithPoints} -->
-                                {#if false/* playableDocumentsAndListsWithPoints.isDocumentPlaying($selectedFile) */}
-                                    <button 
-                                        class="btn btn-sm join-item btn-neutral" 
-                                        onclick={onStopPlaying}
-                                        title="Stop Playing"
-                                    >
-                                        <span class="loading loading-spinner loading-xs"></span>
-                                        <span>Stop Playing</span>
-                                    </button>
-                                {:else}
-                                    <!-- TODO: Add is playing disabled -->
-
-                                    <div
-                                        class="inline-block"
-                                        /* title={playingDisabledReason(isFilePlayableLocal, isSomePointPlaying)} */
-                                    >
-                                        <button
-                                            class="btn btn-sm join-item btn-primary disabled:cursor-not-allowed"
-                                            onclick={onPlay}
-                                            /* disabled={isPlayingDisabled || !$canManageWorkspaceFiles} */
-                                        >
-                                            <Icon icon="material-symbols:play-circle-outline-rounded" class="w-5 h-5" />
-                                            <span>Play</span>
-                                        </button>
-                                    </div>
-                                {/if}
-                            <!-- {/key} -->
+                            <div class="inline-block">
+                                <button
+                                    type="button"
+                                    class="play-button btn btn-sm join-item btn-primary disabled:cursor-not-allowed"
+                                    onclick={onPlay}
+                                    disabled={isPlayButtonDisabled}
+                                    title={playButtonTitle}
+                                    aria-label="Play tasks list"
+                                >
+                                    <Icon icon="material-symbols:play-circle-outline-rounded" class="w-5 h-5" />
+                                    <span>{isSelectedFilePlaying ? 'Playing...' : 'Play'}</span>
+                                </button>
+                            </div>
                         </div>
                     {/if}
                 </div>
@@ -732,22 +671,21 @@
                         <Icon icon="material-symbols:fullscreen"/>
                     </button>
     
-                    {#if $selectedTab === "Routines" || $selectedTab === "Spikes"}
-                        <button
-                            type="button"
-                            class="show-modal btn btn-xs"
-                            class:btn-outline={!$showExecutionResults}
-                            class:btn-info={$showExecutionResults}
-                            class:border-gray-300={!$showExecutionResults}
-                            class:text-gray-500={!$showExecutionResults}
-                            title="(CTRL + Shift + V) Show list of results"
-                            onclick={onShowExecutionResults}
-                        >
-                            <Icon 
-                                icon="material-symbols:checklist-rtl-rounded"
-                            />
-                        </button>
-                    {/if}
+                    <!-- List with execution results -->
+                    <button
+                        type="button"
+                        class="show-modal btn btn-xs"
+                        class:btn-outline={!$showExecutionResults}
+                        class:btn-info={$showExecutionResults}
+                        class:border-gray-300={!$showExecutionResults}
+                        class:text-gray-500={!$showExecutionResults}
+                        title="(CTRL + Shift + V) Show list of results"
+                        onclick={onShowExecutionResults}
+                    >
+                        <Icon 
+                            icon="material-symbols:checklist-rtl-rounded"
+                        />
+                    </button>
                 </div>
             </div>
         </div>
