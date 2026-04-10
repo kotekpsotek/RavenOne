@@ -8,8 +8,8 @@
     import NoSelectedFile from "./screens/NoSelectedFile.svelte";
     import ListTray from "./ListTray.svelte";
     import BubbleMenuRavenOne from "./components/BubbleMenuRavenOne.svelte";
-    import "./Editor.css";
     import { isSharedRoute } from "./stores/share";
+    import "./Editor.css";
 
     let canEditWorkspaceContent = $derived(!$workspaceSubscriptionCheckInProgress && $workspaceHasActiveSubscription);
 
