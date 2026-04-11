@@ -54,6 +54,7 @@
     import { createListItemId } from '$lib/listItems/utils';
     import { FilePlayConnectionStore } from '$lib/play/connections';
     import { userProfile } from '$lib/stores/user';
+    import ListTrayDiagram from './ListTrayDiagram.svelte';
 
     type DropdownName = "model-settings" | "mcp-tools" | "play-settings";
 
@@ -73,6 +74,7 @@
         editorFiles: [],
         networkUrls: []
     });
+    let isDiagramOpen = $state(false);
     let isRoutinesAndSpikesConfigurableByUserPermissions = $derived($selectedWorkspace?.userPermissions.includes("manage_files") || $selectedWorkspace?.isOwner ? true : false)
     const getModelByKey = (key: string) =>
         avaiableModels.find((model) => model.model === key);
@@ -594,6 +596,14 @@
         }
     }
 
+    function onOpenDiagram() {
+        isDiagramOpen = true;
+    }
+
+    function onCloseDiagram() {
+        isDiagramOpen = false;
+    }
+
     onMount(() => {
         const unsubscribe = selectedFile.subscribe((file) => {
             loadTrayHeight(file?.id ?? '');
@@ -794,6 +804,28 @@
                             />
                         </button>
                     {/if}
+
+                    {#if !isDiagramOpen}
+                        <button
+                            type="button"
+                            class="btn btn-ghost btn-xs"
+                            onclick={onOpenDiagram}
+                        >
+                            <Icon
+                                icon="material-symbols:flowchart-outline-sharp"
+                            />
+                        </button>
+                    {:else}
+                        <button
+                            type="button"
+                            class="btn btn-ghost btn-xs"
+                            onclick={onCloseDiagram}
+                        >
+                            <Icon
+                                icon="material-symbols:format-list-bulleted-rounded"
+                            />
+                        </button>
+                    {/if}
                     
                     <button
                         type="button"
@@ -825,41 +857,45 @@
         </div>
 
         <div class="min-h-0 flex-1">
-            {#if $showExecutionResults && !isListTrayModalOpen}
-                <div id="list-tray-content-panels" class="flex h-full min-h-[220px] min-w-0">
-                    <div class="min-w-0 flex-1 overflow-y-auto pr-2">
-                        {#if $selectedSpikeRoutineDocument}
-                            <ExecutionResultDocumentPreview/>
-                        {:else}
-                            {@render listItemsContent()}
-                        {/if}
-                    </div>
+            {#if !isDiagramOpen}
+                {#if $showExecutionResults && !isListTrayModalOpen}
+                    <div id="list-tray-content-panels" class="flex h-full min-h-[220px] min-w-0">
+                        <div class="min-w-0 flex-1 overflow-y-auto pr-2">
+                            {#if $selectedSpikeRoutineDocument}
+                                <ExecutionResultDocumentPreview/>
+                            {:else}
+                                {@render listItemsContent()}
+                            {/if}
+                        </div>
 
-                    <button
-                        type="button"
-                        class="relative mx-1.5 flex w-2 shrink-0 cursor-ew-resize items-stretch justify-center"
-                        aria-label="Resize execution results panel"
-                        title="Drag to resize execution results"
-                        onmouseenter={() => {
-                            $isExecutionResizeHandleHovered = true;
-                        }}
-                        onmouseleave={() => {
-                            $isExecutionResizeHandleHovered = false;
-                        }}
-                        onmousedown={onExecutionResizeHandleMouseDown}
-                    >
-                        <span class="h-full w-px transition-colors {$isExecutionResultsResizing || $isExecutionResizeHandleHovered ? 'bg-primary/70' : 'bg-base-300'}"></span>
-                    </button>
+                        <button
+                            type="button"
+                            class="relative mx-1.5 flex w-2 shrink-0 cursor-ew-resize items-stretch justify-center"
+                            aria-label="Resize execution results panel"
+                            title="Drag to resize execution results"
+                            onmouseenter={() => {
+                                $isExecutionResizeHandleHovered = true;
+                            }}
+                            onmouseleave={() => {
+                                $isExecutionResizeHandleHovered = false;
+                            }}
+                            onmousedown={onExecutionResizeHandleMouseDown}
+                        >
+                            <span class="h-full w-px transition-colors {$isExecutionResultsResizing || $isExecutionResizeHandleHovered ? 'bg-primary/70' : 'bg-base-300'}"></span>
+                        </button>
 
-                    <div class="shrink-0 overflow-hidden" style={`width: ${$executionResultsWidth}px`}>
-                        <RoutinesSpikesExecutionResults/>
+                        <div class="shrink-0 overflow-hidden" style={`width: ${$executionResultsWidth}px`}>
+                            <RoutinesSpikesExecutionResults/>
+                        </div>
                     </div>
-                </div>
-            {:else}
-                <!-- List with items from list -->
-                {#if !isListTrayModalOpen}
-                    {@render listItemsContent()}
+                {:else}
+                    <!-- List with items from list -->
+                    {#if !isListTrayModalOpen}
+                        {@render listItemsContent()}
+                    {/if}
                 {/if}
+            {:else}
+                <ListTrayDiagram/>
             {/if}
         </div>
     </div>
