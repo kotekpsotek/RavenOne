@@ -147,6 +147,7 @@
     {:then apiKeys}
         <UI.Workspace.Settings.WorkspaceAIModelsScreen
             bgColor="bg-base-200"
+            description="Provide api keys to enable RavenOne ai enhanced features"
             visibility={{
                 evaluationFrequency: false,
                 customModels: false,

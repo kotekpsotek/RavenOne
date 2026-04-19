@@ -1,11 +1,19 @@
 @import "tailwindcss";
 /* Tailwind v4 only emits utilities it finds in scanned sources.
-   This app consumes UI components from a sibling package (D:\Raven\shared\packages\frontend).
-   Since this file lives in src/, we need to go up three levels to reach /shared. */
-@source "../../../packages/frontend/src/**/*.svelte";
-@source "../../../packages/frontend/src/**/*.ts";
-@source "../../../packages/frontend/dist/**/*.svelte";
-@source "../../../packages/frontend/dist/**/*.js";
+	Scan the installed package path so builds do not depend on this repo's folder layout. */
+/* If you want the most robust solution overall, do not rely on scanning another package’s source at all. Make @ravenlens/frontend ship its own compiled stylesheet, then import it by package name, for example:
+```css
+@import "tailwindcss";
+@import "@ravenlens/frontend/styles.css";
+```
+That approach is stronger because package-name  */
+/* @source "../node_modules/@ravenlens/frontend"; */
+/* FIXME: this source declaration will not work correctly in all environments e.g: production */
+@source "../../../../packages/frontend/src/**/*.svelte";
+@source "../../../../packages/frontend/src/**/*.ts";
+@source "../../../../packages/frontend/dist/**/*.svelte";
+@source "../../../../packages/frontend/dist/**/*.js";
+
 @plugin "@tailwindcss/forms";
 @plugin "@tailwindcss/typography";
 @plugin "daisyui" {
