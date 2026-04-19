@@ -22,13 +22,14 @@ type ExistingProfileCandidate = {
 type WorkspaceInvitement = Workspace.Workspace.WorkspaceMemberInvitement<Workspace.Workspace.InvitementKind>;
 
 type ExistingWorkspaceMember = {
-    user: {
+    user?: {
         id?: unknown;
         email?: unknown;
         githubAccountProperties?: {
             githubUserId?: unknown;
         } | null;
-    };
+    } | null;
+    permissions?: WorkspacePermission[];
 };
 
 type ExistingWorkspaceIdentity = {
@@ -73,6 +74,8 @@ type SplitInvitementsParams = {
 const ALLOWED_WORKSPACE_PERMISSIONS = new Set<WorkspacePermission>(
     Object.keys(Permissions.Workspace.worspacePermissionLeaderBoardAndNames) as WorkspacePermission[]
 );
+const SIMPLE_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const NAMED_EMAIL_PATTERN = /^.+<\s*([^<>\s@]+@[^<>\s@]+\.[^<>\s@]+)\s*>$/;
 
 function asNonEmptyString(value: unknown): string | undefined {
     if (typeof value !== "string") {
@@ -84,8 +87,19 @@ function asNonEmptyString(value: unknown): string | undefined {
 }
 
 function normalizeEmailAddress(value: unknown): string | undefined {
-    const email = asNonEmptyString(value);
-    return email ? email.toLowerCase() : undefined;
+    const raw = asNonEmptyString(value);
+    if (!raw) {
+        return undefined;
+    }
+
+    const namedEmailMatch = raw.match(NAMED_EMAIL_PATTERN);
+    const candidate = (namedEmailMatch?.[1] ?? raw).trim().toLowerCase();
+
+    if (!SIMPLE_EMAIL_PATTERN.test(candidate)) {
+        return undefined;
+    }
+
+    return candidate;
 }
 
 function escapeRegExp(value: string): string {
@@ -185,9 +199,14 @@ function buildExistingWorkspaceIdentity(
     const memberGithubIds = new Set<string>();
 
     for (const workspaceMember of workspaceMembers) {
-        const memberEmail = normalizeEmailAddress(workspaceMember.user.email);
-        const memberUserId = asNonEmptyString(workspaceMember.user.id);
-        const memberGithubId = asNonEmptyString(workspaceMember.user.githubAccountProperties?.githubUserId?.toString());
+        const memberUser = workspaceMember.user;
+        if (!memberUser) {
+            continue;
+        }
+
+        const memberEmail = normalizeEmailAddress(memberUser.email);
+        const memberUserId = asNonEmptyString(memberUser.id);
+        const memberGithubId = asNonEmptyString(memberUser.githubAccountProperties?.githubUserId?.toString());
 
         if (memberEmail) {
             memberEmails.add(memberEmail);
@@ -220,6 +239,7 @@ function prepareIncomingInvitements(
     const seenRequestExternalUserIds = new Set<string>();
 
     for (const invitementMember of requestedInvitements) {
+        console.log('Member', invitementMember)
         const preEmail = getInvitationEmailCandidate(invitementMember);
         if (!preEmail) {
             return {
@@ -230,9 +250,15 @@ function prepareIncomingInvitements(
             };
         }
 
+        console.log('email', preEmail)
         const email = normalizeEmailAddress(preEmail);
         if (!email) {
-            continue;
+            return {
+                ok: false,
+                response: new Response(JSON.stringify({ message: "Invitation email has invalid format" }), {
+                    status: 400
+                })
+            };
         }
 
         const invitedExternalUserId = asNonEmptyString(invitementMember.user.id);
@@ -409,12 +435,15 @@ async function sendInvitementEmail(invitedMembers: WorkspaceInvitement[]) {
     const resend = getResendInstance();
 
     for (const member of invitedMembers) {
-        const preEmail = getInvitationEmailCandidate(member);
-        
-        if (typeof preEmail === "string" && preEmail) {
+        const recipientEmail = normalizeEmailAddress(member.user.email);
+        if (!recipientEmail) {
+            continue;
+        }
+
+        {
             const { error } = await resend.emails.send({
                 from: resendFromEmail,
-                to: [preEmail],
+                to: [recipientEmail],
                 subject: `You're invited to join ${appName}`,
                 html: `
                     <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #0f172a;">
@@ -467,7 +496,7 @@ export const POST: RequestHandler = async ({ request, url }) => {
     }
     
     // Find member is this user within this workspace
-    const thisUserAWorkspaceMember = userWorkspacesQuota.workspaceMembers.find(member => member.user.id === authenticationResponse.data?.user.id)
+    const thisUserAWorkspaceMember = userWorkspacesQuota.workspaceMembers.find(member => member.user?.id === authenticationResponse.data?.user.id)
     
     // 2. Check is user member of workspace with `workspaceId`
     if (!thisUserAWorkspaceMember) {
@@ -477,7 +506,7 @@ export const POST: RequestHandler = async ({ request, url }) => {
     }
 
     // 3. Check has user adequate permissions in workspace to invite new members
-    if (!thisUserAWorkspaceMember.permissions.includes("manage_workspace_members") && userWorkspacesQuota.ownerUserId !== authenticationResponse.data.user.id) {
+    if (!thisUserAWorkspaceMember.permissions?.includes("manage_workspace_members") && userWorkspacesQuota.ownerUserId !== authenticationResponse.data.user.id) {
         return new Response(JSON.stringify({ message: "You've not permission to invite new members to workspace" }), {
             status: 401
         })
@@ -521,7 +550,11 @@ export const POST: RequestHandler = async ({ request, url }) => {
         const invitedEmails = collectInvitedEmails(uniqueMembers);
         const existingProfilesByEmail = await findExistingProfilesByEmail(invitedEmails);
 
-        const existingMemberIds = new Set(userWorkspacesQuota.workspaceMembers.map(member => member.user.id));
+        const existingMemberIds = new Set(
+            userWorkspacesQuota.workspaceMembers
+                .map(member => asNonEmptyString(member.user?.id))
+                .filter((memberId): memberId is string => Boolean(memberId))
+        );
         const { invitationsToPersist, membersToJoin } = splitInvitementsForPersistence({
             invitements: uniqueMembers,
             existingProfilesByEmail,

@@ -9,13 +9,20 @@ import type { Actions } from './$types';
 import type { Profile } from '@ravenlens/shared';
 
 const JWT_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
-const EMAIL_MAIN_ACCOUNT_TYPES = ['Email', 'email'];
+
+function normalizeEmail(value: string): string {
+	return value.trim().toLowerCase();
+}
+
+function escapeRegExp(value: string): string {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 export const actions: Actions = {
 	default: async ({ request, cookies }) => {
 		const formData = await request.formData();
 		const fullName = String(formData.get('fullName') ?? '').trim();
-		const email = String(formData.get('email') ?? '').trim();
+		const email = normalizeEmail(String(formData.get('email') ?? ''));
 		const password = String(formData.get('password') ?? '');
 
 		if (!fullName || !email || !password) {
@@ -27,14 +34,14 @@ export const actions: Actions = {
 
 		let token: string;
 		try {
+			const escapedEmail = escapeRegExp(email);
 			const existingUser = await DB_Models.UserAccount.profileModel.findOne({
-				email,
-				mainAccountType: { $in: EMAIL_MAIN_ACCOUNT_TYPES }
+				email: { $regex: `^${escapedEmail}$`, $options: 'i' }
 			});
 
 			if (existingUser) {
 				return fail(400, {
-					error: 'User already exists with this email',
+					error: 'This email is already assigned to an existing account. Please sign in using the original authentication method.',
 					values: { fullName, email }
 				});
 			}

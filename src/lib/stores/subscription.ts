@@ -92,10 +92,11 @@ export async function refreshSelectedWorkspaceSubscriptionState(workspaceIdCandi
 export async function refreshUserSubscriptionState(): Promise<void> {
     const currentRequestId = ++userSubscriptionRequestId;
 
-    userSubscriptionState.update(state => ({
-        ...state,
-        checking: true
-    }));
+    userSubscriptionState.set({
+        checking: true,
+        hasActiveSubscription: false,
+        subscriptionKind: undefined
+    });
 
     let hasActiveSubscription = false;
     let subscriptionKind: SubscriptionKinds | undefined;
