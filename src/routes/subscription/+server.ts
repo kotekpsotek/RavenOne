@@ -2,7 +2,9 @@ import { DB_Models } from "@ravenlens/backend";
 import type { SubscriptionKinds } from "@ravenlens/shared";
 import { json } from "@sveltejs/kit";
 import { getRequiredEnv } from "$lib/server/env";
+import { hasActiveSubscriptionAccess } from "$lib/server/subscription";
 import { getStripeClient } from "$lib/server/stripe";
+import type Stripe from "stripe";
 import type { RequestHandler } from "./$types";
 import {
 	ACTIVE_SUBSCRIPTION_STATUSES,
@@ -31,6 +33,12 @@ type CheckoutIntentBody = {
 	successPath?: string;
 	cancelPath?: string;
 };
+
+const SWITCHABLE_SUBSCRIPTION_STATUSES = new Set<Stripe.Subscription.Status>([
+	"active",
+	"trialing",
+	"past_due"
+]);
 
 function normalizePlanId(value: unknown): CheckoutPlanId | null {
 	return normalizeSubscriptionKind(value);
@@ -82,13 +90,75 @@ async function ensureStripeCustomerForUser(user: UserProfileRecord, subscription
 	await upsertSubscriptionFromUser(
 		user,
 		{
-			subscriptionKind,
 			stripeCustomerId
 		},
 		{ upsert: true }
 	);
 
 	return stripeCustomerId;
+}
+
+async function persistSubscriptionForUser(options: {
+	user: UserProfileRecord;
+	subscriptionKind: SubscriptionKinds;
+	summary: ReturnType<typeof getSubscriptionSummary>;
+	stripeCustomerId?: string;
+}) {
+	const { user, subscriptionKind, summary, stripeCustomerId } = options;
+
+	await upsertSubscriptionFromUser(
+		user,
+		{
+			subscriptionKind,
+			...(stripeCustomerId ? { stripeCustomerId } : {}),
+			...summary
+		},
+		{ upsert: true }
+	);
+
+	if (!stripeCustomerId) {
+		return;
+	}
+
+	await updateSubscriptionByCustomerId(
+		stripeCustomerId,
+		{
+			subscriptionKind,
+			...summary
+		},
+		{ upsert: false }
+	);
+}
+
+async function findSwitchableStripeSubscription(options: {
+	stripeCustomerId: string;
+	storedStripeSubscriptionId?: string;
+}): Promise<Stripe.Subscription | null> {
+	const stripe = getStripeClient();
+	const { stripeCustomerId, storedStripeSubscriptionId } = options;
+
+	if (storedStripeSubscriptionId) {
+		try {
+			const storedSubscription = await stripe.subscriptions.retrieve(storedStripeSubscriptionId);
+			const storedCustomerId = getStripeCustomerId(storedSubscription.customer);
+			if (
+				storedCustomerId === stripeCustomerId
+				&& SWITCHABLE_SUBSCRIPTION_STATUSES.has(storedSubscription.status)
+			) {
+				return storedSubscription;
+			}
+		} catch {
+			// Fall back to listing current subscriptions for the customer.
+		}
+	}
+
+	const subscriptions = await stripe.subscriptions.list({
+		customer: stripeCustomerId,
+		status: "all",
+		limit: 10
+	});
+
+	return subscriptions.data.find((subscription) => SWITCHABLE_SUBSCRIPTION_STATUSES.has(subscription.status)) ?? null;
 }
 
 async function handleCheckoutIntent(
@@ -114,6 +184,64 @@ async function handleCheckoutIntent(
 	const priceId = getRequiredEnv(PLAN_PRICE_ENV_KEY_BY_ID[planId]);
 	const stripe = getStripeClient();
 	const stripeCustomerId = await ensureStripeCustomerForUser(user, expectedSubscriptionKind);
+	const subscriptionMetadata = {
+		userId: user.id,
+		subscriptionKind: expectedSubscriptionKind,
+		planId
+	};
+	const customerSubscription = await DB_Models.Subscription.subscriptionCustomerModel.findOne({ userId: user.id });
+	const existingSubscription = await findSwitchableStripeSubscription({
+		stripeCustomerId,
+		storedStripeSubscriptionId:
+			typeof customerSubscription?.stripeSubscriptionId === "string"
+				? customerSubscription.stripeSubscriptionId.trim() || undefined
+				: undefined
+	});
+
+	if (existingSubscription) {
+		const existingItem = existingSubscription.items.data[0];
+		if (!existingItem?.id) {
+			throw new Error("Existing Stripe subscription is missing a subscription item");
+		}
+
+		const updatedSubscription = await stripe.subscriptions.update(existingSubscription.id, {
+			items: [{ id: existingItem.id, price: priceId }],
+			cancel_at_period_end: false,
+			payment_behavior: "error_if_incomplete",
+			proration_behavior: "always_invoice",
+			metadata: subscriptionMetadata
+		});
+
+		const summary = getSubscriptionSummary(updatedSubscription);
+		const updatedStripeCustomerId =
+			getStripeCustomerId(updatedSubscription.customer) ?? stripeCustomerId;
+		const subscriptionKind = resolveSubscriptionKind({
+			subscriptionKind: updatedSubscription.metadata?.subscriptionKind,
+			planId: updatedSubscription.metadata?.planId,
+			priceId: summary.priceId,
+			fallback: expectedSubscriptionKind
+		});
+
+		await persistSubscriptionForUser({
+			user,
+			subscriptionKind,
+			summary,
+			...(updatedStripeCustomerId ? { stripeCustomerId: updatedStripeCustomerId } : {})
+		});
+
+		return json(
+			{
+				status: true,
+				message: "Subscription updated",
+				subscription: {
+					subscriptionKind,
+					...summary,
+					...(updatedStripeCustomerId ? { stripeCustomerId: updatedStripeCustomerId } : {})
+				}
+			},
+			{ status: 200 }
+		);
+	}
 
 	const successUrl = toAbsoluteLocalUrl(
 		event.url,
@@ -132,10 +260,9 @@ async function handleCheckoutIntent(
 		cancel_url: cancelUrl,
 		allow_promotion_codes: true,
 		client_reference_id: user.id,
-		metadata: {
-			userId: user.id,
-			subscriptionKind: expectedSubscriptionKind,
-			planId
+		metadata: subscriptionMetadata,
+		subscription_data: {
+			metadata: subscriptionMetadata
 		}
 	});
 
@@ -187,27 +314,12 @@ async function handleCancelIntent(event: Parameters<RequestHandler>[0]) {
 		})
 	});
 
-	// Update the subscription in database
-	await upsertSubscriptionFromUser(
+	await persistSubscriptionForUser({
 		user,
-		{
-			subscriptionKind,
-			...(stripeCustomerId ? { stripeCustomerId } : {}),
-			...summary
-		},
-		{ upsert: true }
-	);
-
-	if (stripeCustomerId) {
-		await updateSubscriptionByCustomerId(
-			stripeCustomerId,
-			{
-				subscriptionKind,
-				...summary
-			},
-			{ upsert: false }
-		);
-	}
+		subscriptionKind,
+		summary,
+		...(stripeCustomerId ? { stripeCustomerId } : {})
+	});
 
 	return json(
 		{
@@ -255,9 +367,7 @@ export const GET: RequestHandler = async ({ request, cookies }) => {
 		return json(
 			{
 				status: true,
-				subscribed: customer.status
-					? ACTIVE_SUBSCRIPTION_STATUSES.has(customer.status)
-					: false,
+				subscribed: hasActiveSubscriptionAccess(customer),
 				subscription: {
 					createdAt: customer.createdAt,
 					updatedAt: customer.updatedAt,

@@ -188,6 +188,8 @@ async function downloadWorkspacesFromBackend(): Promise<WorkspaceEntry[]> {
     }
 
     const responseBody = await backendCall.json();
+    console.log('Download workspaces', responseBody)
+    
     return extractWorkspacesFromPayload(responseBody);
 }
 

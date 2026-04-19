@@ -3,6 +3,7 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import { JWTAuth } from '$lib/utils/auth';
+  import { setAlert } from '$lib/utils/alert';
   import { onMount } from 'svelte';
     import { appName } from '$lib/config/app';
 
@@ -42,6 +43,7 @@
       status = 'error';
       message = 'Authentication Error';
       subMessage = errorMessage.replace(/^["'](.+)["']$/, '$1');
+      setAlert('error', 'Authentication Error', subMessage);
     } else {
       status = 'error';
       message = 'Authentication Failed';

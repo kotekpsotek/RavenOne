@@ -2,6 +2,7 @@ import { createEditor } from "svelte-tiptap";
 import type { Editor as SvelteEditor } from "svelte-tiptap";
 import { Document } from "@tiptap/extension-document";
 import { Placeholder } from "@tiptap/extension-placeholder";
+import { TableKit } from "@tiptap/extension-table";
 import { get, writable } from "svelte/store";
 import { StarterKit } from "@tiptap/starter-kit"
 import { patchFileById, selectedFile } from "./files";
@@ -11,6 +12,9 @@ import { SlashCommand } from "../editorComponents/components/Suggestions.js";
 import { StandardTaskList } from "../editorComponents/components/StandardTaskList.js";
 import { StandardTaskItem } from "../editorComponents/components/StandardTaskItem.js";
 import { CodeSnippet } from "../editorComponents/components/CodeSnippet.js";
+import { RavenImage } from "../editorComponents/components/RavenImage.js";
+import { AmongDocumentReference } from "../editorComponents/components/AmongDocumentReference";
+import { RavenTableView } from "../editorComponents/components/RavenTableView.svelte";
 import { File } from "@ravenlens/shared";
 import { collaborationInterface, isCurrentUserSelectedFileEditor } from "./collaboration.js";
 import { browser } from "$app/environment";
@@ -48,7 +52,7 @@ export const editor = (() => {
     const store = {
         subscribe,
         update,
-        selectFile(file: File.File.File) {
+        async selectFile(file: File.File.File) {
             const content = normalizeContent(file.content);
             activeFileId = file.id;
             
@@ -61,11 +65,16 @@ export const editor = (() => {
                 // https://tiptap.dev/api/schema#content
                 content: 'fileHeading block block*',
             });
-            
+
             //
             if (!currentEditor) {
                 const editorStore = createEditor({
                     content,
+                    editorProps: {
+                        attributes: {
+                            class: "tiptap",
+                        },
+                    },
                     extensions: [
                         StarterKit.configure({
                             document: false,
@@ -88,7 +97,18 @@ export const editor = (() => {
                         StandardTaskItem,
                         SlashCommand,
                         // Custom Components
-                        CodeSnippet
+                        CodeSnippet,
+                        AmongDocumentReference,
+                        RavenImage,
+                        TableKit.configure({
+                            table: {
+                                resizable: true,
+                                View: RavenTableView,
+                                HTMLAttributes: {
+                                    class: "raven-table",
+                                },
+                            },
+                        }),
                     ],
                     onUpdate(props) {
                         if (!activeFileId) {

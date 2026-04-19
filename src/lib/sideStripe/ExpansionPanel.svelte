@@ -17,7 +17,6 @@
     import { changeFilePositionRequest, changeIconFileRequest, changeWalperFileRequest, deleteFileRequest, downloadFilesRequest, newFileRequest, renameFileRequest } from "$lib/files/connections/connections";
     import type { DropPosition } from "$lib/files/utils";
     import { fetchAuthenticated } from "$lib/utils/fetch";
-    import { isCollaboratorEditor } from "../../../../../packages/shared/dist/collaboration/collab";
  
     let { isExpanded = false }: { isExpanded?: boolean } = $props();
     function getCurrentWorkspaceId(): string | null {
@@ -256,9 +255,29 @@
             type: "file",
             id: crypto.randomUUID(),
             name,
-            lists: [],
+            lists: {
+                list: [],
+                config: {
+                    model: {} as any,
+                    context: {} as any
+                }
+            },
             createdAt: new Date(),
             content: '',
+            routines: {
+                list: [],
+                config: {
+                    model: {} as any,
+                    context: {} as any
+                }
+            },
+            spikes: {
+                list: [],
+                config: {
+                    model: {} as any,
+                    context: {} as any
+                }
+            },
             createdByAuthorId: workspaceId
         };
 
@@ -1046,7 +1065,7 @@
                         Loading...
                     </div>
                 {:then collabs}
-                    {@const areBtnsDisabled = collabs?.length && collabs.some(collab => collab.id !== $userProfile?.id && isCollaboratorEditor(collab)) ? true : false}
+                    {@const areBtnsDisabled = collabs?.length && collabs.some(collab => collab.id !== $userProfile?.id && Collabortation.isCollaboratorEditor(collab)) ? true : false}
                 
                     <li>
                         <button
