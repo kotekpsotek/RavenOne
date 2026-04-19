@@ -232,14 +232,6 @@
         closePicker();
     }
 
-    onMount(() => {
-        if (isEditable && !referenceFileId) {
-            queueMicrotask(() => {
-                openPicker();
-            });
-        }
-    });
-
     onDestroy(() => {
         if (pickerInstance) {
             pickerInstance.destroy();
