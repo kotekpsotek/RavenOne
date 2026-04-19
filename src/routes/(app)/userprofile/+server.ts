@@ -11,6 +11,7 @@ import { Resend } from "resend";
 import type { RequestHandler } from "./$types";
 import { appName } from "$lib/config/app";
 import { getResendInstance } from "$lib/server/email";
+import { getStorageClient } from "$lib/server/gcpStorage";
 
 const MAX_PROFILE_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
 const DELETE_CODE_LENGTH = 6;
@@ -55,17 +56,6 @@ function getJwtSecret(): string {
     }
 
     return jwtSecret;
-}
-
-function getStorageClient(): Storage {
-    const keyFilename = env.GCP_CREDENTIALS_KEY?.trim();
-    if (!keyFilename) {
-        throw new Error("GCP_CREDENTIALS_KEY is not configured");
-    }
-
-    return new Storage({
-        keyFilename
-    });
 }
 
 function getImageExtension(imageFile: File): string {

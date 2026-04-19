@@ -8,6 +8,7 @@ import { DB_Models } from "@ravenlens/backend";
 import { Storage } from "@google-cloud/storage";
 import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
+import { getStorageClient } from "$lib/server/gcpStorage";
 
 const MAX_WORKSPACE_NAME_LENGTH = 128;
 const MAX_WORKSPACE_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
@@ -34,17 +35,6 @@ function toErrorMessage(error: unknown): string {
 	} catch {
 		return "Unknown error";
 	}
-}
-
-function getStorageClient(): Storage {
-	const keyFilename = env.GCP_CREDENTIALS_KEY?.trim();
-	if (!keyFilename) {
-		throw new Error("GCP_CREDENTIALS_KEY is not configured");
-	}
-
-	return new Storage({
-		keyFilename
-	});
 }
 
 function getImageExtension(imageFile: File): string {

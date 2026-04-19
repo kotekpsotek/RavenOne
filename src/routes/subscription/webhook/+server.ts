@@ -1,6 +1,7 @@
 import { dev } from "$app/environment";
 import { getRequiredEnv } from "$lib/server/env";
 import { getStripeClient } from "$lib/server/stripe";
+import { DB_Models } from "@ravenlens/backend";
 import { json } from "@sveltejs/kit";
 import type Stripe from "stripe";
 import type { RequestHandler } from "./$types";
@@ -15,6 +16,23 @@ import {
 	upsertSubscriptionFromUser,
 	updateSubscriptionByCustomerId
 } from "../common";
+
+async function findUserForStripeCustomer(stripeCustomerId: string, metadataUserId?: unknown) {
+	const directUserId = asNonEmptyString(metadataUserId);
+	if (directUserId) {
+		return findUserById(directUserId);
+	}
+
+	const subscriptionCustomer = await DB_Models.Subscription.subscriptionCustomerModel.findOne({
+		stripeCustomerId
+	});
+	const storedUserId = asNonEmptyString(subscriptionCustomer?.userId);
+	if (!storedUserId) {
+		return null;
+	}
+
+	return findUserById(storedUserId);
+}
 
 async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) {
 	const stripeCustomerId = getStripeCustomerId(session.customer);
@@ -42,16 +60,10 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
 		...summary
 	});
 
-	const userId =
-		asNonEmptyString(session.metadata?.userId) ??
-		asNonEmptyString(session.client_reference_id) ??
-		asNonEmptyString(stripeSubscription.metadata?.userId);
-
-	if (!userId) {
-		return;
-	}
-
-	const user = await findUserById(userId);
+	const user =
+		(await findUserForStripeCustomer(stripeCustomerId, session.metadata?.userId))
+		?? (session.client_reference_id ? await findUserById(session.client_reference_id) : null)
+		?? (await findUserForStripeCustomer(stripeCustomerId, stripeSubscription.metadata?.userId));
 	if (!user) {
 		return;
 	}
@@ -83,12 +95,7 @@ async function handleCustomerSubscriptionChanged(subscription: Stripe.Subscripti
 		...summary
 	});
 
-	const userId = asNonEmptyString(subscription.metadata?.userId);
-	if (!userId) {
-		return;
-	}
-
-	const user = await findUserById(userId);
+	const user = await findUserForStripeCustomer(stripeCustomerId, subscription.metadata?.userId);
 	if (!user) {
 		return;
 	}
@@ -126,12 +133,7 @@ async function handleInvoiceEvent(invoice: Stripe.Invoice) {
 		...summary
 	});
 
-	const userId = asNonEmptyString(stripeSubscription.metadata?.userId);
-	if (!userId) {
-		return;
-	}
-
-	const user = await findUserById(userId);
+	const user = await findUserForStripeCustomer(stripeCustomerId, stripeSubscription.metadata?.userId);
 	if (!user) {
 		return;
 	}

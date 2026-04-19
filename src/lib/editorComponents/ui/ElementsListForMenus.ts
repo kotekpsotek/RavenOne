@@ -82,11 +82,54 @@ export const menuElements: ElementInsertionItem[] = [
         }
     },
     {
+        name: "Image",
+        icon: "material-symbols:image-outline-rounded",
+        aliases: ["photo", "picture", "media"],
+        command: (editor, range) => {
+            editor
+                .chain()
+                .focus()
+                .deleteRange(range)
+                .insertContent({
+                    type: "image",
+                    attrs: {
+                        src: "",
+                        width: 640,
+                        height: 360,
+                        uploadState: "empty",
+                        objectKey: ""
+                    }
+                })
+                .run();
+        }
+    },
+    {
+        name: "Documents reference",
+        icon: "material-symbols:link-rounded",
+        aliases: ["documents_reference", "document reference", "reference", "file reference", "doc reference"],
+        command: (editor, range) => {
+            editor.chain().focus().deleteRange(range).insertAmongDocumentReference().run();
+        }
+    },
+    {
         name: "Divider",
         icon: "material-symbols:horizontal-rule-rounded",
         aliases: ["hr", "line"],
         command: (editor, range) => {
             editor.chain().focus().deleteRange(range).setHorizontalRule().run();
+        }
+    },
+    {
+        name: "Table",
+        icon: "material-symbols:table-outline",
+        aliases: ["table", "row", "column"],
+        command: (editor, range) => {
+            editor
+                .chain()
+                .focus()
+                .deleteRange(range)
+                .insertTable({ rows: 3, cols: 3, withHeaderRow: false })
+                .run();
         }
     }
 ];

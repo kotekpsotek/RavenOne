@@ -27,6 +27,9 @@
     let workspaceSettingsPath = $derived(getFirstAllowedWorkspaceSettingsPath($selectedWorkspace));
     let canOpenWorkspaceSettings = $derived(Boolean(workspaceSettingsPath));
 
+    const unspecifiedWorkspaceName = "Unspecified Workspace";
+    let isSomeWorkspaceSelected = $derived($selectedWorkspace !== undefined);
+
     onMount(() => {
         syncThemeMode();
 
@@ -164,7 +167,7 @@
         <div class="flex w-14 flex-none flex-col items-center py-4 border-r border-base-300">
             <div class="mb-4 flex flex-col items-center gap-6">
                 <!-- Workspace selection -->
-                <div class="tooltip tooltip-right" data-tip="{appName}">
+                <div class="tooltip tooltip-right" data-tip="{isSomeWorkspaceSelected ? $selectedWorkspace?.name : unspecifiedWorkspaceName}">
                     {#if $isSharedRoute}
                         <div
                             class="flex h-10 w-10 p-2 items-center justify-center rounded-xl bg-primary/10"
@@ -183,7 +186,7 @@
                         >
                             <UI.Workspace.WorkspaceProfile
                                 imageUrl={$selectedWorkspace?.imageUrl}
-                                workspaceName={$selectedWorkspace?.name ?? ""}
+                                workspaceName={$selectedWorkspace?.name ?? unspecifiedWorkspaceName}
                             />
                         </button>
                     {/if}

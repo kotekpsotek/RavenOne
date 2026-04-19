@@ -3,7 +3,6 @@ import { DB_Models } from "@ravenlens/backend";
 import { Permissions, Workspace } from "@ravenlens/shared";
 import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
-import type { WorkspaceUser } from "../../../../../../../../packages/shared/dist/types/workspace/workspace";
 
 type WorkspaceForUser = Workspace.Workspace.WorkspaceForUser;
 type WorkspaceMember = Workspace.Workspace.WorkspaceMember;
@@ -144,12 +143,12 @@ function normalizeDate(value: unknown): Date {
 async function toWorkspaceMembers(
 	workspaceMembersRaw: WorkspaceMemberRaw[] | undefined,
 	profilesByObjectId: Map<string, ProfileDocumentRaw>
-): Promise<WorkspaceUser[]> {
+): Promise<Workspace.Workspace.WorkspaceUser[]> {
 	if (!Array.isArray(workspaceMembersRaw)) {
 		return [];
 	}
 
-	const members: WorkspaceUser[] = [];
+	const members: Workspace.Workspace.WorkspaceUser[] = [];
 
 	for (const memberRaw of workspaceMembersRaw) {
 		const memberObjectId = normalizeObjectId(memberRaw.user);
@@ -166,7 +165,7 @@ async function toWorkspaceMembers(
 				name: userDB.name,
 				permissions: memberRaw.permissions ?? [],
 				joinDate: memberRaw.user?.joinDate ?? new Date()
-			} satisfies WorkspaceUser);
+			} satisfies Workspace.Workspace.WorkspaceUser);
 		}
 	}
 

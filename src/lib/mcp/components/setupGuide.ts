@@ -18,11 +18,11 @@ const configurationSteps: string[] = [
  * 1. Make the Video Script
  * 2. Record the screen video with my face and voice
  */
-export const youtubeURL = "https://www.youtube.com/channel/UCobx37n-p7yh39dtg0u7-Hw";
+export const youtubeTutorialURL = "https://www.youtube.com/channel/UCobx37n-p7yh39dtg0u7-Hw";
 export const setupGuideEditorConfig = {
         content: `
             <div data-youtube-video>
-                <iframe src="${youtubeURL}"></iframe>
+                <iframe src="${youtubeTutorialURL}"></iframe>
             </div>
             <ol>
                 <li>

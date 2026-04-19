@@ -2,7 +2,6 @@
     import { UI } from "@ravenlens/frontend";
     import MCPWorkspaceConfig from "$lib/mcp/components/MCPWorkspaceConfig.svelte";
     import { selectedWorkspace } from "$lib/stores/workspace";
-    import { JWTAuth } from "$lib/utils/auth";
     import { fetchAuthenticated } from "$lib/utils/fetch";
     import type {
         DeleteWorkspaceApiKeyRequest,
@@ -14,25 +13,8 @@
         SaveWorkspaceModelRequest,
         SaveWorkspaceModelResponse
     } from "$lib/workspace-settings/ai-models/types";
+    import { handleGetJWT, handleGetSelectedWorkspace } from "./common";
     import type { MCPCredentials } from "@ravenlens/shared/mcp";
-
-    function handleGetJWT() {
-        const jwt = JWTAuth.getToken();
-
-        if (!jwt) {
-            throw new Error("Cannot send request because JWT is missing");
-        }
-
-        return jwt;
-    }
-
-    function handleGetSelectedWorkspace() {
-        if (!$selectedWorkspace) {
-            throw new Error("Cannot send request because no workspace is selected");
-        }
-
-        return $selectedWorkspace;
-    }
 
     async function handleRetrieveAPIKeys() {
         const workspace = handleGetSelectedWorkspace();
@@ -193,6 +175,7 @@
     <div class="space-y-6">
         <UI.Workspace.Settings.WorkspaceAIModelsScreen
             bgColor="bg-base-200"
+            description=""
             visibility={{
                 evaluationFrequency: false,
                 customModels: false,

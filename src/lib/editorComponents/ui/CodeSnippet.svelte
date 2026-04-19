@@ -17,9 +17,8 @@
     import { css } from "@codemirror/lang-css";
     import { go } from "@codemirror/lang-go";
     /* Codemirror themes */
-    import { EditorView } from "@codemirror/view";
     import { oneDark } from "@codemirror/theme-one-dark"
-    import { onDestroy, onMount } from "svelte";
+    import { onDestroy } from "svelte";
     import type { CodeSnippetNodeParams } from "../components/CodeSnippet";
     import "./CodeSnippet.css";
 
@@ -29,25 +28,42 @@
 
     let nodeAttrs = $derived(node.attrs as CodeSnippetNodeParams | undefined);
 
-    const myTheme = EditorView.theme({
-        "&": {
-            fontSize: "18px", // Adjust font size as needed
-            lineHeight: "1.5", // Adjust line height as needed
-        },
-    });
     const supportedLanguagesList: SupportedLanguage[] = [
         "HTML", "JSON", "XML", "CSS", "Markdown", "Mermaid", "txt", "plaintext", "javascript", "typescript", "rust", "python", "c", "c++", "sql", "java", "bash", "shell", "cmd", "powershell", "c#", "Go", "less", "scss", "svelte"
     ];
-    let codeMirrorPickedUpLang = $state<LanguageSupport | undefined>(undefined);
+    let codeMirrorPickedUpLang = $derived.by(() => selectLanguageSyntaxHighlighting(nodeAttrs?.language));
     let dontAllowEditorToBeUpdatedByBlur = $state(false);
     let isDarkMode = $derived($theme === "dark");
     let isEditable = $derived(editor?.isEditable ?? false);
     let description = $state("");
-    let currentCode = $state("");
+    let isEditingDescription = $state(false);
+    let descriptionFlushTimeout: ReturnType<typeof setTimeout> | null = null;
+    let descriptionEl = $state<HTMLElement | null>(null);
+    let currentCode = $derived(nodeAttrs?.code ?? "");
     let isCopied = $state(false);
     let copiedResetTimeout: ReturnType<typeof setTimeout> | null = null;
 
     let isDescriptionAdding = $state(false);
+
+    function getNextAttrs(overrides: Partial<CodeSnippetNodeParams> = {}): CodeSnippetNodeParams {
+        return {
+            language: overrides.language ?? nodeAttrs?.language ?? "plaintext",
+            code: overrides.code ?? currentCode,
+            description: overrides.description ?? description,
+        };
+    }
+
+    // keep local description in sync with node attrs when not actively editing
+    $effect(() => {
+        if (isEditingDescription) return;
+        const fromNode = nodeAttrs?.description ?? "";
+        if (fromNode !== description) {
+            description = fromNode;
+            if (descriptionEl && descriptionEl.textContent !== fromNode) {
+                descriptionEl.textContent = fromNode;
+            }
+        }
+    });
 
     // Logic
     /// In near future -> replace alert to custom one
@@ -68,62 +84,60 @@
 
     function onDescriptionInput(ev: Event) {
         const el = (ev.currentTarget as HTMLParagraphElement);
+        const next = (el.textContent ?? "");
+        // Keep local value and avoid replacing DOM while user types
+        description = next;
+        isEditingDescription = true;
+        if (!next.length) isDescriptionAdding = false;
 
-        if (!el.textContent?.length) {
-            el.textContent = "";
-            isDescriptionAdding = false;
-            updateAttributes({
-                ...nodeAttrs,
-                description: ""
-            })
+        if (descriptionFlushTimeout) clearTimeout(descriptionFlushTimeout);
+        descriptionFlushTimeout = setTimeout(() => {
+            updateAttributes(getNextAttrs({ description: description }));
+            descriptionFlushTimeout = null;
+            isEditingDescription = false;
+        }, 250);
+    }
+
+    function onDescriptionBlur() {
+        if (descriptionFlushTimeout) {
+            clearTimeout(descriptionFlushTimeout);
+            descriptionFlushTimeout = null;
+            updateAttributes(getNextAttrs({ description: description }));
         }
-        else {
-            updateAttributes({
-                ...nodeAttrs,
-                description: el.textContent ?? ""
-            })
-        }
+        isEditingDescription = false;
     }
 
     /* TODO: Support more languages */
-    function selectLanguageSyntaxHighlighting(language: string | undefined) {
+    function selectLanguageSyntaxHighlighting(language: string | undefined): LanguageSupport {
         switch(language?.toLowerCase()) {
             case "typescript":
             case "javascript":
-                codeMirrorPickedUpLang = javascript();
-            break;
+                return javascript();
 
             case "json":
-                codeMirrorPickedUpLang = json();
-            break;
+                return json();
             
             case "html":
-                codeMirrorPickedUpLang = html();
-            break;
+                return html();
 
             case "css":
-                codeMirrorPickedUpLang = css();
-            break;
+                return css();
 
             case "plaintext":
             case "markdown":
-                codeMirrorPickedUpLang = markdown();
-            break;
+                return markdown();
 
             case "python":
-                codeMirrorPickedUpLang = python();
-            break;
+                return python();
 
             case "rust":
-                codeMirrorPickedUpLang = rust();
-            break;
+                return rust();
 
             case "go":
-                codeMirrorPickedUpLang = go();
-            break;
+                return go();
             
             default:
-                codeMirrorPickedUpLang = markdown()
+                return markdown();
         }
     }
 
@@ -133,36 +147,27 @@
         const selectedLanguage = selectEl.value as SupportedLanguage;
         
         // Updates the picked up language to selected one
-        updateAttributes({
-            ...nodeAttrs,
+        updateAttributes(getNextAttrs({
             language: selectedLanguage
-        } as CodeSnippetNodeParams)
-
-        //
-        selectLanguageSyntaxHighlighting(selectedLanguage);
+        }))
 
         dontAllowEditorToBeUpdatedByBlur = false;
     }
 
     function onCodeChanged(nextCode: string) {
-        currentCode = nextCode;
-
-        updateAttributes({
-            ...nodeAttrs,
+        updateAttributes(getNextAttrs({
             code: nextCode
-        } as CodeSnippetNodeParams)
+        }))
     }
 
     function onAddDescription() {
         isDescriptionAdding = true;
-        description = "";
-        updateAttributes({
-            ...nodeAttrs,
+        updateAttributes(getNextAttrs({
             description: ""
-        } as CodeSnippetNodeParams);
+        }));
 
         setTimeout(() => {
-            document.getElementById("description-content")?.focus();
+            descriptionEl?.focus();
         }, 50);
     }
 
@@ -175,16 +180,6 @@
             event.stopPropagation();
         }
     }
-
-    onMount(() => {
-        description = nodeAttrs?.description ?? ""
-        currentCode = nodeAttrs?.code ?? "";
-        
-        // Required to apply the syntax highlighting
-        setTimeout(() => {            
-            selectLanguageSyntaxHighlighting(nodeAttrs?.language)
-        }, 500);
-    })
 
     onDestroy(() => {
         if (copiedResetTimeout) {
@@ -205,7 +200,7 @@
         <div class="upper-stripe flex justify-between items-center px-1 my-1">
             <select name="allowed-languages" disabled={!isEditable} class="select select-xs outline-none border-none w-fit min-w-[100px] p-0 capitalize p-1 text-sm bg-transparent rounded-md text-base-content hover:bg-base-300" onclick={_ => dontAllowEditorToBeUpdatedByBlur = true} onchange={onLanguageChanged}>
                 {#each supportedLanguagesList as allowedLanguage (allowedLanguage)}
-                    <option class="bg-base-100 text-base-content" value="{allowedLanguage.toLocaleLowerCase()}" selected={allowedLanguage.toLocaleLowerCase() === nodeAttrs?.language?.toLocaleLowerCase()}>{allowedLanguage}</option>
+                    <option class="bg-base-100 text-base-content" value={allowedLanguage} selected={allowedLanguage === nodeAttrs?.language}>{allowedLanguage}</option>
                 {/each}
             </select>
             <button class="p-0 capitalize p-1 px-1.5 text-sm flex gap-1 items-center hover:bg-base-300 rounded-md text-base-content" onclick={onCopy}>
@@ -221,13 +216,26 @@
         <div id="code" class="bg-base-100 overflow-y-auto">
             <!-- TODO: Configure theme, add cover when content changed via: on:change event -->
             {#key isDarkMode || !isDarkMode || codeMirrorPickedUpLang}
-                <CodeMirror class="code-mirror-of-code-snippet" value={currentCode} editable={isEditable} lang={codeMirrorPickedUpLang} extensions={[myTheme]} theme={isDarkMode ? oneDark : undefined} onchange={onCodeChanged}/>
+                <CodeMirror
+                    class="code-mirror-of-code-snippet"
+                    value={currentCode}
+                    editable={isEditable}
+                    lang={codeMirrorPickedUpLang}
+                    theme={isDarkMode ? oneDark : undefined}
+                    onchange={onCodeChanged}
+                    styles={{
+                        "&": {
+                            fontSize: "18px",
+                            lineHeight: "1.5"
+                        }
+                    }}
+                />
             {/key}
         </div>
         {#if nodeAttrs?.description || isDescriptionAdding}
             <div id="code-snippet-description" class="p-2">
                 <span class="font-semibold text-sm text-base-content/70">Description</span>
-                <p id="description-content" contenteditable={isEditable} oninput={onDescriptionInput} data-placeholder="Type Description..." class="text-base-content border-none outline-none" class:darkmodeContentEditable={isDarkMode && isEditable}>{description}</p>
+                <p id="description-content" bind:this={descriptionEl} contenteditable={isEditable} oninput={onDescriptionInput} onblur={onDescriptionBlur} data-placeholder="Type Description..." class="text-base-content border-none outline-none" class:darkmodeContentEditable={isDarkMode && isEditable}></p>
             </div>
         {:else if isEditable}
             <button class="flex items-center gap-2 m-1 p-2 text-base-content/70 hover:text-base-content" onclick={onAddDescription}>

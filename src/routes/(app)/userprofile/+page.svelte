@@ -7,7 +7,6 @@
     import { fetchAuthenticated } from "$lib/utils/fetch";
     import { UI } from "@ravenlens/frontend";
     import type { Profile, ProfilePageLoadData } from "@ravenlens/shared";
-    import { PageWrapper } from "../../../../../../packages/frontend/dist/ui/common";
     import { onDestroy, tick } from "svelte";
 
     const DELETE_CODE_LENGTH = 6;
@@ -487,7 +486,7 @@
     </div>
 {/if}
 
-<PageWrapper
+<UI.Common.PageWrapper
     additionalClass="h-full overflow-y-auto p-10"
 >
     {#key data}
@@ -623,4 +622,4 @@
             />
         {/if}
     {/key}
-</PageWrapper>
+</UI.Common.PageWrapper>
