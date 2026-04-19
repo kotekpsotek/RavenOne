@@ -14,6 +14,42 @@ export interface CodeSnippetNodeParams {
 export const CodeSnippet = CodeBlock.extend({
 	name: "codeBlock",
 
+	addAttributes() {
+		return {
+			...this.parent?.(),
+			language: {
+				default: "plaintext",
+				parseHTML: (element) => element.getAttribute("data-language") ?? element.getAttribute("data-lang") ?? "plaintext",
+				renderHTML: (attributes) => {
+					if (!attributes.language) return {};
+					return { "data-language": attributes.language };
+				},
+			},
+			description: {
+				default: "",
+				parseHTML: (element) => element.getAttribute("data-description") ?? "",
+				renderHTML: (attributes) => {
+					if (!attributes.description) {
+						return {};
+					}
+
+					return { "data-description": attributes.description };
+				},
+			},
+			code: {
+				default: "",
+				parseHTML: (element) => element.getAttribute("data-code") ?? "",
+				renderHTML: (attributes) => {
+					if (!attributes.code) {
+						return {};
+					}
+
+					return { "data-code": attributes.code };
+				},
+			},
+		};
+	},
+
 	parseHTML() {
 		return [
 			{

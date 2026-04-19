@@ -1,6 +1,6 @@
 <script lang=ts>
-    import AlertToast from "$lib/AlertToast.svelte";
     import WorkspaceTrayAndWrapper from "$lib/components/WorkspaceTrayAndWrapper.svelte";
+    import { UI } from "@ravenlens/frontend";
 	import '../app.css'; // Ensure tailwind is loaded
 
     let { children } = $props();
@@ -8,5 +8,5 @@
 
 <!--  -->
 <WorkspaceTrayAndWrapper/>
-<AlertToast/>
+<UI.Common.AlertToast position="fixed"/>
 {@render children()}

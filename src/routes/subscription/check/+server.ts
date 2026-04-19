@@ -67,6 +67,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 		}
 
 		const workspaceSubscription = await getWorkspaceActiveSubscription(workspaceId);
+		const hasActiveSubscription = workspaceSubscription.hasActiveSubscription;
 		const subscriptionKind = workspaceSubscription.hasActiveSubscription
 			? workspaceSubscription.subscriptionKind
 			: undefined;
@@ -75,6 +76,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 			{
 				status: true,
 				isWorkspaceOwner: ownerUserId === payload.userId,
+				hasActiveSubscription,
 				subscriptionKind
 			},
 			{ status: 200 }

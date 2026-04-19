@@ -5,6 +5,7 @@ type SubscriptionCustomerRecord = {
     status?: unknown;
     subscriptionKind?: unknown;
     kind?: unknown;
+    currentPeriodEnd?: unknown;
 };
 
 type WorkspaceDocumentRaw = {
@@ -66,6 +67,21 @@ function isActiveSubscriptionStatus(status: unknown): boolean {
     return Boolean(normalizedStatus && ACTIVE_SUBSCRIPTION_STATUSES.has(normalizedStatus));
 }
 
+export function hasActiveSubscriptionAccess(subscription: {
+    status?: unknown;
+    currentPeriodEnd?: unknown;
+}): boolean {
+    if (!isActiveSubscriptionStatus(subscription.status)) {
+        return false;
+    }
+
+    if (!(subscription.currentPeriodEnd instanceof Date)) {
+        return true;
+    }
+
+    return Date.now() < subscription.currentPeriodEnd.getTime();
+}
+
 function getSubscriptionStrength(subscriptionKind: SubscriptionKinds): number {
     return SUBSCRIPTION_KIND_STRENGTH[subscriptionKind];
 }
@@ -94,7 +110,7 @@ export async function getUserActiveSubscription(userId: string): Promise<ActiveS
 
     // 1) Download subscriptions, 2) keep only active subscriptions.
     const activeSubscriptionKinds = (Array.isArray(subscriptionCustomers) ? subscriptionCustomers : [])
-        .filter((subscriptionCustomer) => isActiveSubscriptionStatus(subscriptionCustomer.status) && (!subscriptionCustomer.currentPeriodEnd || Date.now() < subscriptionCustomer.currentPeriodEnd.getTime()))
+        .filter((subscriptionCustomer) => hasActiveSubscriptionAccess(subscriptionCustomer))
         .map((subscriptionCustomer) =>
             resolveSubscriptionKind({
                 subscriptionKind: subscriptionCustomer.subscriptionKind,

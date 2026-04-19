@@ -1,0 +1,138 @@
+/* TipTap / ProseMirror editor styling.
+   Uses theme CSS variables (no hard-coded colors). */
+
+/* Wrapper (applied via class on <EditorContent />) */
+.material-editor {
+	width: 100%;
+    outline: none !important;
+}
+
+.ProseMirror[contenteditable=true] {
+	/* Critical: never show an outline outside the border */
+	outline: none !important;
+	box-shadow: none;
+}
+
+.article-wrapper[data-editable="true"] {
+    min-height: 12rem;
+    border: 1px solid color-mix(in oklab, var(--color-base-content) 15%, transparent);
+    border-radius: 0.75rem;
+    overflow: hidden;
+}
+
+.article-content[data-editable=true] {
+    /* background: color-mix(in oklab, var(--color-base-content) 3%, transparent); */
+    padding: 0.75rem 0.875rem;
+
+    /* Critical: never show an outline outside the border */
+    outline: none !important;
+    box-shadow: none;
+}
+
+/* Prevent focus rings / outlines from escaping the editor surface */
+.material-editor :global(.ProseMirror:focus),
+.material-editor :global(.ProseMirror:focus-visible) {
+	outline: none;
+	box-shadow: none;
+}
+
+/* Basic typography spacing */
+.material-editor :global(.ProseMirror > * + *) {
+	margin-top: 0.75rem;
+}
+
+.material-editor :global(.ProseMirror p) {
+	margin: 0;
+}
+
+/* Headings: responsive sizes for h1–h6 */
+.ProseMirror h1 {
+	font-size: clamp(1.625rem, 3.2vw, 2.25rem);
+	line-height: 1.15;
+	font-weight: 800;
+	margin: 0 0 0.5rem 0;
+	letter-spacing: -0.01em;
+	color: color-mix(in oklab, var(--color-base-content) 100%, transparent);
+}
+
+.ProseMirror h2 {
+	font-size: clamp(1.375rem, 2.6vw, 1.75rem);
+	line-height: 1.17;
+	font-weight: 700;
+	margin: 0 0 0.45rem 0;
+}
+
+.ProseMirror h3 {
+	font-size: clamp(1.25rem, 2.2vw, 1.25rem);
+	line-height: 1.18;
+	font-weight: 700;
+	margin: 0 0 0.4rem 0;
+}
+
+.ProseMirror h4 {
+	font-size: 1rem;
+	line-height: 1.25;
+	font-weight: 600;
+	margin: 0 0 0.35rem 0;
+}
+
+.ProseMirror h5 {
+	font-size: 0.95rem;
+	line-height: 1.25;
+	font-weight: 600;
+	margin: 0 0 0.3rem 0;
+}
+
+.ProseMirror h6 {
+	font-size: 0.85rem;
+	line-height: 1.25;
+	font-weight: 600;
+	margin: 0 0 0.25rem 0;
+}
+
+.ProseMirror ul,
+.ProseMirror ol {
+	padding-left: 1.25rem;
+	margin: 0;
+	/* Re-enable markers (some CSS resets remove them) */
+	list-style-position: outside;
+}
+
+.ProseMirror ul {
+	list-style-type: disc;
+}
+
+.ProseMirror ol {
+	list-style-type: decimal;
+}
+
+.ProseMirror li {
+	/* Ensure marker is rendered */
+	display: list-item;
+}
+
+.ProseMirror li::marker {
+	color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
+}
+
+.ProseMirror a {
+	color: var(--color-os2-100);
+	cursor: pointer;
+}
+
+.ProseMirror a:hover {
+	color: var(--color-os2-200);
+}
+
+.tiptap li p {
+    margin-top: 0.25em;
+    margin-bottom: 0.25em;
+}
+
+.tiptap p.is-empty::before {
+    color: #adb5bd;
+    content: attr(data-placeholder);
+    float: left;
+    height: 0;
+    pointer-events: none;
+}
