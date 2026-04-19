@@ -1,5 +1,5 @@
 import { DB_Models } from "@ravenlens/backend";
-import type { SubscriptionKinds } from "@ravenlens/shared";
+import type { SubscriptionKinds } from "$lib/sharedCompat";
 import { json } from "@sveltejs/kit";
 import { getRequiredEnv } from "$lib/server/env";
 import { getStripeClient } from "$lib/server/stripe";

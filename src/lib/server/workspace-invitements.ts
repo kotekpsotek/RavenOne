@@ -1,5 +1,5 @@
 import { DB_Models } from "@ravenlens/backend";
-import { Permissions } from "@ravenlens/shared";
+import { Permissions } from "$lib/sharedCompat";
 
 type WorkspacePermission = Permissions.Workspace.WorkspaceUserPermissions;
 

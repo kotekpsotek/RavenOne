@@ -4,6 +4,7 @@ import { prefetchWorkspaceWithMembers } from "$lib/server/db";
 import { getWorkspaceActiveSubscription } from "$lib/server/subscription";
 import { DB_Models } from "@ravenlens/backend";
 import { Collabortation, File } from "@ravenlens/shared";
+import type { SharedFile } from "$lib/sharedCompat";
 import { env } from "$env/dynamic/public";
 import { json } from "@sveltejs/kit";
 import type { Cookies } from "@sveltejs/kit";
@@ -60,7 +61,7 @@ export type FileAiChatState = {
     selectedChatId?: string;
 };
 
-export type FileEntry = File.File.File & {
+export type FileEntry = SharedFile & {
     aiChatState?: FileAiChatState;
 };
 export type MovePosition = "before" | "after" | "inside";
@@ -70,6 +71,9 @@ export type WorkspaceAccess = {
     authToken: string;
     collabProfile: ConstructorParameters<typeof Collabortation.Collab>[1];
 };
+
+type FileCollabRef = Parameters<typeof Collabortation.amIEditorOfFile>[0];
+type FileCollaboration = InstanceType<typeof Collabortation.Collab>;
 
 const EMPTY_FILE_CONTENT = "<p></p>";
 
@@ -93,7 +97,7 @@ export async function hasUserEditorFileAccess(
         cookies: Cookies;
         file: FileEntry;
         workspaceId: string;
-        checkIsRecentEditor: Parameters<typeof Collabortation.amIEditorOfFile>[1]["checkIsRecentEditor"];
+        checkIsRecentEditor?: Parameters<typeof Collabortation.amIEditorOfFile>[1]["checkIsRecentEditor"];
     }
 ) {
     const payload = getAuthenticatedPayload(options.request, options.cookies);
@@ -102,7 +106,7 @@ export async function hasUserEditorFileAccess(
     }
     
     try {
-        const hasEditorGradeAccess = await Collabortation.amIEditorOfFile(options.file, {
+        const hasEditorGradeAccess = await Collabortation.amIEditorOfFile(options.file as unknown as FileCollabRef, {
             connectionURL: `${env.PUBLIC_SOCKET_IO_COLLABORATION_SERVICE_URL}/am-i-editor-of-file`,
             userId: payload.userId,
             workspaceId: options.workspaceId,
@@ -212,7 +216,7 @@ function toCollabProfile(
     };
 }
 
-export function createFileCollaboration(access: WorkspaceAccess): Collabortation.Collab | Response {
+export function createFileCollaboration(access: WorkspaceAccess): FileCollaboration | Response {
     const collaborationServiceUrl = asNonEmptyString(env.PUBLIC_SOCKET_IO_COLLABORATION_SERVICE_URL);
     if (!collaborationServiceUrl) {
         return json(
@@ -549,6 +553,8 @@ export function sanitizeEntry(entry: FileEntry, workspaceId: string): FileEntry 
         name: String(entry.name),
         createdAt: toDate(entry.createdAt),
         lists: Array.isArray(entry.lists) ? entry.lists : [],
+        routines: Array.isArray(entry.routines) ? entry.routines : [],
+        spikes: Array.isArray(entry.spikes) ? entry.spikes : [],
         content: normalizeFileContent(entry.content),
         // Keep entries grouped per workspace in the current schema shape.
         createdByAuthorId: workspaceId,
@@ -643,6 +649,8 @@ export function createFileEntry(name: string, workspaceId: string): FileEntry {
         id: randomUUID(),
         name,
         lists: [],
+        routines: [],
+        spikes: [],
         createdAt: new Date(),
         content: EMPTY_FILE_CONTENT,
         createdByAuthorId: workspaceId

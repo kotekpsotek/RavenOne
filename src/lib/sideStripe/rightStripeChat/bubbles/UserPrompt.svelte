@@ -20,6 +20,7 @@
         time,
         isAnswering
     } = $derived(message);
+    let displayContext = $derived(context as (MessageUserPrompt["context"] & import("@ravenlens/shared").File.FileAI.PromptContextPayload) | undefined);
 
     let contextMenu = $state<{ x: number; y: number } | null>(null);
 
@@ -137,42 +138,42 @@
         />
     </div>
 
-    {#if context && (context.desktopFiles?.length || context.editorFiles?.length || context.networkUrls?.length || context.selectedTextRanges?.length || context.aiAnswers?.length)}
+    {#if displayContext && (displayContext.desktopFiles?.length || displayContext.editorFiles?.length || displayContext.networkUrls?.length || displayContext.selectedTextRanges?.length || displayContext.aiAnswers?.length)}
         <div class="context-info flex flex-wrap justify-end gap-1 max-w-3/4">
-            {#if context.desktopFiles?.length}
-                {#each context.desktopFiles as file, index (index)}
+            {#if displayContext.desktopFiles?.length}
+                {#each displayContext.desktopFiles as file, index (index)}
                     <div class="badge badge-neutral badge-xs py-2 gap-1">
                         <Icon icon="mdi:file-document-outline" />
                         {file.name}
                     </div>
                 {/each}
             {/if}
-            {#if context.editorFiles?.length}
-                {#each context.editorFiles as file, index (index)}
+            {#if displayContext.editorFiles?.length}
+                {#each displayContext.editorFiles as file, index (index)}
                     <div class="badge badge-neutral badge-xs py-2 gap-1">
                         <Icon icon="mdi:code-braces" />
                         {file.name}
                     </div>
                 {/each}
             {/if}
-            {#if context.networkUrls?.length}
-                {#each context.networkUrls as url, index (index)}
+            {#if displayContext.networkUrls?.length}
+                {#each displayContext.networkUrls as url, index (index)}
                     <div class="badge badge-neutral badge-xs py-2 gap-1">
                         <Icon icon="mdi:web" />
                         {url.url}
                     </div>
                 {/each}
             {/if}
-            {#if context.selectedTextRanges?.length}
-                {#each context.selectedTextRanges as range, index (index)}
+            {#if displayContext.selectedTextRanges?.length}
+                {#each displayContext.selectedTextRanges as range, index (index)}
                     <div class="badge badge-neutral badge-xs py-2 gap-1">
                         <Icon icon="mdi:format-text" />
                         Text snippet
                     </div>
                 {/each}
             {/if}
-            {#if context.aiAnswers?.length}
-                {#each context.aiAnswers as answer, index (index)}
+            {#if displayContext.aiAnswers?.length}
+                {#each displayContext.aiAnswers as answer, index (index)}
                     <div class="badge badge-neutral badge-xs py-2 gap-1">
                         <Icon icon="material-symbols:smart-toy-outline" />
                         AI Answer

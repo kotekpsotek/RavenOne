@@ -12,7 +12,7 @@
     import AITaskPlayingState from './mods/AITaskPlayingState.svelte';
     import { contextSpecification } from '$lib/stores/contextSpec';
     import AIAnswersList from './mods/AIAnswersList.svelte';
-    import { File } from "@ravenlens/shared";
+    import type { EditableListItem, ListItemKind, SpawnedList } from '$lib/sharedCompat';
 
     let {
         kind,
@@ -20,8 +20,8 @@
         isReadOnly = false,
         spawnedList
     }: {
-        kind: File.File.ListItemKind;
-        spawnedList: File.File.SpawnedList
+        kind: ListItemKind;
+        spawnedList: SpawnedList
         onEmptyList?: () => void;
         isReadOnly?: boolean;
     } = $props();
@@ -36,7 +36,7 @@
     const isSharedRoute = $derived($page.url.pathname.startsWith('/share/'));
     const isEditingDisabled = $derived(isSharedRoute || isReadOnly);
 
-    function createItem(depth: number): File.File.EditableListItem {
+    function createItem(depth: number): EditableListItem {
         return {
             id: createListItemId(),
             text: '',

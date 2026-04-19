@@ -474,17 +474,18 @@
 {/if}
 
 <style>
-	@reference "../../../app.css";
-
 	.status-mcp-box.not-sepcified-connection {
-		@apply bg-amber-500/30 border-amber-500;
+		background-color: rgb(245 158 11 / 0.3);
+		border-color: rgb(245 158 11);
 	}
 
 	.status-mcp-box.invalid-state {
-		@apply bg-rose-500/30 border-rose-500;
+		background-color: rgb(244 63 94 / 0.3);
+		border-color: rgb(244 63 94);
 	}
 
 	.status-mcp-box.connected-state {
-		@apply bg-emerald-500/30 border-emerald-500;
+		background-color: rgb(16 185 129 / 0.3);
+		border-color: rgb(16 185 129);
 	}
 </style>

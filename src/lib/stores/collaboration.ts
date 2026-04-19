@@ -1,6 +1,5 @@
 import { get, writable, derived } from "svelte/store";
-import { Collabortation } from "@ravenlens/shared";
-import type { Profile } from "@ravenlens/shared";
+import { Collabortation, type Profile } from "$lib/sharedCompat";
 import { browser } from "$app/environment";
 import { JWTAuth } from "$lib/utils/auth";
 import { userProfile, waitTillProfileLoaded } from "./user";
@@ -52,7 +51,7 @@ export function isUserEditorForFile(
     return entry.collaborators.some((collaborator) => collaborator.id === userId);
 }
 
-function createCollaborationInterface(profile: Profile, tokenJwt: string): Collabortation.Collab {
+function createCollaborationInterface(profile: Profile, tokenJwt: string): InstanceType<typeof Collabortation.Collab> {
     return new Collabortation.Collab(
         tokenJwt,
         {
@@ -66,7 +65,7 @@ function createCollaborationInterface(profile: Profile, tokenJwt: string): Colla
 }
 
 export const collaborationInterface = (() => {
-    const store = writable<Collabortation.Collab | undefined>(undefined);
+    const store = writable<InstanceType<typeof Collabortation.Collab> | undefined>(undefined);
 
     const initializeInterface = (profile: Profile | undefined): boolean => {
         const tokenJwt = JWTAuth.getToken();
@@ -179,13 +178,13 @@ export const fileCollaborators = (() => {
     };
 })();
 
-export const onHandleLeaveFile: Collabortation.SuccessCallback = (success) => {
+export const onHandleLeaveFile: Collabortation.SuccessCallback = (success: boolean) => {
     if (!success) {
         console.error(`Cannot leave file`);
     }
 }
 
-export const onHandleJoinFile: Collabortation.CollabsCallback = (success, collabs, fileId) => {
+export const onHandleJoinFile: Collabortation.CollabsCallback = (success: boolean, collabs: Collabortation.PossibleCollabsList, fileId: string | undefined) => {
     if (!success) {
         console.error(`Cannot join file`);
         return [];

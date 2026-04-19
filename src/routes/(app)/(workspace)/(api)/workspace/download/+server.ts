@@ -1,6 +1,6 @@
 import { ensureAuthenticatedViaRoute, getAuthenticatedPayload } from "$lib/server/auth/request";
 import { DB_Models } from "@ravenlens/backend";
-import { Permissions, Workspace } from "@ravenlens/shared";
+import { Permissions, type Workspace } from "$lib/sharedCompat";
 import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
 

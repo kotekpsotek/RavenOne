@@ -16,7 +16,7 @@
     import { isFilePlayable } from "./listItems/utils";
     import SaveFile from "./components/SaveFile.svelte";
     import { shareFileRequest } from "./files/connections/connections";
-    import { File } from "@ravenlens/shared";
+    import type { BrowserToolsUnion, ContextSpecificationPayload, PlayMode } from "$lib/sharedCompat";
     import { canManageWorkspaceFiles } from "./stores/subscription";
     import { isChatSideStripeSelected, isFileListSideStripeSelected, isPointsStripeOpen } from "./stores/selectedSideStripes";
     import { modelWeights, selectedModelKey } from "./ai/model";
@@ -35,7 +35,7 @@
 
     let isContextModalOpen = $state(false);
     let isMcpConfigModalOpen = $state(false);
-    let contextModalPayloadDraft = $state<File.FileAI.ContextSpecificationPayload>({
+    let contextModalPayloadDraft = $state<ContextSpecificationPayload>({
         desktopFiles: [],
         editorFiles: [],
         networkUrls: []
@@ -44,7 +44,7 @@
     let isShareLinkGenerating = $state(false);
     const shareUrl = $derived(generatedShareUrl);
 
-    function cloneContextPayload(payload: File.FileAI.ContextSpecificationPayload): File.FileAI.ContextSpecificationPayload {
+    function cloneContextPayload(payload: ContextSpecificationPayload): ContextSpecificationPayload {
         return {
             desktopFiles: [...payload.desktopFiles],
             editorFiles: [...payload.editorFiles],
@@ -63,7 +63,7 @@
         $selectedModel = currentModel;
     });
 
-    function toggleValue(state: File.FileAI.BrowserToolsUnion[], value: File.FileAI.BrowserToolsUnion): File.FileAI.BrowserToolsUnion[] {
+    function toggleValue(state: BrowserToolsUnion[], value: BrowserToolsUnion): BrowserToolsUnion[] {
         if (state.includes(value)) {
             return state.filter((entry) => entry !== value) as any;
         }
@@ -112,7 +112,7 @@
         isContextModalOpen = true;
     }
 
-    function onSaveGlobalContext(payload: File.FileAI.ContextSpecificationPayload) {
+    function onSaveGlobalContext(payload: ContextSpecificationPayload) {
         contextSpecification.set(payload);
         isContextModalOpen = false;
     }
@@ -243,7 +243,7 @@
         }
     }
 
-    function onSelectPlayMode(mode: File.FileAI.PlayMode) {
+    function onSelectPlayMode(mode: PlayMode) {
         $playMode = mode;
     }
 
@@ -355,7 +355,7 @@
                                 <div class="flex items-center justify-between text-sm">
                                     <div class="flex items-center gap-2">
                                         {#if $selectedModel}
-                                            <Icon icon={getProviderIconifyIcon($selectedModel.provider)} class="w-4 h-4" />
+                                            <Icon icon={getProviderIconifyIcon($selectedModel.provider) ?? "material-symbols:smart-toy-outline-rounded"} class="w-4 h-4" />
                                         {/if}
                                         <span>{$selectedModel?.model ?? "Select model"}</span>
                                     </div>

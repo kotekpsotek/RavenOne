@@ -1,7 +1,7 @@
 import { env } from "$env/dynamic/private";
 import { getAuthenticatedPayload } from "$lib/server/auth/request";
 import { DB_Models } from "@ravenlens/backend";
-import type { SubscriptionKinds } from "@ravenlens/shared";
+import type { SubscriptionKinds } from "$lib/sharedCompat";
 import type { Cookies } from "@sveltejs/kit";
 import type Stripe from "stripe";
 

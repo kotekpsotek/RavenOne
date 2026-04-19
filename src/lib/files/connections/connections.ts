@@ -1,5 +1,5 @@
 import { type DropPosition, type FilesDownloadResponse } from "../utils";
-import { File } from "@ravenlens/shared";
+import type { File } from "$lib/sharedCompat";
 import { requestFilesApi } from "./common";
 import type { DisabledModelsResponse } from "../../../routes/(app)/(workspace)/(api)/models/disabled/disabled";
 

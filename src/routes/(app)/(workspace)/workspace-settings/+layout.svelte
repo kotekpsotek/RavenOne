@@ -100,9 +100,7 @@
 </UI.Common.PageWrapper>
 
 <style>
-    @reference "../../../../app.css";    
-
     .selected {
-        @apply bg-base-300;
+        background-color: hsl(var(--b3));
     }
 </style>

@@ -9,10 +9,12 @@ import {
 	requireWorkspaceAccess,
 	updateFileById
 } from "../server-utils";
-import { File, Workspace } from "@ravenlens/shared";
+import type { File, Workspace } from "$lib/sharedCompat";
 import { randomUUID } from "node:crypto";
 import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
+
+type WorkspaceUserEntryLoaded = Workspace.Workspace.WorkspaceUserEntryLoaded;
 
 type CreateShareRequestBody = {
 	workspaceId?: unknown;
@@ -117,7 +119,7 @@ function toWorkspaceEntry(
 	workspaceId: string,
 	workspace: Awaited<ReturnType<typeof prefetchWorkspaceWithMembers>>,
 	userId: string
-): Workspace.Workspace.WorkspaceUserEntryLoaded | null {
+): WorkspaceUserEntryLoaded | null {
 	if (!workspace) {
 		return null;
 	}

@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { File } from '@ravenlens/shared';
+    import type { File } from '$lib/sharedCompat';
     import EditableListItems from './EditableListItems.svelte';
 
     let {

@@ -1,6 +1,6 @@
 import { playMode, selectedFile } from "$lib/stores/files";
 import { playableDocumentsAndListsWithPoints } from "$lib/stores/playModeStore";
-import { File } from "@ravenlens/shared";
+import type { File } from "$lib/sharedCompat";
 import { get } from "svelte/store";
 import { v4 as uuid } from "uuid";
 

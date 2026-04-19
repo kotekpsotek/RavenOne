@@ -1,15 +1,16 @@
 import { browser } from "$app/environment";
 import { fetchAuthenticated } from "$lib/utils/fetch";
 import { setAlert } from "$lib/utils/alert";
-import type { AI } from "@ravenlens/shared";
 import { get, writable } from "svelte/store";
-import { File } from "@ravenlens/shared";
+import type { File, RavenLensAvaiableAIModel } from "$lib/sharedCompat";
 import { selectedWorkspace } from "./workspace";
 import { collaborationInterface, entriesCollaborators, onHandleJoinFile, onHandleLeaveFile, setSelectedFileIdInCollaboration } from "./collaboration";
 import { isSharedRoute } from "./share";
 import { FilePlayConnections, playInFile } from "$lib/play/connections";
 import { playableDocumentsAndListsWithPoints } from "./playModeStore";
 import { fileChatEditionPreviewShowing, selectedChatAnswerIds } from "./aiRightSideChat";
+
+type RavenLensAvailableAIModel = RavenLensAvaiableAIModel;
 
 /** Entries */
 export const entriesList = (() => {
@@ -90,6 +91,8 @@ export const selectedFile = (() => {
     const store = writable<FileType>(undefined);
     const AUTOSAVE_INTERVAL_MS = 30000;
     const EMPTY_FILE_CONTENT = "<p></p>";
+    type CollaborationSocket = NonNullable<ReturnType<typeof collaborationInterface.getInterface>>;
+    type CollaborationFileRef = Parameters<CollaborationSocket["sendJoinFile"]>[0];
     let activeSaveRequests = 0;
     const persistedFileSignatures = new Map<string, string>();
 
@@ -111,10 +114,10 @@ export const selectedFile = (() => {
         return normalizedWorkspaceId.length ? normalizedWorkspaceId : undefined;
     }
 
-    const toCollabFileRef = (file: File.File.File): File.File.File => {
+    const toCollabFileRef = (file: File.File.File): CollaborationFileRef => {
         return {
             id: file.id,
-        } as File.File.File;
+        } as unknown as CollaborationFileRef;
     }
 
     const getWorkspaceIdFromFile = (file?: FileType): string | undefined => {
@@ -518,7 +521,7 @@ export const selectedFile = (() => {
                                     image: { input: true, output: true },
                                     sound: { input: true, output: true },
                                     video: { input: true, output: false }
-                                }) as AI.RavenLensAvaiableAIModel,
+                                    }) as RavenLensAvailableAIModel,
                                 tools: get(selectedTools),
                                 context: {} as File.FileAI.ContextSpecificationPayload,
                                 selectedItemPlayMode: get(playMode)
@@ -690,7 +693,7 @@ selectedFile.subscribe((file) => {
 export const availableTools = ["Web search", "Current Document", "RavenOne Documents"] as File.FileAI.BrowserToolsUnion[];
 
 // File config
-export const selectedModel = writable<AI.RavenLensAvaiableAIModel | undefined>(undefined);
+export const selectedModel = writable<RavenLensAvailableAIModel | undefined>(undefined);
 export const playMode = writable<File.FileAI.PlayMode>("run-all");
 
 const STORAGE_KEY = "raven_selected_tools";

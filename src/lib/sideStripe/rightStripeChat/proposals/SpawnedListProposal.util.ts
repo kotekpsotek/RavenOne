@@ -1,10 +1,12 @@
 import { selectedFile } from "$lib/stores/files";
 import { get } from "svelte/store";
+import type { File } from "$lib/sharedCompat";
 import type { MessageOutput } from "@ravenlens/shared/chat-ai/backend/schema";
-import type { SpawnedList } from "../../../../../../../packages/shared/dist/types/file/file";
 
 const FALLBACK_TASK_LIST_NAME = "AI Task List";
 const FALLBACK_TASK_LIST_ICON = "material-symbols:checklist-rounded";
+
+type SpawnedList = File.File.SpawnedList;
 
 function cloneList(list: SpawnedList): SpawnedList {
 	return {
@@ -139,9 +141,11 @@ export function getList(tasksListManipulation?: MessageOutput["tasksListManipula
 		return selectedFileLists;
 	}
 
+	const incomingNewLists = (tasksListManipulation.newLists ?? []) as unknown as SpawnedList[];
+
 	const { orderedLists, listsById } = buildListsById([
 		...selectedFileLists,
-		...(tasksListManipulation.newLists ?? []).map(cloneList)
+		...incomingNewLists.map(cloneList)
 	]);
 
 	let withNewLists = applyAddedTasksToLists(

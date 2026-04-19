@@ -1,5 +1,5 @@
 import { error, redirect } from "@sveltejs/kit";
-import type { ProfilePageLoadData, SubscriptionKinds } from "@ravenlens/shared";
+import type { ProfilePageLoadData, SubscriptionKinds } from "$lib/sharedCompat";
 import type { PageServerLoad } from "./$types";
 import type { SubscriptionResponse } from "../../subscription/universal.types";
 

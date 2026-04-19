@@ -1,5 +1,5 @@
 import { get, writable } from "svelte/store";
-import { Workspace } from "@ravenlens/shared";
+import type { Workspace } from "$lib/sharedCompat";
 import { userProfile as user, userProfile, waitTillProfileLoaded } from "./user";
 import type { ComponentProps } from "svelte";
 import type { UI } from "@ravenlens/frontend";
@@ -305,7 +305,7 @@ export const selectedWorkspace = (() => {
             // Leaves previously selected workspace
             const workspaceBefore = get(store);
             if (workspaceBefore && workspaceBefore.id !== workspace?.id) {
-                collab?.sendLeaveWorkspace(workspaceBefore.id, success => !success ? console.error("Cannot leave workspace: ", workspaceBefore.id) : undefined);
+                collab?.sendLeaveWorkspace(workspaceBefore.id, (success: boolean) => !success ? console.error("Cannot leave workspace: ", workspaceBefore.id) : undefined);
             }
 
             // Joins new workspace
@@ -314,7 +314,7 @@ export const selectedWorkspace = (() => {
                 persistSelectedWorkspaceId(workspace.id);
 
                 // Join to workspace
-                collab?.sendJoinWorkspace(workspace.id, success => !success ? console.error("Cannot join workspace: ", workspace.id) : undefined);
+                collab?.sendJoinWorkspace(workspace.id, (success: boolean) => !success ? console.error("Cannot join workspace: ", workspace.id) : undefined);
             }
 
             // Selects new workspace

@@ -2,7 +2,7 @@
     import { goto } from "$app/navigation";
     import Icon from "@iconify/svelte";
     import { UI } from "@ravenlens/frontend";
-    import { File } from "@ravenlens/shared";
+    import type { SharedFile } from "$lib/sharedCompat";
     import IconValue from "$lib/IconValue.svelte";
     import IconSelectionModal from "$lib/modals/IconSelectionModal.svelte";
     import WallpaperSelectionModal from "$lib/modals/WallpaperSelectionModal.svelte";
@@ -21,7 +21,7 @@
     import { page } from "$app/stores";
 
     interface Props {
-        entry: File.File.File;
+        entry: SharedFile;
         depth?: number;
         onNewFile: (targetId?: string | null) => Promise<void>;
         isSelectable?: boolean;
@@ -29,7 +29,7 @@
         isContextMenuOpenable?: boolean;
         isNewFileAddable?: boolean;
         isDraggable?: boolean;
-        onSelectFile?: (clickedFile: File.File.File) => Promise<void> | void;
+        onSelectFile?: (clickedFile: SharedFile) => Promise<void> | void;
         draggedId?: string | null;
         dropTargetId?: string | null;
         dropPosition?: DropPosition;
@@ -53,7 +53,7 @@
     let isEntrySelected = $derived(selectedEntriesId?.some(eId => eId === entry.id) ?? false)
     let renamingId = $state<string | null>(null);
     let renameValue = $state("");
-    let deleteTarget = $state<File.File.File | null>(null);
+    let deleteTarget = $state<SharedFile | null>(null);
     let iconPickerEntryId = $state<string | null>(null);
     let iconPickerInitialValue = $state("");
     let walperPickerEntryId = $state<string | null>(null);
@@ -100,7 +100,7 @@
         contextMenu = null;
     }
 
-    async function onEntryClick(clickedEntry: File.File.File) {
+    async function onEntryClick(clickedEntry: SharedFile) {
         // Open file with rightclick without be in this file
         if (isCtrlKeyDown) {
             const url = new URL($page.url);
@@ -123,7 +123,7 @@
         $selectedFile = clickedEntry;
     }
 
-    async function onEntryKeydown(e: KeyboardEvent, clickedEntry: File.File.File) {
+    async function onEntryKeydown(e: KeyboardEvent, clickedEntry: SharedFile) {
         if (!isSelectable) {
             return;
         }
@@ -134,7 +134,7 @@
         }
     }
 
-    function onEntryContextMenu(e: MouseEvent, clickedEntry: File.File.File) {
+    function onEntryContextMenu(e: MouseEvent, clickedEntry: SharedFile) {
         if (!isContextMenuOpenable) {
             return;
         }
@@ -160,7 +160,7 @@
         }
     }
 
-    function handleDragOver(e: DragEvent, draggedOverEntry: File.File.File) {
+    function handleDragOver(e: DragEvent, draggedOverEntry: SharedFile) {
         if (!isDraggable) {
             return;
         }
@@ -226,7 +226,7 @@
         resetDragState();
     }
 
-    function openRename(targetEntry: File.File.File) {
+    function openRename(targetEntry: SharedFile) {
         if (!ensureActiveWorkspaceSubscription("rename files")) {
             return;
         }
@@ -270,7 +270,7 @@
         renameValue = "";
     }
 
-    function openDeleteModal(targetEntry: File.File.File) {
+    function openDeleteModal(targetEntry: SharedFile) {
         if (!ensureActiveWorkspaceSubscription("delete files")) {
             return;
         }
@@ -312,7 +312,7 @@
         deleteTarget = null;
     }
 
-    function openIconPicker(targetEntry: File.File.File) {
+    function openIconPicker(targetEntry: SharedFile) {
         if (!ensureActiveWorkspaceSubscription("change file icon")) {
             return;
         }
@@ -404,7 +404,7 @@
         closeIconPicker();
     }
 
-    function openWalperPicker(targetEntry: File.File.File) {
+    function openWalperPicker(targetEntry: SharedFile) {
         if (!ensureActiveWorkspaceSubscription("change file wallpaper")) {
             return;
         }

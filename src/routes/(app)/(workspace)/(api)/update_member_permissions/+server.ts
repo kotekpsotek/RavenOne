@@ -3,7 +3,7 @@ import { prefetchWorkspaceWithMembers } from "$lib/server/db";
 import { getWorkspaceActiveSubscription } from "$lib/server/subscription";
 import { downloadCurrentUser } from "$lib/utils/auth";
 import { DB_Models } from "@ravenlens/backend";
-import { Permissions } from "@ravenlens/shared";
+import { Permissions } from "$lib/sharedCompat";
 import type { RequestHandler } from "@sveltejs/kit";
 
 type UpdateMemberPermissionsRequestBody = {

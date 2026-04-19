@@ -1,9 +1,7 @@
 <script lang="ts">
     import { browser } from '$app/environment';
     import Icon, { setCustomIconsLoader } from '@iconify/svelte';
-    import type { AI, File } from '@ravenlens/shared';
-    type ContextSpecificationPayload = File.FileAI.ContextSpecificationPayload;
-    type PlayMode = File.FileAI.PlayMode;
+    import type { ContextSpecificationPayload, PlayMode, RavenLensAvaiableAIModel } from '$lib/sharedCompat';
     import { playMode, selectedFile, selectedModel, selectedTools } from '$lib/stores/files';
     import { selectedMcpServers } from '$lib/stores/mcpConfig';
     import { contextSpecification } from '$lib/stores/contextSpec';
@@ -33,7 +31,7 @@
             pointId: string,
             config: {
                 mode: PlayMode;
-                model: AI.RavenLensAvaiableAIModel;
+                model: RavenLensAvaiableAIModel;
                 tools: string[];
                 mcpServers: string[];
                 contextSpec: ContextSpecificationPayload;
@@ -41,7 +39,7 @@
         ) => void | Promise<void>;
         onStop?: (pointId: string) => void | Promise<void>;
         onClearContent?: () => void;
-        selectedItemModel: AI.RavenLensAvaiableAIModel | undefined;
+        selectedItemModel: RavenLensAvaiableAIModel | undefined;
         availableItemTools: string[],
         selectedItemMcpServers: string[],
         selectedItemPlayMode: PlayMode,

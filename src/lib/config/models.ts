@@ -1,4 +1,4 @@
-import type { AI, SubscriptionKinds } from "@ravenlens/shared";
+import type { AI, SubscriptionKinds } from "$lib/sharedCompat";
 
 export type DefaultModel = AI.RavenLensAvaiableAIModel;
 

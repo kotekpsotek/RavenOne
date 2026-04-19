@@ -1,4 +1,4 @@
-import { File } from "@ravenlens/shared";
+import type { File } from "$lib/sharedCompat";
 
 export function fileMap(value: File.File.File): File.File.File[] {
     return [

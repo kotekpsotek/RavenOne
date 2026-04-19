@@ -1,4 +1,4 @@
-import { Permissions, type Workspace } from "@ravenlens/shared";
+import { type Permissions, type Workspace } from "$lib/sharedCompat";
 
 type WorkspaceEntry = Workspace.Workspace.WorkspaceUserEntryLoaded | undefined;
 

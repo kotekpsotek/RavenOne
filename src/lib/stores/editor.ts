@@ -11,7 +11,7 @@ import { SlashCommand } from "../editorComponents/components/Suggestions.js";
 import { StandardTaskList } from "../editorComponents/components/StandardTaskList.js";
 import { StandardTaskItem } from "../editorComponents/components/StandardTaskItem.js";
 import { CodeSnippet } from "../editorComponents/components/CodeSnippet.js";
-import { File } from "@ravenlens/shared";
+import type { File } from "@ravenlens/shared";
 import { collaborationInterface, isCurrentUserSelectedFileEditor } from "./collaboration.js";
 import { browser } from "$app/environment";
 import { editorAIChat } from "./aiRightSideChat.js";

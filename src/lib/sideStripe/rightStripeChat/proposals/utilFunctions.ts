@@ -10,9 +10,9 @@ import { loadingState } from "$lib/stores/loadingScreen";
 import { userProfile } from "$lib/stores/user";
 import { setAlert } from "$lib/utils/alert";
 import { get } from "svelte/store";
+import type { File } from "$lib/sharedCompat";
 import type { DocumentManipulation, MessageOutput } from "@ravenlens/shared/chat-ai/backend/schema";
 import { chatServiceConnection } from "../connections";
-import type { SpawnedList } from "../../../../../../../packages/shared/dist/types/file/file";
 import { selectedFile } from "$lib/stores/files";
 import { editor } from "$lib/stores/editor";
 
@@ -161,7 +161,7 @@ function setupTaskListManipulationState(chatId: string, outputMessage: MessageOu
  * @param allLists - is the set with added new lists/modified and old lists composed
  * @returns 
  */
-export function callAcceptTasksManipulation(outputMessage: MessageOutput, allLists: SpawnedList[]) {
+export function callAcceptTasksManipulation(outputMessage: MessageOutput, allLists: File.File.SpawnedList[]) {
     return async () => {
         const activeChatState = get(activeChat);
         if (!activeChatState?.id) {

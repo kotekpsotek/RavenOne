@@ -6,16 +6,16 @@
     import { alertState, setAlert } from "$lib/utils/alert";
     import { fetchAuthenticated } from "$lib/utils/fetch";
     import { UI } from "@ravenlens/frontend";
-    import { Workspace } from "@ravenlens/shared";
+    import type { WorkspaceForUser, WorkspaceMemberInvitement, WorkspaceUser } from "$lib/sharedCompat";
     import { onMount, type ComponentProps } from "svelte";
     import { selectedOptionItem } from "../default";
     import { deleteInvitementRequest, deleteMemberRequest, inviteMemberRequest, updateMemberPermissions } from "$lib/workspace-settings/connections";
     import { selectedWorkspace } from "$lib/stores/workspace";
 
-    let workspaceLoaded = $state<Workspace.Workspace.WorkspaceForUser | undefined>(undefined);
-    let users = $derived<Workspace.Workspace.WorkspaceUser[]>(workspaceLoaded?.workspaceMembers ?? []);
-    let invitements = $derived<Workspace.Workspace.WorkspaceMemberInvitement[]>(workspaceLoaded?.workspaceInvitements ?? []);
-    let ownerUserId = $derived<Workspace.Workspace.WorkspaceForUser["ownerUserId"] | undefined>(workspaceLoaded?.ownerUserId ?? undefined);
+    let workspaceLoaded = $state<WorkspaceForUser | undefined>(undefined);
+    let users = $derived<WorkspaceUser[]>(workspaceLoaded?.workspaceMembers ?? []);
+    let invitements = $derived<WorkspaceMemberInvitement[]>(workspaceLoaded?.workspaceInvitements ?? []);
+    let ownerUserId = $derived<WorkspaceForUser["ownerUserId"] | undefined>(workspaceLoaded?.ownerUserId ?? undefined);
     const canManageWorkspaceMembers = $derived(!$workspaceSubscriptionCheckInProgress && $workspaceHasActiveSubscription);
     const maxWorkspaceMembers = $derived($workspaceSubscriptionKind ? getWorkspaceMembersLimit($workspaceSubscriptionKind) : null);
     const reachedWorkspaceMemberLimit = $derived(typeof maxWorkspaceMembers === "number" && users.length >= maxWorkspaceMembers);
@@ -70,7 +70,7 @@
         if (workspaceDownloaded.ok) {
             const resBody = await workspaceDownloaded.json() as {
                 status: boolean;
-                workspace: Workspace.Workspace.WorkspaceForUser;
+                workspace: WorkspaceForUser;
             };
 
             if (!resBody.status) {

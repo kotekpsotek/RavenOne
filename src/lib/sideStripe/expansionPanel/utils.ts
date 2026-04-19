@@ -1,7 +1,7 @@
 import { selectedFile } from "$lib/stores/files";
 import { selectedWorkspace } from "$lib/stores/workspace";
 import { setAlert } from "$lib/utils/alert";
-import type { File } from "@ravenlens/shared";
+import type { File } from "$lib/sharedCompat";
 import { get } from "svelte/store";
 
 export function findFileById(items: File.File.File[], fileId: string): File.File.File | null {

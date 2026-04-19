@@ -6,12 +6,13 @@ import { prefetchWorkspaceWithMembers } from "$lib/server/db";
 import { getWorkspaceActiveSubscription } from "$lib/server/subscription";
 import { getWorkspaceMembersLimit } from "$lib/subscription/limits";
 import { Permissions, type Workspace } from "@ravenlens/shared";
+import { Permissions as CompatPermissions, type Workspace as CompatWorkspace } from "$lib/sharedCompat";
 import type { RequestHandler } from "@sveltejs/kit";
 import { env } from "$env/dynamic/private";
 import { getResendInstance } from "$lib/server/email";
 import { appName } from "$lib/config/app";
 
-type WorkspacePermission = Permissions.Workspace.WorkspaceUserPermissions;
+type WorkspacePermission = CompatPermissions.Workspace.WorkspaceUserPermissions;
 
 type ExistingProfileCandidate = {
     _id?: unknown;
@@ -19,7 +20,7 @@ type ExistingProfileCandidate = {
     email?: unknown;
 };
 
-type WorkspaceInvitement = Workspace.Workspace.WorkspaceMemberInvitement<Workspace.Workspace.InvitementKind>;
+type WorkspaceInvitement = CompatWorkspace.Workspace.WorkspaceMemberInvitement;
 
 type ExistingWorkspaceMember = {
     user: {
@@ -440,7 +441,7 @@ async function sendInvitementEmail(invitedMembers: WorkspaceInvitement[]) {
 export const POST: RequestHandler = async ({ request, url }) => {
     const { workspaceId, workspaceInvitements } = await request.json() as {
         workspaceId: string;
-        workspaceInvitements: Workspace.Workspace.WorkspaceMemberInvitement<Workspace.Workspace.InvitementKind>[]
+        workspaceInvitements: CompatWorkspace.Workspace.WorkspaceMemberInvitement[]
     }
 
     // 1. Check is user authenticated

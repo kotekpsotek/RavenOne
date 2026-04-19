@@ -20,6 +20,8 @@
         isReadOnly?: boolean;
     } = $props();
 
+    let normalizedAiAnswers = $derived(aiAnswers ?? []);
+
     let openAnswerIndices = $state<number[]>([]);
     let isAnswersListOpen = $state(true);
     let zoomedIndex = $state<number | null>(null);
@@ -521,9 +523,9 @@
         return uniqueStrings(parsedTools);
     }
 
-    const zoomedAnswer = $derived(zoomedIndex === null ? null : aiAnswers[zoomedIndex] ?? null);
-    const infoAnswer = $derived(infoIndex === null ? null : aiAnswers[infoIndex] ?? null);
-    const removeAnswer = $derived(removeAnswerIndex === null ? null : aiAnswers[removeAnswerIndex] ?? null);
+    const zoomedAnswer = $derived(zoomedIndex === null ? null : normalizedAiAnswers[zoomedIndex] ?? null);
+    const infoAnswer = $derived(infoIndex === null ? null : normalizedAiAnswers[infoIndex] ?? null);
+    const removeAnswer = $derived(removeAnswerIndex === null ? null : normalizedAiAnswers[removeAnswerIndex] ?? null);
     const infoContextPayload = $derived(infoAnswer ? normalizeContextPayload(infoAnswer.context) : EMPTY_CONTEXT_PAYLOAD);
     const infoMcpServers = $derived(infoAnswer ? parseMcpServerNames(infoAnswer.mcp) : []);
     const infoTools = $derived(infoAnswer ? parseToolNames(infoAnswer.tools) : []);
@@ -641,7 +643,7 @@
     >
         <span class="text-sm font-semibold opacity-90">
             AI Answers
-            <span class="ml-1 text-xs font-normal opacity-70">({aiAnswers.length})</span>
+            <span class="ml-1 text-xs font-normal opacity-70">({normalizedAiAnswers.length})</span>
         </span>
 
         <button
@@ -658,10 +660,10 @@
 
     {#if isAnswersListOpen}
         <div class="rounded-2xl border border-base-300 bg-base-100 overflow-hidden">
-            {#if aiAnswers.length === 0}
+            {#if normalizedAiAnswers.length === 0}
                 <p class="px-4 py-3 text-xs opacity-70">No AI answers available.</p>
             {:else}
-                {#each aiAnswers as answer, index (answer.startDateTimestamp + index)}
+                {#each normalizedAiAnswers as answer, index (`${answer.id}-${index}`)}
                     {#key $selectedChatAnswerIds}
                         {@const isSelectedInAnswerIds = selectedChatAnswerIds.isSelected(answer.id)}
                         {@const isSelectedPeriodical = periodicalSelectedAnswerIds.includes(answer.id)}
@@ -678,11 +680,11 @@
                                 >
                                     {#if isExpanded(index)}
                                         <div class="text-sm leading-6 whitespace-pre-wrap break-words">
-                                            <AIAnswerRichContent content={answer.answerTipTapHTML} />
+                                            <AIAnswerRichContent content={answer.answerTipTapHTML ?? ""} />
                                         </div>
                                     {:else}
                                         <div class="relative max-h-20 overflow-hidden text-sm leading-6 whitespace-pre-wrap break-words">
-                                            <AIAnswerRichContent content={answer.answerTipTapHTML} />
+                                            <AIAnswerRichContent content={answer.answerTipTapHTML ?? ""} />
                                             <div class="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-base-100 to-transparent"></div>
                                         </div>
                                     {/if}
@@ -705,7 +707,7 @@
                                             class="text-right"
                                             onclick={() => toggleAnswer(index)}
                                         >
-                                        <p class="text-sm font-semibold opacity-80">{formatDate(answer.endDateTimestamp)}</p>
+                                        <p class="text-sm font-semibold opacity-80">{formatDate(answer.endDateTimestamp ?? answer.startDateTimestamp ?? Date.now())}</p>
                                         </button>
 
                                         <div class="flex items-center justify-end gap-2 mt-1">
@@ -802,11 +804,11 @@
                 <div class="space-y-2 h-full mb-4">
                     <div class="flex items-center justify-between text-xs opacity-80">
                         <span>{zoomedAnswer.model.name}</span>
-                        <span>{formatDate(zoomedAnswer.endDateTimestamp)}</span>
+                        <span>{formatDate(zoomedAnswer.endDateTimestamp ?? zoomedAnswer.startDateTimestamp ?? Date.now())}</span>
                     </div>
 
                     <div class="h-full overflow-auto rounded border border-base-300 bg-base-100 px-4 py-3 text-sm leading-6 whitespace-pre-wrap break-words">
-                        <AIAnswerRichContent content={zoomedAnswer.answerTipTapHTML} />
+                        <AIAnswerRichContent content={zoomedAnswer.answerTipTapHTML ?? ""} />
                     </div>
                 </div>
             </UI.Modals.ModalWrapper>
@@ -883,7 +885,7 @@
                     <div class="relative rounded border border-base-300 bg-base-100 px-3 py-2 text-sm">
                         <span class="uppercase font-semibold bg-base-100 text-xs text-gray-500 absolute top-[-0.5rem]">Answer</span>
                         <div class="w-full h-fit">
-                            <AIAnswerRichContent content={removeAnswer.answerTipTapHTML} />
+                            <AIAnswerRichContent content={removeAnswer.answerTipTapHTML ?? ""} />
                         </div>
                     </div>
 

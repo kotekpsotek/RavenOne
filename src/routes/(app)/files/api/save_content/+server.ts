@@ -9,7 +9,7 @@ import {
     requireWorkspaceAccess,
     updateFileById
 } from "../server-utils";
-import { File } from "@ravenlens/shared";
+import type { File } from "$lib/sharedCompat";
 import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
 

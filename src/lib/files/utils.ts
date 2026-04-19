@@ -1,4 +1,4 @@
-import { File } from "@ravenlens/shared"
+import type { File } from "$lib/sharedCompat"
 
 export type DropPosition = 'before' | 'after' | 'inside' | null;
 export type FilesApiRequestMethod = "POST" | "PUT" | "DELETE";

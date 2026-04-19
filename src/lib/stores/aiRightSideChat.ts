@@ -7,9 +7,12 @@ import { isChatSideStripeSelected, isFileListSideStripeSelected } from "./select
 import { userProfile } from "./user";
 import { alertState, setAlert } from "$lib/utils/alert";
 import { matchesAttachmentKind } from "$lib/utils/attachments";
-import type { File } from "@ravenlens/shared";
+import type { AIAnswer, File } from "$lib/sharedCompat";
 import type { AIChatMode, ChatTab } from "@ravenlens/shared/chat-ai/frontend";
-import type { AIChatModel, BackendChatPopulated, DownloadChat, MessageOutput, MessageUserPrompt, PromptProcessing, SelectedTextRangeContext } from "@ravenlens/shared/chat-ai/backend/schema";
+import type { BackendChatPopulated, DownloadChat, MessageOutput, MessageUserPrompt, PromptProcessing, SelectedTextRangeContext } from "@ravenlens/shared/chat-ai/backend/schema";
+
+type AIChatModel = MessageUserPrompt["model"];
+type ChatSelectedContext = NonNullable<ChatTab["selectedContext"]> & File.FileAI.PromptContextPayload;
 
 export const isLoadedChatsOfWorkspaceFileLoading = writable<boolean>(false);
 
@@ -158,8 +161,11 @@ export const processingChatsOfWorkspaceFile = (() => {
 })();
 
 const normalizeLoadedChat = (chat: BackendChatPopulated | DownloadChat): DownloadChat => {
+	const inFileCollaborators = (chat as { inFileCollaborators?: DownloadChat["inFileCollaborators"] }).inFileCollaborators;
 	return {
-		...chat
+		...chat,
+		collaborators: Array.isArray(chat.collaborators) ? [...chat.collaborators] : [],
+		inFileCollaborators: Array.isArray(inFileCollaborators) ? [...inFileCollaborators] : []
 	};
 };
 
@@ -364,8 +370,9 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 			desktopFiles: [],
 			editorFiles: [],
 			networkUrls: [],
-			aiAnswers: []
-		};
+			aiAnswers: [],
+			selectedTextRanges: []
+		} as ChatSelectedContext;
 	};
 
 	const normalizeSelectedMode = (modeCandidate: unknown): ChatTab["selectedMode"] => {
@@ -417,21 +424,29 @@ export const chatStripeTabsOfWorkspaceFile = (() => {
 			return createDefaultSelectedContext();
 		}
 
-		const asMaybeContext = contextCandidate as Partial<ChatTab["selectedContext"]>;
-		return {
+		const asMaybeContext = contextCandidate as Partial<ChatSelectedContext>;
+		const aiAnswersCandidate = (contextCandidate as { aiAnswers?: unknown }).aiAnswers;
+		const normalizedFallbackContext = fallbackContext as ChatSelectedContext;
+		const normalizedContext: Record<string, unknown> = {
 			desktopFiles: Array.isArray(asMaybeContext.desktopFiles)
 				? [...asMaybeContext.desktopFiles] as ChatTab["selectedContext"]["desktopFiles"]
-				: [...fallbackContext.desktopFiles],
+				: [...normalizedFallbackContext.desktopFiles],
 			editorFiles: Array.isArray(asMaybeContext.editorFiles)
 				? [...asMaybeContext.editorFiles] as ChatTab["selectedContext"]["editorFiles"]
-				: [...fallbackContext.editorFiles],
+				: [...normalizedFallbackContext.editorFiles],
 			networkUrls: Array.isArray(asMaybeContext.networkUrls)
 				? [...asMaybeContext.networkUrls] as ChatTab["selectedContext"]["networkUrls"]
-				: [...fallbackContext.networkUrls],
-			aiAnswers: Array.isArray(asMaybeContext.aiAnswers)
-				? [...asMaybeContext.aiAnswers] as ChatTab["selectedContext"]["aiAnswers"]
-				: [...fallbackContext.aiAnswers]
+				: [...normalizedFallbackContext.networkUrls],
+			selectedTextRanges: Array.isArray(asMaybeContext.selectedTextRanges)
+				? [...asMaybeContext.selectedTextRanges] as ChatSelectedContext["selectedTextRanges"]
+				: [...(normalizedFallbackContext.selectedTextRanges ?? [])]
 		};
+
+		normalizedContext.aiAnswers = Array.isArray(aiAnswersCandidate)
+			? [...(aiAnswersCandidate as AIAnswer[])]
+			: [...(normalizedFallbackContext.aiAnswers ?? [])];
+
+		return normalizedContext as unknown as ChatTab["selectedContext"];
 	};
 
 	const normalizeTabSettings = (
@@ -930,20 +945,25 @@ const getActiveTabFromState = (tabs: ChatTab[]): ChatTab | undefined => {
 };
 
 const cloneSelectedContext = (tab?: ChatTab): ChatTab["selectedContext"] => {
+	const selectedContext = tab?.selectedContext as ChatSelectedContext | undefined;
+
 	return {
-		desktopFiles: Array.isArray(tab?.selectedContext?.desktopFiles)
-			? [...tab!.selectedContext.desktopFiles]
+		desktopFiles: Array.isArray(selectedContext?.desktopFiles)
+			? [...selectedContext.desktopFiles]
 			: [],
-		editorFiles: Array.isArray(tab?.selectedContext?.editorFiles)
-			? [...tab!.selectedContext.editorFiles]
+		editorFiles: Array.isArray(selectedContext?.editorFiles)
+			? [...selectedContext.editorFiles]
 			: [],
-		networkUrls: Array.isArray(tab?.selectedContext?.networkUrls)
-			? [...tab!.selectedContext.networkUrls]
+		networkUrls: Array.isArray(selectedContext?.networkUrls)
+			? [...selectedContext.networkUrls]
 			: [],
-		aiAnswers: Array.isArray(tab?.selectedContext?.aiAnswers)
-			? [...tab!.selectedContext.aiAnswers]
+		aiAnswers: Array.isArray(selectedContext?.aiAnswers)
+			? [...selectedContext.aiAnswers]
+			: [],
+		selectedTextRanges: Array.isArray(selectedContext?.selectedTextRanges)
+			? [...selectedContext.selectedTextRanges]
 			: []
-	};
+	} as ChatSelectedContext;
 };
 
 const createChatTabId = (): string => {
@@ -1331,6 +1351,8 @@ export const rightSideStripeChat = (() => {
 				selectedMCPServers: Array.isArray(activeTab?.selectedMCPServers)
 					? [...activeTab!.selectedMCPServers]
 					: [],
+				collaborators: activeTab?.collaborators ?? [],
+				inFileCollaborators: activeTab?.inFileCollaborators ?? [],
 				isActive: true,
 				createdByAuthor: user,
 				workspaceId: selectedWorkspaceLocal.id,

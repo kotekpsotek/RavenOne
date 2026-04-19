@@ -9,9 +9,8 @@
     import UnorderedListItem from '$lib/listItems/UnorderedListItem.svelte';
     import TaskListItem from '$lib/listItems/TaskListItem.svelte';
     import { createListId } from './listItems/utils';
-    import { File } from "@ravenlens/shared";
+    import type { EditableListItem, ListItemKind, SpawnedList } from '$lib/sharedCompat';
     import { dev } from '$app/environment';
-    import type { SpawnedList } from '../../../../packages/shared/dist/types/file/file';
 
     interface Props {
         isReadOnly?: boolean;
@@ -76,7 +75,7 @@
         return `list-${Math.random().toString(36).slice(2, 10)}-${Date.now()}`;
     }
 
-    function resolveListKind(item: ElementInsertionItem): File.File.ListItemKind {
+    function resolveListKind(item: ElementInsertionItem): ListItemKind {
         if (item.name.toLowerCase().includes('checkbox') || item.name.toLowerCase().includes('task')) {
             return 'task';
         }
@@ -99,7 +98,7 @@
         }
 
         const listKind = resolveListKind(item);
-        const listItem: File.File.EditableListItem = listKind === "task" ?
+        const listItem: EditableListItem = listKind === "task" ?
             {
                 id: createListId(),
                 text: "",

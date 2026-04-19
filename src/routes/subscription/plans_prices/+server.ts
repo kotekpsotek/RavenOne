@@ -1,6 +1,6 @@
 import { getRequiredEnv } from "$lib/server/env";
 import { getStripeClient } from "$lib/server/stripe";
-import type { SubscriptionKinds } from "@ravenlens/shared";
+import type { SubscriptionKinds } from "$lib/sharedCompat";
 import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
 import { PLAN_PRICE_ENV_KEY_BY_ID } from "../common";

@@ -2,7 +2,7 @@ import { avaiableWorkspaces, selectedWorkspace } from "$lib/stores/workspace";
 import { setAlert } from "$lib/utils/alert";
 import { fetchAuthenticated } from "$lib/utils/fetch";
 import type { UI } from "@ravenlens/frontend";
-import type { Workspace, Permissions } from "@ravenlens/shared";
+import type { Workspace, Permissions } from "$lib/sharedCompat";
 import type { ComponentProps } from "svelte";
 import { get } from "svelte/store";
 

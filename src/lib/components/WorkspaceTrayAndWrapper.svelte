@@ -15,7 +15,7 @@
     } from "$lib/stores/workspace";
     import { setAlert } from "$lib/utils/alert";
     import { UI } from "@ravenlens/frontend";
-    import { Workspace } from "@ravenlens/shared";
+    import type { WorkspaceUserEntryLoaded } from "$lib/sharedCompat";
     import type { ComponentProps } from "svelte";
 
     const ownedWorkspaceCount = $derived($avaiableWorkspaces.filter(workspace => workspace.isOwner).length);
@@ -53,7 +53,7 @@
             }
     );
 
-    function onSelectWorkspace(workspace: Workspace.Workspace.WorkspaceUserEntryLoaded) {
+    function onSelectWorkspace(workspace: WorkspaceUserEntryLoaded) {
         return (ev?: Event) => {
             selectedWorkspace.selectWorkspace(workspace);
         };

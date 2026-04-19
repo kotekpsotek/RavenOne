@@ -6,7 +6,7 @@
     import { alertState } from "$lib/utils/alert";
     import { fetchAuthenticated } from "$lib/utils/fetch";
     import { UI } from "@ravenlens/frontend";
-    import type { Workspace } from "@ravenlens/shared";
+    import type { WorkspaceUserEntryLoaded } from "$lib/sharedCompat";
     import type { ComponentProps } from "svelte";
 
     let { open = $bindable(false) } = $props();
@@ -30,7 +30,7 @@
         workspace?: unknown;
     };
 
-    function isWorkspaceEntry(value: unknown): value is Workspace.Workspace.WorkspaceUserEntryLoaded {
+    function isWorkspaceEntry(value: unknown): value is WorkspaceUserEntryLoaded {
         if (!value || typeof value !== "object") {
             return false;
         }
@@ -57,7 +57,7 @@
         });
     }
 
-    function upsertWorkspace(workspace: Workspace.Workspace.WorkspaceUserEntryLoaded) {
+    function upsertWorkspace(workspace: WorkspaceUserEntryLoaded) {
         avaiableWorkspaces.update(existingWorkspaces => {
             const existingIndex = existingWorkspaces.findIndex(existingWorkspace => existingWorkspace.id === workspace.id);
             if (existingIndex === -1) {

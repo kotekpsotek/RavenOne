@@ -2,9 +2,9 @@
     import FileEntry from "../sideStripe/expansionPanel/FileEntry.svelte";
     import { entriesList } from "$lib/stores/files";
     import { UI } from "@ravenlens/frontend";
-    import { File } from "@ravenlens/shared";
+    import type { SharedFile } from "$lib/sharedCompat";
 
-    type SelectedFilePayload = File.File.File[];
+    type SelectedFilePayload = SharedFile[];
     
     interface Props {
         open: boolean;
@@ -22,9 +22,9 @@
         availableFiles = $bindable($entriesList),
         onClose = () => { open = false },
     }: Props = $props();
-    let selectedFilesOperation: File.File.File[] = $derived(selectedFiles);
+    let selectedFilesOperation: SharedFile[] = $derived(selectedFiles);
 
-    function onSelectToggleFileWrapper(selectedFile: File.File.File) {
+    function onSelectToggleFileWrapper(selectedFile: SharedFile) {
         if (!selectMultiple && selectedFilesOperation.length) {
             selectedFilesOperation = [selectedFile];
         }

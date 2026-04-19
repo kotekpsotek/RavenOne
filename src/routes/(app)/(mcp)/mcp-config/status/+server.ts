@@ -3,9 +3,9 @@ import { performDownloadLikeOperation } from "../downloadLike";
 import type { MCPConnectionStatusObject } from "@ravenlens/shared/mcp";
 
 /** Same as credetnials/download although it downloads the status without credentials */
-export const POST: RequestHandler = async ({ request, cookies }) => {
+export const POST: RequestHandler = async ({ request, cookies, fetch }) => {
     // 1. Make download operation
-    const resultDownloadOp = await performDownloadLikeOperation(request, cookies);
+    const resultDownloadOp = await performDownloadLikeOperation(request, cookies, fetch);
     if (resultDownloadOp instanceof Response) {
         return resultDownloadOp;
     }

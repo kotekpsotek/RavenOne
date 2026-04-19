@@ -1,5 +1,5 @@
 <script lang="ts">
-    import type { SpawnedList } from "../../../../../../../packages/shared/dist/types/file/file";
+    import type { File } from "$lib/sharedCompat";
     import { callAcceptTasksManipulation, callDeclineTasksManipulation } from "./utilFunctions";
     import { fileChatEditionPreviewShowing } from "$lib/stores/aiRightSideChat";
     import { selectedFile } from "$lib/stores/files";
@@ -25,7 +25,7 @@
 
 <!-- TODO: Show list tray content  -->
 
-{#snippet ShowListContent(type: "old" | "new", lists: SpawnedList[])}
+{#snippet ShowListContent(type: "old" | "new", lists: File.File.SpawnedList[])}
     <div class="w-1/2">
         <div 
             class="upper-stripe flex justify-between"

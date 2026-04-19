@@ -1,26 +1,26 @@
 <script lang="ts">
     import Icon from '@iconify/svelte';
-    import { File } from "@ravenlens/shared";
+    import type { PlayMode } from "$lib/sharedCompat";
 
     let {
         selectedPlayMode,
         onSelect
     }: {
-        selectedPlayMode: File.FileAI.PlayMode;
-        onSelect?: (mode: File.FileAI.PlayMode) => void;
+        selectedPlayMode: PlayMode;
+        onSelect?: (mode: PlayMode) => void;
     } = $props();
 
-    const playModes: { label: string; value: File.FileAI.PlayMode }[] = [
+    const playModes: { label: string; value: PlayMode }[] = [
         { label: 'Run non-runned', value: 'run-non-runned' },
         { label: 'Run all', value: 'run-all' }
     ];
 
-    const playModeIcons: Record<File.FileAI.PlayMode, string> = {
+    const playModeIcons: Record<PlayMode, string> = {
         'run-non-runned': 'material-symbols:play-arrow-outline-rounded',
         'run-all': 'material-symbols:playlist-play-rounded'
     };
 
-    function handleSelect(event: MouseEvent, mode: File.FileAI.PlayMode) {
+    function handleSelect(event: MouseEvent, mode: PlayMode) {
         event.preventDefault();
         event.stopPropagation();
 

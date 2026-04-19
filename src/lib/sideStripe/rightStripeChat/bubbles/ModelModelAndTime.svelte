@@ -2,10 +2,9 @@
     import { editorAIChat } from "$lib/stores/aiRightSideChat";
     import Icon from "@iconify/svelte";
     import type { AIChatMode } from "@ravenlens/backend";
-    import type { AI } from "@ravenlens/shared"
-    import type { AIChatModel, MessageUserPrompt } from "@ravenlens/shared/chat-ai/backend/schema";
+    import type { ProviderID } from "$lib/sharedCompat"
+    import type { MessageUserPrompt } from "@ravenlens/shared/chat-ai/backend/schema";
     import { getTime } from "./utils";
-    import type { ProviderID } from "../../../../../../../packages/shared/dist/ai";
 
     const {
         aiChatMode,
@@ -14,7 +13,7 @@
         isAnswering
     }: {
         aiChatMode: AIChatMode;
-        model: AIChatModel;
+        model: MessageUserPrompt["model"];
         time: MessageUserPrompt["time"];
         isAnswering?: boolean;
     } = $props();
@@ -45,7 +44,7 @@
     });
 
     /** Gets the Icon */
-    function getProviderIcon(provider: AI.ProviderID) {
+    function getProviderIcon(provider: ProviderID) {
         switch(provider) {
             case "Anthropic":
                 return "simple-icons:claude";

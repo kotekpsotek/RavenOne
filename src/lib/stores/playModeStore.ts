@@ -3,16 +3,18 @@ import { get, writable, type Updater } from "svelte/store";
 import { selectedFile } from "./files";
 import { findItemDirectSubitems } from "$lib/listItems/utils";
 import { /* playInFile, */ playInFile, type PointResultEventPayload } from "$lib/play/connections";
-import type { AI, File, Play } from "@ravenlens/shared";
+import type { File } from "$lib/sharedCompat";
+import type { AI, Play } from "@ravenlens/shared";
+import type { BrowserToolsUnion, ContextSpecificationPayload, EditableListItem, PlayMode, RavenLensAvaiableAIModel, SharedFile, SpawnedList } from "$lib/sharedCompat";
 
-interface PlayableListItem extends Omit<File.File.EditableListItem, "answers"> {
+interface PlayableListItem extends Omit<EditableListItem, "answers"> {
     /** Is attached once starts playing -> means point was started */
     startedAtTimestamp?: number;
     /** Is attached once finishes playing -> means point was finished */
     finishedAtTimestamp?: number;
 }
 
-interface PlayableSpawnedList extends Omit<File.File.SpawnedList, "items"> {
+interface PlayableSpawnedList extends Omit<SpawnedList, "items"> {
     startedAtTimestamp?: number;
     finishedAtTimestamp?: number;
     items: PlayableListItem[];
@@ -23,10 +25,10 @@ export interface PlayableList {
     /** Points that belong to this run scope (used by UI planned/omitted badges). */
     scopePointIds: string[];
     config: {
-        model: AI.RavenLensAvaiableAIModel;
-        tools: File.FileAI.BrowserToolsUnion[];
-        context: File.FileAI.ContextSpecificationPayload;
-        selectedItemPlayMode: File.FileAI.PlayMode;
+        model: RavenLensAvaiableAIModel;
+        tools: BrowserToolsUnion[];
+        context: ContextSpecificationPayload;
+        selectedItemPlayMode: PlayMode;
     }
 }
 
@@ -37,8 +39,8 @@ export interface EventFinishedPlaying {
 }
 
 interface PlayableDocumentsWithListsAndPoints {
-    document: File.File.File;
-    mode: File.FileAI.PlayMode;
+    document: SharedFile;
+    mode: PlayMode;
     lists: PlayableList[];
     startAtTimestamp: number;
 }
@@ -73,12 +75,12 @@ export class CancelPointEvent {
 
 interface DocumentEvent {
     kind: "document";
-    document: File.File.File;
+    document: SharedFile;
 }
 
 interface PointEvent {
     kind: "point";
-    document: File.File.File;
+    document: SharedFile;
     listId: string;
     pointId: string;
 }
@@ -107,12 +109,12 @@ export class PlayEvent {
 
 interface StopDocumentEvent {
     kind: "document";
-    document: File.File.File;
+    document: SharedFile;
 }
 
 interface StopPointEvent {
     kind: "point";
-    document: File.File.File;
+    document: SharedFile;
     listId: string;
     pointId: string;
 }

@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { Collabortation } from "@ravenlens/shared";
+	import type { CollabEditor } from "$lib/sharedCompat";
     import { UI } from "@ravenlens/frontend";
     import type { Collaborator } from "./CollaboratorsBubble.types";
 
@@ -22,13 +22,13 @@
 			.filter(Boolean)
 			.join(", ")
 	);
-    const sizeUnit = $derived(size === "normal" ? "7" : "5");
+    const sizeUnit = $derived(size === "normal" ? "6" : "5");
 
     function getCollaboratorName(collaborator: Collaborator) {
 		return `${collaborator.name?.trim() || "Unknown collaborator"} ${isEditor(collaborator) ? `(${activeUserSuffix})` : ""}`.trim();
 	}
 
-    function isEditor(collaborator: Collaborator): collaborator is Collabortation.CollabEditor {
+    function isEditor(collaborator: Collaborator): collaborator is CollabEditor {
 		return "isEditor" in collaborator && collaborator.isEditor === true;
 	}
 </script>

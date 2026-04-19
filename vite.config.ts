@@ -1,9 +1,30 @@
 import { sveltekit } from '@sveltejs/kit/vite';
-import { defineConfig, loadEnv } from 'vite';
+import { loadEnv } from 'vite';
 import tailwindcss from '@tailwindcss/vite';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 
-export default defineConfig(({ mode }) => {
+function resolveHoistedPackageFile(packageName: string, relativeFile: string) {
+	let currentDir = process.cwd();
+
+	while (true) {
+		const candidate = path.join(currentDir, 'node_modules', packageName, relativeFile);
+
+		if (existsSync(candidate)) {
+			return candidate;
+		}
+
+		const parentDir = path.dirname(currentDir);
+
+		if (parentDir === currentDir) {
+			throw new Error(`Unable to resolve ${packageName}/${relativeFile} from ${process.cwd()}`);
+		}
+
+		currentDir = parentDir;
+	}
+}
+
+export default ({ mode }: { mode: string }) => {
 	const loadedEnv = loadEnv(mode, process.cwd(), '');
 
 	for (const [key, value] of Object.entries(loadedEnv)) {
@@ -30,15 +51,11 @@ export default defineConfig(({ mode }) => {
 				'@codemirror/search'
 			],
 			alias: {
-				'svelte-tiptap': path.resolve(process.cwd(), '../../node_modules/svelte-tiptap/dist/index.js'),
-				'@buddhima_a/tiptap-diff-suggestions': path.resolve(
-					process.cwd(),
-					'../../node_modules/@buddhima_a/tiptap-diff-suggestions/dist/index.esm.js'
-				),
+				'svelte-tiptap': resolveHoistedPackageFile('svelte-tiptap', 'dist/index.js')
 			}
 		},
 		ssr: {
 			noExternal: ['svelte-codemirror-editor']
 		}
 	};
-});
+};

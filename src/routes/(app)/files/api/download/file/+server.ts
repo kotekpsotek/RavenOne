@@ -7,7 +7,6 @@ import {
 import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "../$types";
 import { DB_Models } from "@ravenlens/backend";
-import { File } from "@ravenlens/shared";
 import { fileMap } from "$lib/utils/files";
 
 interface DownloadFileRequestBody {

@@ -1,12 +1,14 @@
-import { File, Workspace } from "@ravenlens/shared";
+import type { File, Workspace } from "$lib/sharedCompat";
 import { error } from "@sveltejs/kit";
 import type { PageServerLoad } from "./$types";
+
+type WorkspaceUserEntryLoaded = Workspace.Workspace.WorkspaceUserEntryLoaded;
 
 type SharedFileApiResponse = {
     ok?: boolean;
     message?: string;
     file?: File.File.File;
-    workspace?: Workspace.Workspace.WorkspaceUserEntryLoaded;
+    workspace?: WorkspaceUserEntryLoaded;
 };
 
 export const load: PageServerLoad = async ({ fetch, params }) => {

@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { File } from "@ravenlens/shared";
+    import type { ContextDeviceFile, ContextEditorFile, ContextNetworkURL, ContextSpecificationPayload, SharedFile } from "$lib/sharedCompat";
     import { entriesList, selectedFile } from "$lib/stores/files";
     import Icon from "@iconify/svelte";
     import { UI } from "@ravenlens/frontend";
@@ -20,21 +20,21 @@
         children
     } = $props<{
         open: boolean;
-        contextPayload: File.FileAI.ContextSpecificationPayload;
-        onSave?: (payload: File.FileAI.ContextSpecificationPayload) => void;
+        contextPayload: ContextSpecificationPayload;
+        onSave?: (payload: ContextSpecificationPayload) => void;
         infoMessage?: string;
         children?: any;
     }>();
 
     // ...
-    let desktopContextFiles = $state<File.FileAI.ContextDeviceFile[]>([]);
+    let desktopContextFiles = $state<ContextDeviceFile[]>([]);
     let isEditorCurrentFileSelected = $state(false);
-    let editorContextFiles = $state<File.FileAI.ContextEditorFile[]>([]);
-    let networkContextUrls = $state<File.FileAI.ContextNetworkURL[]>([]);
+    let editorContextFiles = $state<ContextEditorFile[]>([]);
+    let networkContextUrls = $state<ContextNetworkURL[]>([]);
     let networkUrlDraft = $state("");
 
     let isSelectFileModalOpen = $state(false);
-    let selectedFiles: File.File.File[] = $state([]);
+    let selectedFiles: SharedFile[] = $state([]);
     let initialContextSignature = $state("");
 
     $effect(() => {
@@ -65,9 +65,8 @@
         editorContextFiles = uniqueEditorFiles;
         networkContextUrls = uniqueNetworkUrls;
 
-        selectedFiles = deduplicateEntriesById(
-            uniqueEditorFiles.map((editorFile) => ({ id: editorFile.id, name: editorFile.name } as File.File.File))
-        );
+        const selectedFileIds = new Set(uniqueEditorFiles.map((editorFile) => editorFile.id));
+        selectedFiles = $entriesList.filter((entry) => selectedFileIds.has(entry.id));
 
         isEditorCurrentFileSelected = Boolean($selectedFile && uniqueEditorFiles.some((entry) => entry.id === $selectedFile.id));
     })
@@ -86,7 +85,7 @@
     })
 
     let hasContextChanges = $derived.by(() => {
-        const currentPayload: File.FileAI.ContextSpecificationPayload = {
+        const currentPayload: ContextSpecificationPayload = {
             desktopFiles: deduplicateEntriesById(desktopContextFiles),
             editorFiles: deduplicateEntriesById(editorContextFiles),
             networkUrls: deduplicateEntriesById(networkContextUrls)
@@ -95,7 +94,7 @@
         return buildContextSignature(currentPayload) !== initialContextSignature;
     });
 
-    function cloneContextPayload(payload: File.FileAI.ContextSpecificationPayload): File.FileAI.ContextSpecificationPayload {
+    function cloneContextPayload(payload: ContextSpecificationPayload): ContextSpecificationPayload {
         return {
             desktopFiles: [...payload.desktopFiles],
             editorFiles: [...payload.editorFiles],
@@ -107,10 +106,10 @@
         return entries.filter((entry, index, list) => list.findIndex((check) => check.id === entry.id) === index);
     }
 
-    function buildContextSignature(payload: File.FileAI.ContextSpecificationPayload) {
-        const desktopFileIds = Array.from(new Set(payload.desktopFiles.map((entry) => entry.id))).sort((left, right) => left.localeCompare(right));
-        const editorFileIds = Array.from(new Set(payload.editorFiles.map((entry) => entry.id))).sort((left, right) => left.localeCompare(right));
-        const networkUrls = Array.from(new Set(payload.networkUrls.map((entry) => entry.url))).sort((left, right) => left.localeCompare(right));
+    function buildContextSignature(payload: ContextSpecificationPayload) {
+        const desktopFileIds = Array.from(new Set(payload.desktopFiles.map((entry: ContextDeviceFile | import("$lib/sharedCompat").ContextDeviceFileDB) => entry.id))).sort((left: string, right: string) => left.localeCompare(right));
+        const editorFileIds = Array.from(new Set(payload.editorFiles.map((entry: ContextEditorFile) => entry.id))).sort((left: string, right: string) => left.localeCompare(right));
+        const networkUrls = Array.from(new Set(payload.networkUrls.map((entry: ContextNetworkURL) => entry.url))).sort((left: string, right: string) => left.localeCompare(right));
 
         return `${desktopFileIds.join("|")}::${editorFileIds.join("|")}::${networkUrls.join("|")}`;
     }
@@ -124,7 +123,7 @@
         desktopContextFiles = desktopContextFiles.filter((entry) => entry.id !== id);
     }
 
-    function openDesktopContextFilePreview(file: File.FileAI.ContextDeviceFile) {
+    function openDesktopContextFilePreview(file: ContextDeviceFile) {
         if (!file.previewDataUrl) {
             return;
         }
@@ -169,7 +168,7 @@
                     locationHint,
                     content,
                     previewDataUrl
-                } satisfies File.FileAI.ContextDeviceFile;
+                } satisfies ContextDeviceFile;
             })
         );
 
@@ -186,7 +185,7 @@
                 return;
             }
     
-            const nextFile: File.FileAI.ContextEditorFile = {
+            const nextFile: ContextEditorFile = {
                 id: $selectedFile.id,
                 name: $selectedFile.name
             };
@@ -245,7 +244,7 @@
     }
 
     function handleSaveContext() {
-        const payload: File.FileAI.ContextSpecificationPayload = {
+        const payload: ContextSpecificationPayload = {
             desktopFiles: deduplicateEntriesById(desktopContextFiles),
             editorFiles: deduplicateEntriesById(editorContextFiles),
             networkUrls: deduplicateEntriesById(networkContextUrls)

@@ -2,7 +2,8 @@ import { browser } from "$app/environment";
 import { env } from "$env/dynamic/public";
 import { selectedFile } from "$lib/stores/files";
 import { JWTAuth } from "$lib/utils/auth";
-import type { File, Play } from "@ravenlens/shared";
+import type { File } from "$lib/sharedCompat";
+import type { Play } from "@ravenlens/shared";
 import io, { Socket } from "socket.io-client";
 import { writable } from "svelte/store";
 
@@ -326,7 +327,8 @@ export class FilePlayConnections {
     }
     
     async play(playTarget: Play.PlayFile | Play.PlayPoint): Promise<Play.PlayPointAnswer> {
-        const context = resolveFileSocketContext(playTarget.file ?? this.file);
+        const playTargetFile = playTarget.file as File.File.File | undefined;
+        const context = resolveFileSocketContext(playTargetFile ?? this.file);
         if (!context) {
             throw new Error("Cannot play point without file and workspace identifiers.");
         }

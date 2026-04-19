@@ -1,4 +1,12 @@
 import type { AIChatDecision, AIChatMode } from "@ravenlens/shared/chat-ai/frontend";
+import type {
+    MermaidDiagramType,
+    FileChatMode,
+    PersistedChatBubble as AIChatBubble,
+    PersistedChatResponse as AIChatResponse,
+    PersistedChatThread as AIChatThread,
+    PersistedSelectedTextRange as SelectedTextRange
+} from "../../../routes/(app)/files/api/server-utils";
 
 export function normalizeWorkspaceId(workspaceIdCandidate: unknown): string | undefined {
     if (typeof workspaceIdCandidate !== "string") {
@@ -17,12 +25,8 @@ export function normalizeText(valueCandidate: unknown): string {
     return valueCandidate;
 }
 
-export function normalizeAIChatMode(modeCandidate: AIChatMode): AIChatMode {
-    if (
-        modeCandidate === "regular-ask"
-        || modeCandidate === "document-manipulation"
-        || modeCandidate === "tasks-manipulation"
-    ) {
+export function normalizeAIChatMode(modeCandidate: unknown): FileChatMode {
+    if (modeCandidate === "regular-ask") {
         return modeCandidate;
     }
 
@@ -50,16 +54,16 @@ export function normalizeDecision(decisionCandidate: unknown): AIChatDecision | 
     return undefined;
 }
 
-export function toIsoDateString(dateCandidate: unknown): string {
+export function toIsoDateString(dateCandidate: unknown): Date {
     const nextDate = new Date(typeof dateCandidate === "string" || typeof dateCandidate === "number"
         ? dateCandidate
         : Date.now());
 
     if (Number.isNaN(nextDate.getTime())) {
-        return new Date().toISOString();
+        return new Date();
     }
 
-    return nextDate.toISOString();
+    return nextDate;
 }
 
 export function normalizeSelectedRange(candidate: unknown): SelectedTextRange | null {

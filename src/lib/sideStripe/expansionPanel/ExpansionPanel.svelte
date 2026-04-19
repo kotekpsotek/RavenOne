@@ -1,6 +1,6 @@
 <script lang="ts">
     import Icon from "@iconify/svelte";
-    import { File } from "@ravenlens/shared";
+    import type { File } from "$lib/sharedCompat";
     import {
         changeFilePositionRequest,
         downloadFilesRequest,
@@ -130,6 +130,8 @@
             id: crypto.randomUUID(),
             name,
             lists: [],
+            routines: [],
+            spikes: [],
             createdAt: new Date(),
             content: "",
             createdByAuthorId: workspaceId

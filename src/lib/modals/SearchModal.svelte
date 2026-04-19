@@ -3,7 +3,7 @@
     import Icon from "@iconify/svelte";
     import { selectedFile } from "$lib/stores/files";
     import IconValue from "$lib/IconValue.svelte";
-    import { File } from "@ravenlens/shared";
+    import type { SharedFile } from "$lib/sharedCompat";
 
     const SEARCH_MODAL_MIN_MARGIN = 12;
     const SEARCH_MODAL_ROOT_ID = "editor-search-modal-root";
@@ -21,7 +21,7 @@
     let filteredSearchEntries = $derived(filterEntries($entriesList, searchQuery));
     
     // Logic
-    function countDirectSubentries(entry: File.File.File) {
+    function countDirectSubentries(entry: SharedFile) {
         return entry.subentries?.length ?? 0;
     }
 
@@ -36,18 +36,18 @@
         };
     }
 
-    function onSelectSearchEntry(entry: File.File.File) {
+    function onSelectSearchEntry(entry: SharedFile) {
         selectedFile.selectFile(entry);
         $isSearchModalOpen = false;
     }
     
-    function filterEntries(entries: File.File.File[], query: string): File.File.File[] {
+    function filterEntries(entries: SharedFile[], query: string): SharedFile[] {
         const normalizedQuery = query.trim().toLowerCase();
         if (!normalizedQuery) {
             return entries;
         }
 
-        const filtered: File.File.File[] = [];
+        const filtered: SharedFile[] = [];
 
         for (const entry of entries) {
             const nested = entry.subentries?.length ? filterEntries(entry.subentries, normalizedQuery) : [];
@@ -132,7 +132,7 @@
     }
 </script>
 
-{#snippet renderSearchEntry(entry: File.File.File, depth = 0)}
+{#snippet renderSearchEntry(entry: SharedFile, depth = 0)}
     {@const hasSubentries = (entry.subentries?.length ?? 0) > 0}
     {@const entryExpanded = isExpanded(entry.id) || searchQuery.trim().length > 0}
 

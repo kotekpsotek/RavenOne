@@ -1,6 +1,6 @@
 import { json, type RequestHandler } from "@sveltejs/kit";
-import { Workspace } from "@ravenlens/shared";
-import { GITHUB_ACCESS_TOKEN, LINKEDIN_ACCESS_TOKEN } from "$env/static/private";
+import type { Workspace } from "$lib/sharedCompat";
+import { env } from "$env/dynamic/private";
 
 /**
  * Use this api endpoint to download the list of workspace members
@@ -26,7 +26,7 @@ export const POST: RequestHandler = async ({ request }) => {
                 const response = await fetch(`https://api.github.com/search/users?q=${encodeURIComponent(trimmedUserName)}`, {
                     headers: {
                         "Accept": "application/vnd.github+json",
-                        ...(GITHUB_ACCESS_TOKEN ? { "Authorization": `Bearer ${GITHUB_ACCESS_TOKEN}` } : {})
+                        ...(env.GITHUB_ACCESS_TOKEN ? { "Authorization": `Bearer ${env.GITHUB_ACCESS_TOKEN}` } : {})
                     }
                 });
 
@@ -50,7 +50,7 @@ export const POST: RequestHandler = async ({ request }) => {
         }
 
         case "linkedin": {
-            if (!LINKEDIN_ACCESS_TOKEN) {
+            if (!env.LINKEDIN_ACCESS_TOKEN) {
                 return json({ error: "LinkedIn API is not configured. Please add LINKEDIN_ACCESS_TOKEN to your environment." }, { status: 501 });
             }
 
@@ -58,7 +58,7 @@ export const POST: RequestHandler = async ({ request }) => {
                 // Using the LinkedIn People Search API (requires appropriate partnership permissions)
                 const response = await fetch(`https://api.linkedin.com/v2/people-search?q=people&keywords=${encodeURIComponent(trimmedUserName)}`, {
                     headers: {
-                        "Authorization": `Bearer ${LINKEDIN_ACCESS_TOKEN}`,
+                        "Authorization": `Bearer ${env.LINKEDIN_ACCESS_TOKEN}`,
                         "X-Restli-Protocol-Version": "2.0.0"
                     }
                 });

@@ -1,4 +1,4 @@
-import type { AI } from "@ravenlens/shared";
+import type { AI } from "$lib/sharedCompat";
 
 export interface DisabledModelsResponse {
     apiKeyAbsentModels: AI.RavenLensAvaiableAIModel[];

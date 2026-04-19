@@ -192,6 +192,7 @@
 
     <div class="space-y-6">
         <UI.Workspace.Settings.WorkspaceAIModelsScreen
+            description="Manage provider API keys for this workspace."
             bgColor="bg-base-200"
             visibility={{
                 evaluationFrequency: false,

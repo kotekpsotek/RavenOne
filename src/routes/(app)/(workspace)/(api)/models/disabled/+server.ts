@@ -4,7 +4,7 @@ import { prefetchWorkspaceWithMembers } from "$lib/server/db";
 import { extractBearerToken } from "$lib/server/auth/request";
 import { avaiableModels, subscriptionAvaiableAIModels } from "$lib/config/models";
 import { DB_Models } from "@ravenlens/backend";
-import type { AI } from "@ravenlens/shared";
+import type { AI } from "$lib/sharedCompat";
 import { getUserActiveSubscription } from "$lib/server/subscription";
 import type { DisabledModelsResponse } from "./disabled";
 

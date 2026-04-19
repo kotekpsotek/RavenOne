@@ -6,7 +6,7 @@ import { DB_Models } from '@ravenlens/backend';
 import bcrypt from 'bcryptjs';
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions } from './$types';
-import type { Profile } from '@ravenlens/shared';
+import type { Profile } from '$lib/sharedCompat';
 
 const JWT_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 const EMAIL_MAIN_ACCOUNT_TYPES = ['Email', 'email'];

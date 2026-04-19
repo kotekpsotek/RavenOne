@@ -21,8 +21,7 @@
     import { setAlert } from "$lib/utils/alert";
     import { fetchAuthenticated } from "$lib/utils/fetch";
     import Icon from "@iconify/svelte";
-    import { File } from "@ravenlens/shared";
-    import type { AI } from "@ravenlens/shared";
+    import type { File, RavenLensAvaiableAIModel } from "$lib/sharedCompat";
     import type { AIChatMode, ChatTab } from "@ravenlens/shared/chat-ai/frontend";
     import type {
         MessageOutput,
@@ -45,6 +44,7 @@
 
     // Types
     type ContextSpecificationPayload = File.FileAI.ContextSpecificationPayload;
+    type ChatContextPayload = NonNullable<ChatTab["selectedContext"]> & File.FileAI.PromptContextPayload;
     type ChatMessage = ChatTab["messages"][number];
     type ChatPromptMessage = Extract<ChatMessage, { messageType: "message-user-prompt" }>;
     type ChatOutputMessage = Extract<ChatMessage, { messageType: "message-user-output" }>;
@@ -154,10 +154,10 @@
             networkUrls: [],
             aiAnswers: [],
             selectedTextRanges: []
-        };
+        } as ChatContextPayload;
     }
 
-    function cloneModelForTab(model: AI.RavenLensAvaiableAIModel | undefined): ChatTab["selectedModel"] {
+    function cloneModelForTab(model: RavenLensAvaiableAIModel | undefined): ChatTab["selectedModel"] {
         if (!model) {
             return undefined;
         }
@@ -198,14 +198,16 @@
     }
 
     function toTabContextPayload(chatTab: ChatTab, payload: ContextSpecificationPayload): ChatTab["selectedContext"] {
+        const selectedContext = chatTab.selectedContext as ChatContextPayload | undefined;
+
         return {
             desktopFiles: [...payload.desktopFiles],
             editorFiles: [...payload.editorFiles],
             networkUrls: [...payload.networkUrls],
-            aiAnswers: Array.isArray(chatTab.selectedContext?.aiAnswers)
-                ? [...chatTab.selectedContext.aiAnswers]
+            aiAnswers: Array.isArray(selectedContext?.aiAnswers)
+                ? [...selectedContext.aiAnswers]
                 : []
-        };
+        } as ChatContextPayload;
     }
 
     function isContextPayloadEqual(left: ContextSpecificationPayload, right: ContextSpecificationPayload): boolean {
@@ -1102,6 +1104,10 @@
                     <!-- svelte-ignore a11y_click_events_have_key_events -->
                     <!-- svelte-ignore a11y_no_static_element_interactions -->
                     {#if fetchedAnswer}
+                        {@const answerDate = typeof fetchedAnswer.endDateTimestamp === "string" || typeof fetchedAnswer.endDateTimestamp === "number"
+                            ? new Date(fetchedAnswer.endDateTimestamp)
+                            : new Date()}
+                        {@const answerHtml = typeof fetchedAnswer.answerTipTapHTML === "string" ? fetchedAnswer.answerTipTapHTML : ""}
                         <!-- svelte-ignore a11y_click_events_have_key_events -->
                         <div 
                             class="flex justify-between p-1 border border-base-300 rounded-lg items-center"
@@ -1111,8 +1117,8 @@
                             <div
                                 class="flex flex-col gap-0.5"
                             >
-                                <p class="text-xs text-gray-500 theme-dark:text-gray-400">{new Date(fetchedAnswer?.endDateTimestamp ?? Date.now()).toLocaleDateString("en-EN")}</p>
-                                <p class="text-medium">{getContextAnswerTextRepresentation(fetchedAnswer?.answerTipTapHTML ?? "")}</p>
+                                <p class="text-xs text-gray-500 theme-dark:text-gray-400">{answerDate.toLocaleDateString("en-EN")}</p>
+                                <p class="text-medium">{getContextAnswerTextRepresentation(answerHtml)}</p>
                             </div>
 
                             <button

@@ -3,7 +3,7 @@ import { ensureAuthenticatedViaRoute, getAuthenticatedPayload } from "$lib/serve
 import { getUserActiveSubscription } from "$lib/server/subscription";
 import { getWorkspaceMembersLimit, getWorkspaceOwnershipLimit } from "$lib/subscription/limits";
 import { DB_Models } from "@ravenlens/backend";
-import { Permissions, Workspace } from "@ravenlens/shared";
+import { Permissions, type Workspace } from "$lib/sharedCompat";
 import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
 import { downloadCurrentUser } from "$lib/utils/auth";
